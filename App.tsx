@@ -1,0 +1,160 @@
+import React from 'react';
+import { ActivityIndicator, View, StyleSheet, Platform } from 'react-native';
+import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+import { BlurView } from 'expo-blur';
+import { Ionicons } from '@expo/vector-icons';
+import { AppProvider, useApp } from './src/context/AppContext';
+import { LoginScreen } from './src/screens/LoginScreen';
+import { EventListScreen } from './src/screens/EventListScreen';
+import { ScannerScreen } from './src/screens/ScannerScreen';
+import { CheckedInScreen } from './src/screens/CheckedInScreen';
+import { SearchScreen } from './src/screens/SearchScreen';
+import { ParticipantDetailScreen } from './src/screens/ParticipantDetailScreen';
+import { colors } from './src/theme/colors';
+import type { RootStackParamList, MainTabParamList } from './src/types';
+
+const Stack = createNativeStackNavigator<RootStackParamList>();
+const Tab = createBottomTabNavigator<MainTabParamList>();
+
+const LiquidGlassTheme = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: colors.gray[50],
+    card: 'rgba(255,255,255,0.8)',
+    border: 'rgba(0,0,0,0.05)',
+    primary: colors.red,
+  },
+};
+
+function MainTabs() {
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: colors.red,
+        tabBarInactiveTintColor: colors.gray[500],
+        tabBarStyle: {
+          position: 'absolute',
+          backgroundColor: Platform.OS === 'ios' ? 'transparent' : 'rgba(255,255,255,0.85)',
+          borderTopWidth: 0,
+          elevation: 0,
+        },
+        tabBarBackground: () =>
+          Platform.OS === 'ios' ? (
+            <BlurView
+              tint="light"
+              intensity={80}
+              style={StyleSheet.absoluteFill}
+            />
+          ) : null,
+      }}
+    >
+      <Tab.Screen
+        name="Events"
+        component={EventListScreen}
+        options={{
+          tabBarLabel: 'Events',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="calendar-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Scanner"
+        component={ScannerScreen}
+        options={{
+          tabBarLabel: 'Scan',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="qr-code-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="CheckedIn"
+        component={CheckedInScreen}
+        options={{
+          tabBarLabel: 'Checked In',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="checkmark-circle-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Search"
+        component={SearchScreen}
+        options={{
+          tabBarLabel: 'Search',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="search-outline" size={size} color={color} />
+          ),
+        }}
+      />
+    </Tab.Navigator>
+  );
+}
+
+function RootNavigator() {
+  const { state } = useApp();
+
+  if (state.auth.isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.red} />
+      </View>
+    );
+  }
+
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      {state.auth.isAuthenticated ? (
+        <>
+          <Stack.Screen name="Main" component={MainTabs} />
+          <Stack.Screen
+            name="ParticipantDetail"
+            component={ParticipantDetailScreen}
+            options={{
+              headerShown: true,
+              headerTitle: 'Participant',
+              headerBackTitle: 'Back',
+              headerTintColor: colors.red,
+              headerTransparent: Platform.OS === 'ios',
+              headerBlurEffect: 'light',
+              headerStyle: {
+                backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.white,
+              },
+            }}
+          />
+        </>
+      ) : (
+        <Stack.Screen name="Login" component={LoginScreen} />
+      )}
+    </Stack.Navigator>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppProvider>
+        <NavigationContainer theme={LiquidGlassTheme}>
+          <StatusBar style="auto" />
+          <RootNavigator />
+        </NavigationContainer>
+      </AppProvider>
+    </SafeAreaProvider>
+  );
+}
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+  },
+});

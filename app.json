@@ -1,0 +1,53 @@
+{
+  "expo": {
+    "name": "AttendScanner",
+    "slug": "attend-scanner",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "attendscanner",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#EC3750"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.hackclub.attendscanner",
+      "infoPlist": {
+        "NSCameraUsageDescription": "AttendScanner needs camera access to scan QR codes for event check-in."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#EC3750"
+      },
+      "package": "com.hackclub.attendscanner",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow AttendScanner to access your camera for QR code scanning."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "1eae2e71-70e1-49b2-8b6a-6aeda7e22b93"
+      }
+    }
+  }
+}
