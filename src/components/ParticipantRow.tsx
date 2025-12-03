@@ -16,13 +16,18 @@ export function ParticipantRow({ participant, onPress }: ParticipantRowProps) {
   return (
     <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.content}>
-        <View style={styles.mainInfo}>
-          <Text style={styles.name} numberOfLines={1}>
-            {participant.display_name}
-          </Text>
-          {participant.pronouns && (
-            <Text style={styles.pronouns}>({participant.pronouns})</Text>
-          )}
+        <View style={styles.nameRow}>
+          <View style={styles.mainInfo}>
+            <Text style={styles.name} numberOfLines={1}>
+              {participant.display_name}
+            </Text>
+            {participant.pronouns && (
+              <Text style={styles.pronouns} numberOfLines={1}>({participant.pronouns})</Text>
+            )}
+          </View>
+          <View style={styles.status}>
+            <StatusBadge status={participant.checked_in_at ? 'checkedIn' : 'pending'} />
+          </View>
         </View>
 
         <Text style={styles.email} numberOfLines={1}>
@@ -39,10 +44,6 @@ export function ParticipantRow({ participant, onPress }: ParticipantRowProps) {
             )}
           </View>
         )}
-      </View>
-
-      <View style={styles.status}>
-        <StatusBadge status={participant.checked_in_at ? 'checkedIn' : 'pending'} />
       </View>
     </TouchableOpacity>
   );
@@ -63,22 +64,30 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    marginRight: 12,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 2,
   },
   mainInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 2,
+    flex: 1,
+    marginRight: 8,
   },
   name: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.text.primary,
+    flexShrink: 1,
   },
   pronouns: {
     fontSize: 14,
     color: colors.text.secondary,
     marginLeft: 6,
+    flexShrink: 0,
   },
   email: {
     fontSize: 14,

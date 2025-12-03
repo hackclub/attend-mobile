@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "AttendScanner",
+    "name": "Attend",
     "slug": "attend-scanner",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "scheme": "attendscanner",
+    "scheme": "attend",
     "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/splash.png",
@@ -17,9 +17,10 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.hackclub.attendscanner",
+      "bundleIdentifier": "com.hackclub.attend",
       "infoPlist": {
-        "NSCameraUsageDescription": "AttendScanner needs camera access to scan QR codes for event check-in."
+        "NSCameraUsageDescription": "Attend needs camera access to scan QR codes for event check-in.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -40,7 +41,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow AttendScanner to access your camera for QR code scanning."
+          "cameraPermission": "Allow Attend to access your camera for QR code scanning."
         }
       ]
     ],
