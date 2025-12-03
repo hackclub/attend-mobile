@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -7,19 +7,26 @@ import {
   Linking,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import { AlertBadge } from '../components/AlertBadge';
 import { StatusBadge } from '../components/StatusBadge';
 import { EmergencyContactCard } from '../components/EmergencyContactCard';
+import { useApp } from '../context/AppContext';
+import { api } from '../services/api';
 import { colors } from '../theme/colors';
-import type { RootStackParamList } from '../types';
+import type { RootStackParamList, Participant } from '../types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ParticipantDetail'>;
 
-export function ParticipantDetailScreen({ route }: Props) {
+export function ParticipantDetailScreen({ route, navigation }: Props) {
   const { participant } = route.params;
+  const { state, updateParticipant } = useApp();
+  const [isUndoing, setIsUndoing] = useState(false);
+  const [currentParticipant, setCurrentParticipant] = useState<Participant>(participant);
 
   const handleCall = (phone: string) => {
     const phoneNumber = phone.replace(/[^0-9+]/g, '');
@@ -39,68 +46,105 @@ export function ParticipantDetailScreen({ route }: Props) {
     return new Date(dateString).toLocaleString();
   };
 
+  const handleUndoCheckIn = () => {
+    Alert.alert(
+      'Undo Check-In',
+      `Are you sure you want to undo the check-in for ${currentParticipant.display_name || currentParticipant.full_name}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Undo',
+          style: 'destructive',
+          onPress: async () => {
+            if (!state.currentEvent) return;
+            setIsUndoing(true);
+            try {
+              await api.undoCheckIn(state.currentEvent.id, currentParticipant.participant_event_id);
+              const updated = { ...currentParticipant, checked_in_at: undefined };
+              setCurrentParticipant(updated);
+              updateParticipant(updated);
+              Alert.alert('Success', 'Check-in has been undone');
+            } catch (error) {
+              Alert.alert('Error', 'Failed to undo check-in');
+            } finally {
+              setIsUndoing(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleOpenInBrowser = () => {
+    if (!state.currentEvent) return;
+    const url = `https://attend.hackclub.com/admin/events/${state.currentEvent.id}/participants/${currentParticipant.participant_event_id}`;
+    Linking.openURL(url).catch(() => {
+      Alert.alert('Error', 'Unable to open browser');
+    });
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.name}>{participant.full_name}</Text>
-          {participant.pronouns && (
-            <Text style={styles.pronouns}>({participant.pronouns})</Text>
+          <Text style={styles.name}>{currentParticipant.full_name}</Text>
+          {currentParticipant.pronouns && (
+            <Text style={styles.pronouns}>({currentParticipant.pronouns})</Text>
           )}
           <View style={styles.statusRow}>
-            <StatusBadge status={participant.checked_in_at ? 'checkedIn' : 'pending'} />
-            {participant.checked_in_at && (
+            <StatusBadge status={currentParticipant.checked_in_at ? 'checkedIn' : 'pending'} />
+            {currentParticipant.checked_in_at && (
               <Text style={styles.checkedInTime}>
-                {formatDateTime(participant.checked_in_at)}
+                {formatDateTime(currentParticipant.checked_in_at)}
               </Text>
             )}
           </View>
         </View>
 
-        {(participant.has_anaphylaxis_risk || participant.high_support_flag) && (
+        {(currentParticipant.has_anaphylaxis_risk || currentParticipant.high_support_flag) && (
           <View style={styles.alertsSection}>
-            {participant.has_anaphylaxis_risk && (
+            {currentParticipant.has_anaphylaxis_risk && (
               <AlertBadge type="anaphylaxis" label="⚠️ Anaphylaxis Risk" />
             )}
-            {participant.high_support_flag && (
+            {currentParticipant.high_support_flag && (
               <AlertBadge type="highSupport" label="⚠️ High Support Needs" />
             )}
           </View>
         )}
 
         <Section title="Contact Information">
-          <InfoRow label="Email" value={participant.email} onPress={() => handleEmail(participant.email)} />
-          {participant.phone && (
-            <InfoRow label="Phone" value={participant.phone} onPress={() => handleCall(participant.phone!)} />
+          <InfoRow label="Email" value={currentParticipant.email} onPress={() => handleEmail(currentParticipant.email)} />
+          {currentParticipant.phone && (
+            <InfoRow label="Phone" value={currentParticipant.phone} onPress={() => handleCall(currentParticipant.phone!)} />
           )}
         </Section>
 
-        {(participant.allergies || participant.medical_conditions || participant.medications) && (
+        {(currentParticipant.allergies || currentParticipant.medical_conditions || currentParticipant.medications) && (
           <Section title="Medical Information">
-            {participant.allergies && (
-              <InfoRow label="Allergies" value={participant.allergies} highlight />
+            {currentParticipant.allergies && (
+              <InfoRow label="Allergies" value={currentParticipant.allergies} highlight />
             )}
-            {participant.medical_conditions && (
-              <InfoRow label="Medical Conditions" value={participant.medical_conditions} highlight />
+            {currentParticipant.medical_conditions && (
+              <InfoRow label="Medical Conditions" value={currentParticipant.medical_conditions} highlight />
             )}
-            {participant.medications && (
-              <InfoRow label="Medications" value={participant.medications} />
+            {currentParticipant.medications && (
+              <InfoRow label="Medications" value={currentParticipant.medications} />
             )}
-            {participant.requires_refrigeration && (
+            {currentParticipant.requires_refrigeration && (
               <InfoRow label="Refrigeration Required" value="Yes" highlight />
             )}
           </Section>
         )}
 
-        {(participant.diet_type || participant.life_threatening_allergies) && (
+        {(currentParticipant.diet_type || currentParticipant.life_threatening_allergies) && (
           <Section title="Dietary Requirements">
-            {participant.diet_type && (
-              <InfoRow label="Diet Type" value={participant.diet_type} />
+            {currentParticipant.diet_type && (
+              <InfoRow label="Diet Type" value={currentParticipant.diet_type} />
             )}
-            {participant.life_threatening_allergies && (
-              <InfoRow label="Life-Threatening Allergies" value={participant.life_threatening_allergies} highlight />
+            {currentParticipant.life_threatening_allergies && (
+              <InfoRow label="Life-Threatening Allergies" value={currentParticipant.life_threatening_allergies} highlight />
             )}
-            {participant.cross_contamination_risk && (
+            {currentParticipant.cross_contamination_risk && (
               <InfoRow label="Cross Contamination Risk" value="Yes" highlight />
             )}
           </Section>
@@ -109,18 +153,18 @@ export function ParticipantDetailScreen({ route }: Props) {
         <Section title="Safeguarding">
           <View style={styles.safeguardingRow}>
             <Text style={styles.safeguardingLabel}>Freedom Waiver</Text>
-            <StatusBadge status={participant.freedom_waiver_granted ? 'signed' : 'unsigned'} />
+            <StatusBadge status={currentParticipant.freedom_waiver_granted ? 'signed' : 'unsigned'} />
           </View>
           <View style={styles.safeguardingRow}>
             <Text style={styles.safeguardingLabel}>High Support Needs</Text>
             <Text style={styles.safeguardingValue}>
-              {participant.high_support_flag ? 'Yes' : 'No'}
+              {currentParticipant.high_support_flag ? 'Yes' : 'No'}
             </Text>
           </View>
           <View style={styles.safeguardingRow}>
             <Text style={styles.safeguardingLabel}>Can Leave Unaccompanied</Text>
             <Text style={styles.safeguardingValue}>
-              {participant.can_leave_unaccompanied ? 'Yes' : 'No'}
+              {currentParticipant.can_leave_unaccompanied ? 'Yes' : 'No'}
             </Text>
           </View>
         </Section>
@@ -128,17 +172,45 @@ export function ParticipantDetailScreen({ route }: Props) {
         <Section title="Waiver Status">
           <View style={styles.safeguardingRow}>
             <Text style={styles.safeguardingLabel}>Waiver Signed</Text>
-            <StatusBadge status={participant.waiver_signed ? 'signed' : 'unsigned'} />
+            <StatusBadge status={currentParticipant.waiver_signed ? 'signed' : 'unsigned'} />
           </View>
         </Section>
 
-        {participant.emergency_contacts && participant.emergency_contacts.length > 0 && (
+        {currentParticipant.emergency_contacts && currentParticipant.emergency_contacts.length > 0 && (
           <Section title="Emergency Contacts">
-            {participant.emergency_contacts.map((contact, index) => (
+            {currentParticipant.emergency_contacts.map((contact, index) => (
               <EmergencyContactCard key={contact.id || `contact-${index}`} contact={contact} />
             ))}
           </Section>
         )}
+
+        {/* Action Buttons */}
+        <View style={styles.actionButtons}>
+          <TouchableOpacity 
+            style={styles.openInBrowserButton} 
+            onPress={handleOpenInBrowser}
+          >
+            <Ionicons name="open-outline" size={20} color={colors.blue} />
+            <Text style={styles.openInBrowserText}>View on attend.hackclub.com</Text>
+          </TouchableOpacity>
+
+          {currentParticipant.checked_in_at && (
+            <TouchableOpacity 
+              style={styles.undoButton} 
+              onPress={handleUndoCheckIn}
+              disabled={isUndoing}
+            >
+              {isUndoing ? (
+                <ActivityIndicator color={colors.white} size="small" />
+              ) : (
+                <>
+                  <Ionicons name="arrow-undo" size={20} color={colors.white} />
+                  <Text style={styles.undoButtonText}>Undo Check-In</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -278,5 +350,40 @@ const styles = StyleSheet.create({
   safeguardingValue: {
     fontSize: 14,
     color: colors.text.secondary,
+  },
+  actionButtons: {
+    marginTop: 8,
+    marginBottom: 32,
+    gap: 12,
+  },
+  openInBrowserButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.glass.dark,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.blue,
+    gap: 8,
+  },
+  openInBrowserText: {
+    color: colors.blue,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  undoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.orange,
+    padding: 16,
+    borderRadius: 12,
+    gap: 8,
+  },
+  undoButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

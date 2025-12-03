@@ -79,7 +79,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         participants: state.participants.map(p =>
-          p.id === action.payload.id ? action.payload : p
+          (p.participant_event_id === action.payload.participant_event_id) ? action.payload : p
         ),
       };
     case 'SET_SYNC_STATUS':

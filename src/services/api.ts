@@ -2,7 +2,7 @@ import { secureStorage } from './storage';
 import type { Event, Participant, Scan, User, ApiResponse } from '../types';
 
 // Use local Rails server for development
-const BASE_URL = __DEV__ ? 'http://10.19.99.207:3000' : 'https://attend.hackclub.com';
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL || (__DEV__ ? 'http://10.19.99.207:3000' : 'https://attend.hackclub.com');
 
 class ApiClient {
   private baseUrl: string;
@@ -55,11 +55,15 @@ class ApiClient {
     return JSON.parse(text) as T;
   }
 
-  async exchangeCodeForToken(code: string, redirectUri?: string): Promise<{ token: string; user: User }> {
+  async exchangeCodeForToken(code: string, redirectUri?: string, codeVerifier?: string): Promise<{ token: string; user: User }> {
     console.log('Exchanging code for token:', { code: code.substring(0, 10) + '...', redirectUri });
     return this.request<{ token: string; user: User }>('/api/v1/session', {
       method: 'POST',
-      body: JSON.stringify({ code, redirect_uri: redirectUri }),
+      body: JSON.stringify({ 
+        code, 
+        redirect_uri: redirectUri,
+        code_verifier: codeVerifier,
+      }),
     });
   }
 
@@ -114,6 +118,12 @@ class ApiClient {
       }
     );
     return response.scan;
+  }
+
+  async undoCheckIn(eventId: string, participantEventId: string): Promise<void> {
+    await this.request(`/api/v1/events/${eventId}/scans/${participantEventId}`, {
+      method: 'DELETE',
+    });
   }
 
   async syncScans(eventId: string, scans: Array<{ participantId: string; scannedAt: string }>): Promise<void> {

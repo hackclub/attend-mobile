@@ -43,9 +43,11 @@ export function useScanner() {
       return { success: false, error: 'No event selected' };
     }
 
-    const cachedParticipant = state.participants.find(p => p.id === participantId);
+    const cachedParticipant = state.participants.find(
+      p => p.participant_event_id === participantId || p.participant_id === participantId
+    );
     
-    if (cachedParticipant?.checkedIn) {
+    if (cachedParticipant?.checked_in_at) {
       return {
         success: false,
         participant: cachedParticipant,
@@ -58,7 +60,7 @@ export function useScanner() {
       await api.createScan(currentEvent.id, participantId);
       
       const updatedParticipant = cachedParticipant
-        ? { ...cachedParticipant, checkedIn: true, checkedInAt: new Date().toISOString() }
+        ? { ...cachedParticipant, checked_in_at: new Date().toISOString() }
         : await api.getParticipant(currentEvent.id, participantId);
       
       if (cachedParticipant) {
@@ -76,7 +78,7 @@ export function useScanner() {
         });
 
         const updatedParticipant = cachedParticipant
-          ? { ...cachedParticipant, checkedIn: true, checkedInAt: new Date().toISOString() }
+          ? { ...cachedParticipant, checked_in_at: new Date().toISOString() }
           : undefined;
         
         if (updatedParticipant) {

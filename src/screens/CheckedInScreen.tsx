@@ -25,8 +25,8 @@ export function CheckedInScreen() {
   };
 
   const sortedParticipants = [...checkedInParticipants].sort((a, b) => {
-    const aTime = a.checkedInAt ? new Date(a.checkedInAt).getTime() : 0;
-    const bTime = b.checkedInAt ? new Date(b.checkedInAt).getTime() : 0;
+    const aTime = a.checked_in_at ? new Date(a.checked_in_at).getTime() : 0;
+    const bTime = b.checked_in_at ? new Date(b.checked_in_at).getTime() : 0;
     return bTime - aTime;
   });
 

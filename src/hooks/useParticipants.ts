@@ -14,11 +14,11 @@ export function useParticipants() {
   const currentEvent = state.currentEvent;
 
   const checkedInParticipants = useMemo(() => {
-    return participants.filter(p => p.checkedIn);
+    return participants.filter(p => p.checked_in_at);
   }, [participants]);
 
   const notCheckedInParticipants = useMemo(() => {
-    return participants.filter(p => !p.checkedIn);
+    return participants.filter(p => !p.checked_in_at);
   }, [participants]);
 
   const handleRefresh = useCallback(async () => {
@@ -68,16 +68,15 @@ export function useParticipants() {
   }, []);
 
   const getParticipantById = useCallback((id: string): Participant | undefined => {
-    return participants.find(p => p.id === id);
+    return participants.find(p => p.participant_event_id === id || p.participant_id === id);
   }, [participants]);
 
   const markAsCheckedIn = useCallback((participantId: string) => {
-    const participant = participants.find(p => p.id === participantId);
+    const participant = participants.find(p => p.participant_event_id === participantId || p.participant_id === participantId);
     if (participant) {
       updateParticipant({
         ...participant,
-        checkedIn: true,
-        checkedInAt: new Date().toISOString(),
+        checked_in_at: new Date().toISOString(),
       });
     }
   }, [participants, updateParticipant]);

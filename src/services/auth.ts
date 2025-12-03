@@ -8,10 +8,9 @@ WebBrowser.maybeCompleteAuthSession();
 
 const OAUTH_CONFIG = {
   clientId: process.env.EXPO_PUBLIC_OAUTH_CLIENT_ID!,
-  clientSecret: process.env.EXPO_PUBLIC_OAUTH_CLIENT_SECRET,
+  // Client secret is kept server-side - token exchange goes through Rails backend
   authorizationEndpoint: 'https://auth.hackclub.com/oauth/authorize',
-  tokenEndpoint: 'https://auth.hackclub.com/oauth/token',
-  scopes: ['openid', 'profile', 'email'],
+  scopes: ['email'],
 };
 
 const redirectUri = AuthSession.makeRedirectUri({
@@ -70,7 +69,9 @@ export const authService = {
       if (result.type === 'success' && result.params.code) {
         console.log('Got auth code, exchanging for token...');
         try {
-          const { token, user } = await api.exchangeCodeForToken(result.params.code, redirectUri);
+          // Pass code_verifier to backend for PKCE verification
+          const codeVerifier = request.codeVerifier;
+          const { token, user } = await api.exchangeCodeForToken(result.params.code, redirectUri, codeVerifier);
           console.log('Token exchange successful, user:', user?.email);
           
           await secureStorage.setToken(token);
