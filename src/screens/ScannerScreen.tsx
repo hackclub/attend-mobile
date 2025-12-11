@@ -11,7 +11,7 @@ import {
   Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Camera, CameraType, BarCodeScanningResult } from 'expo-camera';
+import { BarCodeScanner, BarCodeScannerResult } from 'expo-barcode-scanner';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -43,7 +43,7 @@ export function ScannerScreen() {
 
   useEffect(() => {
     (async () => {
-      const { status } = await Camera.requestCameraPermissionsAsync();
+      const { status } = await BarCodeScanner.requestPermissionsAsync();
       setHasPermission(status === 'granted');
     })();
   }, []);
@@ -59,7 +59,7 @@ export function ScannerScreen() {
     }
   }, [lastScan, clearLastScan]);
 
-  const handleBarcodeScanned = async (result: BarCodeScanningResult) => {
+  const handleBarcodeScanned = async (result: BarCodeScannerResult) => {
     if (isProcessing || showResult) return;
     await handleScan(result.data);
   };
@@ -99,7 +99,7 @@ export function ScannerScreen() {
   };
 
   const requestPermission = async () => {
-    const { status } = await Camera.requestCameraPermissionsAsync();
+    const { status } = await BarCodeScanner.requestPermissionsAsync();
     setHasPermission(status === 'granted');
   };
 
@@ -152,12 +152,10 @@ export function ScannerScreen() {
 
   return (
     <View style={styles.container}>
-      <Camera
+      <BarCodeScanner
         style={StyleSheet.absoluteFillObject}
-        type={CameraType.back}
-        barCodeScannerSettings={{
-          barCodeTypes: ['qr'],
-        }}
+        type={BarCodeScanner.Constants.Type.back}
+        barCodeTypes={[BarCodeScanner.Constants.BarCodeType.qr]}
         onBarCodeScanned={handleBarcodeScanned}
       />
 
