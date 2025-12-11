@@ -30,7 +30,7 @@ export function ParticipantDetailScreen({ route, navigation }: Props) {
 
   const handleCall = (phone: string) => {
     const phoneNumber = phone.replace(/[^0-9+]/g, '');
-    Linking.openURL(`tel:${phoneNumber}`).catch(() => {
+    Linking.openURL(`dialpad://${phoneNumber}`).catch(() => {
       Alert.alert('Error', 'Unable to make phone call');
     });
   };

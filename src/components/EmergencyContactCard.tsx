@@ -10,7 +10,7 @@ interface EmergencyContactCardProps {
 export function EmergencyContactCard({ contact }: EmergencyContactCardProps) {
   const handleCall = () => {
     const phoneNumber = contact.phone.replace(/[^0-9+]/g, '');
-    const url = `tel:${phoneNumber}`;
+    const url = `dialpad://${phoneNumber}`;
     
     Linking.canOpenURL(url)
       .then((supported) => {

@@ -16,6 +16,29 @@ import { SearchScreen } from './src/screens/SearchScreen';
 import { ParticipantDetailScreen } from './src/screens/ParticipantDetailScreen';
 import { colors } from './src/theme/colors';
 import type { RootStackParamList, MainTabParamList } from './src/types';
+import * as Sentry from '@sentry/react-native';
+
+Sentry.init({
+  dsn: 'https://6a7370567b34299ea8bb4ecf2aec3628@o4509680631087104.ingest.us.sentry.io/4510470752043008',
+
+  // Adds more context data to events (IP address, cookies, user, etc.)
+  // For more information, visit: https://docs.sentry.io/platforms/react-native/data-management/data-collected/
+  sendDefaultPii: true,
+
+  // Enable Logs
+  enableLogs: true,
+
+  // Enable Tracing
+  tracesSampleRate: 0.2,
+
+  // Configure Session Replay
+  replaysSessionSampleRate: 0.1,
+  replaysOnErrorSampleRate: 1,
+  integrations: [Sentry.mobileReplayIntegration(), Sentry.feedbackIntegration()],
+
+  // uncomment the line below to enable Spotlight (https://spotlightjs.com)
+  // spotlight: __DEV__,
+});
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -137,7 +160,7 @@ function RootNavigator() {
   );
 }
 
-export default function App() {
+export default Sentry.wrap(function App() {
   return (
     <SafeAreaProvider>
       <AppProvider>
@@ -148,7 +171,7 @@ export default function App() {
       </AppProvider>
     </SafeAreaProvider>
   );
-}
+});
 
 const styles = StyleSheet.create({
   loadingContainer: {

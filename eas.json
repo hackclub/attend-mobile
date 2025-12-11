@@ -18,7 +18,8 @@
       },
       "env": {
         "EXPO_PUBLIC_OAUTH_CLIENT_ID": "aaa422633e9a7df85892eb2ba84f02d9",
-        "EXPO_PUBLIC_API_URL": "https://attend.hackclub.com"
+        "EXPO_PUBLIC_API_URL": "https://attend.hackclub.com",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     }
   },

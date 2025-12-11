@@ -43,6 +43,14 @@
         {
           "cameraPermission": "Allow Attend to access your camera for QR code scanning."
         }
+      ],
+      [
+        "@sentry/react-native/expo",
+        {
+          "url": "https://sentry.io/",
+          "project": "attend-ios",
+          "organization": "hack-club-hcb"
+        }
       ]
     ],
     "extra": {
