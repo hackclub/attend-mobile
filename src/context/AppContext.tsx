@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
 import { authService } from '../services/auth';
 import { syncService, SyncStatus } from '../services/sync';
+import { notificationService } from '../services/notifications';
 import type { User, Event, Participant, AuthState, SyncState } from '../types';
 
 interface AppState {
@@ -176,6 +177,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'SET_PARTICIPANTS', payload: fresh });
     } catch {
     }
+
+    // Register for push notifications for this event
+    notificationService.registerTokenWithServer(event.id).catch(() => {
+      // Silently fail - notifications are optional
+    });
   }, []);
 
   const refreshParticipants = useCallback(async (): Promise<void> => {

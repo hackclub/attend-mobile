@@ -7,11 +7,14 @@ import {
   TouchableOpacity,
   RefreshControl,
   Alert,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
+import { useBiometric } from '../hooks/useBiometric';
 import { api } from '../services/api';
 import { syncService } from '../services/sync';
 import { colors } from '../theme/colors';
@@ -22,6 +25,7 @@ type NavigationProp = NativeStackNavigationProp<MainTabParamList, 'Events'>;
 export function EventListScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { state, selectEvent, logout } = useApp();
+  const { isAvailable, isEnabled, biometricType, toggleEnabled } = useBiometric();
   const [events, setEvents] = useState<Event[]>(state.events);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -128,6 +132,32 @@ export function EventListScreen() {
         </View>
       )}
 
+      {isAvailable && (
+        <View style={styles.securitySection}>
+          <View style={styles.securityRow}>
+            <View style={styles.securityInfo}>
+              <Ionicons 
+                name={biometricType === 'Face ID' ? 'scan' : 'finger-print'} 
+                size={22} 
+                color={colors.blue} 
+              />
+              <View style={styles.securityTextContainer}>
+                <Text style={styles.securityTitle}>{biometricType}</Text>
+                <Text style={styles.securitySubtitle}>
+                  Protect participant details
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={isEnabled}
+              onValueChange={() => { toggleEnabled(); }}
+              trackColor={{ false: colors.gray[300], true: colors.blue }}
+              thumbColor={colors.white}
+            />
+          </View>
+        </View>
+      )}
+
       <FlatList
         data={events}
         renderItem={renderEvent}
@@ -202,8 +232,42 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
   },
+  securitySection: {
+    backgroundColor: colors.white,
+    marginHorizontal: 16,
+    marginTop: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+  },
+  securityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  securityInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  securityTextContainer: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  securityTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text.primary,
+  },
+  securitySubtitle: {
+    fontSize: 13,
+    color: colors.text.secondary,
+    marginTop: 2,
+  },
   list: {
     padding: 16,
+    paddingBottom: 100,
   },
   eventCard: {
     backgroundColor: colors.glass.dark,

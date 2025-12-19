@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '../hooks/useAuth';
+import { HackClubFlag } from '../components/HackClubFlag';
 import { colors } from '../theme/colors';
 
 export function LoginScreen() {
@@ -36,8 +37,8 @@ export function LoginScreen() {
       
       <View style={styles.content}>
         <View style={styles.logoContainer}>
-          <Text style={styles.logoText}>📋</Text>
-          <Text style={styles.title}>AttendScanner</Text>
+          <HackClubFlag width={200} />
+          <Text style={styles.title}>Attend</Text>
           <Text style={styles.subtitle}>Event Check-In</Text>
         </View>
 
@@ -83,11 +84,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 48,
   },
-  logoText: {
-    fontSize: 64,
-    marginBottom: 16,
-  },
   title: {
+    marginTop: 24,
     fontSize: 32,
     fontWeight: 'bold',
     color: colors.white,

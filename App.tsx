@@ -11,11 +11,14 @@ import { AppProvider, useApp } from './src/context/AppContext';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { EventListScreen } from './src/screens/EventListScreen';
 import { ScannerScreen } from './src/screens/ScannerScreen';
-import { CheckedInScreen } from './src/screens/CheckedInScreen';
+
 import { SearchScreen } from './src/screens/SearchScreen';
 import { ParticipantDetailScreen } from './src/screens/ParticipantDetailScreen';
+import { AirportModeScreen } from './src/screens/AirportModeScreen';
+import { BlastsScreen } from './src/screens/BlastsScreen';
+import { NewBlastScreen } from './src/screens/NewBlastScreen';
 import { colors } from './src/theme/colors';
-import type { RootStackParamList, MainTabParamList } from './src/types';
+import type { RootStackParamList, MainTabParamList, BlastsStackParamList } from './src/types';
 import * as Sentry from '@sentry/react-native';
 
 Sentry.init({
@@ -42,6 +45,7 @@ Sentry.init({
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
+const BlastsStack = createNativeStackNavigator<BlastsStackParamList>();
 
 const LiquidGlassTheme = {
   ...DefaultTheme,
@@ -53,6 +57,29 @@ const LiquidGlassTheme = {
     primary: colors.red,
   },
 };
+
+function BlastsStackNavigator() {
+  return (
+    <BlastsStack.Navigator screenOptions={{ headerShown: false }}>
+      <BlastsStack.Screen name="BlastsList" component={BlastsScreen} />
+      <BlastsStack.Screen 
+        name="NewBlast" 
+        component={NewBlastScreen}
+        options={{
+          headerShown: true,
+          headerTitle: 'New Blast',
+          headerBackTitle: 'Back',
+          headerTintColor: colors.blue,
+          headerTransparent: Platform.OS === 'ios',
+          headerBlurEffect: 'light',
+          headerStyle: {
+            backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.white,
+          },
+        }}
+      />
+    </BlastsStack.Navigator>
+  );
+}
 
 function MainTabs() {
   return (
@@ -97,16 +124,7 @@ function MainTabs() {
           ),
         }}
       />
-      <Tab.Screen
-        name="CheckedIn"
-        component={CheckedInScreen}
-        options={{
-          tabBarLabel: 'Checked In',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="checkmark-circle-outline" size={size} color={color} />
-          ),
-        }}
-      />
+
       <Tab.Screen
         name="Search"
         component={SearchScreen}
@@ -114,6 +132,26 @@ function MainTabs() {
           tabBarLabel: 'Search',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="search-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="AirportMode"
+        component={AirportModeScreen}
+        options={{
+          tabBarLabel: 'Flights',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="airplane-outline" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Blasts"
+        component={BlastsStackNavigator}
+        options={{
+          tabBarLabel: 'Blasts',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="megaphone-outline" size={size} color={color} />
           ),
         }}
       />
@@ -165,7 +203,7 @@ export default Sentry.wrap(function App() {
     <SafeAreaProvider>
       <AppProvider>
         <NavigationContainer theme={LiquidGlassTheme}>
-          <StatusBar style="auto" />
+          <StatusBar style="dark" />
           <RootNavigator />
         </NavigationContainer>
       </AppProvider>
