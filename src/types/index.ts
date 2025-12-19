@@ -110,8 +110,29 @@ export interface Participant {
   travel_inbound?: Travel;
   travel_outbound?: Travel;
   
+  // Scans by context
+  scans_by_context?: ScanByContext[];
+  
   // Timestamp
   updated_at?: string;
+}
+
+export interface ScanContext {
+  id: string;
+  name: string;
+  checks_in: boolean;
+  is_airport: boolean;
+  position: number;
+}
+
+export interface ScanByContext {
+  scan_context_id: string;
+  scan_context_name: string;
+  checks_in: boolean;
+  is_airport: boolean;
+  scan_count: number;
+  first_scanned_at?: string;
+  last_scanned_at?: string;
 }
 
 export interface Scan {
@@ -121,6 +142,12 @@ export interface Scan {
   scannedAt: string;
   scannedById: string;
   synced: boolean;
+  scan_context?: {
+    id: string;
+    name: string;
+    checks_in: boolean;
+    is_airport: boolean;
+  };
 }
 
 export interface PendingScan {
@@ -174,7 +201,6 @@ export type MainTabParamList = {
   Scanner: undefined;
   Search: undefined;
   AirportMode: undefined;
-  Blasts: undefined;
 };
 
 export type QRCodeData = {
@@ -235,24 +261,4 @@ export interface AirportModeData {
   sections: FlightSection[];
 }
 
-export interface SlackBlast {
-  id: string;
-  message: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'failed';
-  recipient_count: number;
-  sent_count: number;
-  failed_count: number;
-  created_at: string;
-  sent_by: string;
-}
 
-export interface SlackBlastCreateResponse {
-  slack_blast: SlackBlast;
-  message: string;
-}
-
-export type BlastsStackParamList = {
-  BlastsList: undefined;
-  NewBlast: undefined;
-  BlastDetail: { blastId: string };
-};

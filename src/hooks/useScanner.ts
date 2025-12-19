@@ -1,23 +1,55 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import * as Haptics from 'expo-haptics';
 import { useApp } from '../context/AppContext';
 import { api, ApiError } from '../services/api';
 import { syncService } from '../services/sync';
-import type { Participant, QRCodeData } from '../types';
+import type { Participant, QRCodeData, ScanContext } from '../types';
 
 interface ScanResult {
   success: boolean;
   participant?: Participant;
   error?: string;
   alreadyCheckedIn?: boolean;
+  firstScanInContext?: boolean;
+  scanContext?: ScanContext;
 }
 
 export function useScanner() {
   const { state, updateParticipant } = useApp();
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastScan, setLastScan] = useState<ScanResult | null>(null);
+  const [scanContexts, setScanContexts] = useState<ScanContext[]>([]);
+  const [selectedContextId, setSelectedContextId] = useState<string | null>(null);
+  const [isLoadingContexts, setIsLoadingContexts] = useState(false);
   const lastScannedId = useRef<string | null>(null);
   const scanCooldownRef = useRef<boolean>(false);
+
+  // Load scan contexts when event changes
+  useEffect(() => {
+    async function loadContexts() {
+      if (!state.currentEvent) {
+        setScanContexts([]);
+        setSelectedContextId(null);
+        return;
+      }
+
+      setIsLoadingContexts(true);
+      try {
+        const contexts = await api.getScanContexts(state.currentEvent.id);
+        setScanContexts(contexts);
+        // Default to the first check-in context or first context
+        const defaultContext = contexts.find(c => c.checks_in) || contexts[0];
+        setSelectedContextId(defaultContext?.id || null);
+      } catch (error) {
+        console.error('Failed to load scan contexts:', error);
+        setScanContexts([]);
+      } finally {
+        setIsLoadingContexts(false);
+      }
+    }
+
+    loadContexts();
+  }, [state.currentEvent?.id]);
 
   const parseQRCode = useCallback((data: string): QRCodeData | null => {
     // Handle attend://checkin/{participant_id} URLs
@@ -51,31 +83,48 @@ export function useScanner() {
       return { success: false, error: 'No event selected' };
     }
 
+    // Check if we need a context but don't have one selected
+    if (scanContexts.length > 1 && !selectedContextId) {
+      return { success: false, error: 'Please select a scan context' };
+    }
+
+    const contextId = scanContexts.length === 1 ? scanContexts[0].id : selectedContextId;
+    const selectedContext = scanContexts.find(c => c.id === contextId);
+
     const cachedParticipant = state.participants.find(
       p => p.participant_event_id === participantId || p.participant_id === participantId
     );
     
-    if (cachedParticipant?.checked_in_at) {
+    // Check if already scanned in THIS context
+    const existingScanInContext = cachedParticipant?.scans_by_context?.find(
+      s => s.scan_context_id === contextId
+    );
+    
+    if (existingScanInContext) {
       return {
         success: false,
         participant: cachedParticipant,
         alreadyCheckedIn: true,
-        error: 'Already checked in',
+        scanContext: selectedContext,
+        error: `Already scanned at ${existingScanInContext.scan_context_name}`,
       };
     }
 
     try {
-      await api.createScan(currentEvent.id, participantId);
+      const response = await api.createScan(currentEvent.id, participantId, contextId || undefined);
       
-      const updatedParticipant = cachedParticipant
-        ? { ...cachedParticipant, checked_in_at: new Date().toISOString() }
-        : await api.getParticipant(currentEvent.id, participantId);
+      const updatedParticipant = response.participant || cachedParticipant;
       
-      if (cachedParticipant) {
+      if (updatedParticipant) {
         updateParticipant(updatedParticipant);
       }
       
-      return { success: true, participant: updatedParticipant };
+      return { 
+        success: true, 
+        participant: updatedParticipant,
+        firstScanInContext: response.first_scan_in_context,
+        scanContext: selectedContext,
+      };
     } catch (error) {
       if (error instanceof ApiError && error.isNetworkError) {
         await syncService.addPendingScan({
@@ -96,6 +145,7 @@ export function useScanner() {
         return {
           success: true,
           participant: updatedParticipant,
+          scanContext: selectedContext,
           error: 'Saved offline - will sync later',
         };
       }
@@ -103,10 +153,11 @@ export function useScanner() {
       return {
         success: false,
         participant: cachedParticipant,
+        scanContext: selectedContext,
         error: error instanceof Error ? error.message : 'Check-in failed',
       };
     }
-  }, [state.currentEvent, state.participants, updateParticipant]);
+  }, [state.currentEvent, state.participants, updateParticipant, scanContexts, selectedContextId]);
 
   const handleScan = useCallback(async (data: string): Promise<ScanResult | null> => {
     if (scanCooldownRef.current || isProcessing) {
@@ -154,11 +205,19 @@ export function useScanner() {
     lastScannedId.current = null;
   }, []);
 
+  const selectContext = useCallback((contextId: string) => {
+    setSelectedContextId(contextId);
+  }, []);
+
   return {
     handleScan,
     isProcessing,
     lastScan,
     clearLastScan,
     hasEvent: !!state.currentEvent,
+    scanContexts,
+    selectedContextId,
+    selectContext,
+    isLoadingContexts,
   };
 }

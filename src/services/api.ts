@@ -1,8 +1,8 @@
 import { secureStorage } from './storage';
-import type { Event, Participant, ParticipantNote, Scan, User, ApiResponse, AirportModeData, SlackBlast } from '../types';
+import type { Event, Participant, ParticipantNote, Scan, User, ApiResponse, AirportModeData, ScanContext } from '../types';
 
 // Use local Rails server for development
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL || (__DEV__ ? 'http://10.19.99.207:3000' : 'https://attend.hackclub.com');
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL || (__DEV__ ? 'http://192.168.0.218:3000' : 'https://attend.hackclub.com');
 
 class ApiClient {
   private baseUrl: string;
@@ -107,22 +107,33 @@ class ApiClient {
     return response.participant;
   }
 
-  async createScan(eventId: string, participantId: string): Promise<Scan> {
-    const response = await this.request<{ scan: Scan; participant: Participant }>(
+  async getScanContexts(eventId: string): Promise<ScanContext[]> {
+    const response = await this.request<{ scan_contexts: ScanContext[] }>(
+      `/api/v1/events/${eventId}/scan_contexts`
+    );
+    return response.scan_contexts || [];
+  }
+
+  async createScan(eventId: string, participantId: string, scanContextId?: string): Promise<{ scan: Scan; participant: Participant; first_scan_in_context: boolean }> {
+    const response = await this.request<{ scan: Scan; participant: Participant; first_scan_in_context: boolean }>(
       `/api/v1/events/${eventId}/scans`,
       {
         method: 'POST',
         body: JSON.stringify({
           participant_id: participantId,
+          scan_context_id: scanContextId,
           scanned_at: new Date().toISOString(),
         }),
       }
     );
-    return response.scan;
+    return response;
   }
 
-  async undoCheckIn(eventId: string, participantEventId: string): Promise<void> {
-    await this.request(`/api/v1/events/${eventId}/scans/${participantEventId}`, {
+  async undoCheckIn(eventId: string, participantEventId: string, scanContextId?: string): Promise<void> {
+    const url = scanContextId 
+      ? `/api/v1/events/${eventId}/scans/${participantEventId}?scan_context_id=${scanContextId}`
+      : `/api/v1/events/${eventId}/scans/${participantEventId}`;
+    await this.request(url, {
       method: 'DELETE',
     });
   }
@@ -143,8 +154,13 @@ class ApiClient {
     try {
       await this.getCurrentUser();
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      // If it's a 401, token is invalid - return false
+      if (error instanceof ApiError && error.isUnauthorized) {
+        return false;
+      }
+      // For network errors or other issues, rethrow so caller can decide
+      throw error;
     }
   }
 
@@ -155,15 +171,15 @@ class ApiClient {
     return response;
   }
 
-  async registerPushToken(eventId: string, token: string): Promise<void> {
-    await this.request(`/api/v1/events/${eventId}/push_tokens`, {
+  async registerPushToken(token: string): Promise<void> {
+    await this.request(`/api/v1/push_tokens`, {
       method: 'POST',
       body: JSON.stringify({ token }),
     });
   }
 
-  async unregisterPushToken(eventId: string, token: string): Promise<void> {
-    await this.request(`/api/v1/events/${eventId}/push_tokens`, {
+  async unregisterPushToken(token: string): Promise<void> {
+    await this.request(`/api/v1/push_tokens`, {
       method: 'DELETE',
       body: JSON.stringify({ token }),
     });
@@ -187,30 +203,6 @@ class ApiClient {
     return response.note;
   }
 
-  async getSlackBlasts(eventId: string): Promise<SlackBlast[]> {
-    const response = await this.request<{ slack_blasts: SlackBlast[] }>(
-      `/api/v1/events/${eventId}/slack_blasts`
-    );
-    return response.slack_blasts || [];
-  }
-
-  async getSlackBlast(eventId: string, blastId: string): Promise<SlackBlast> {
-    const response = await this.request<{ slack_blast: SlackBlast }>(
-      `/api/v1/events/${eventId}/slack_blasts/${blastId}`
-    );
-    return response.slack_blast;
-  }
-
-  async createSlackBlast(eventId: string, message: string): Promise<SlackBlast> {
-    const response = await this.request<{ slack_blast: SlackBlast }>(
-      `/api/v1/events/${eventId}/slack_blasts`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ message }),
-      }
-    );
-    return response.slack_blast;
-  }
 }
 
 export class ApiError extends Error {

@@ -24,7 +24,7 @@ import { useApp } from '../context/AppContext';
 import { useBiometric } from '../hooks/useBiometric';
 import { api } from '../services/api';
 import { colors } from '../theme/colors';
-import type { RootStackParamList, Participant, ParticipantNote, Travel, TravelLeg } from '../types';
+import type { RootStackParamList, Participant, ParticipantNote, Travel, TravelLeg, ScanByContext } from '../types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ParticipantDetail'>;
 
@@ -136,32 +136,95 @@ export function ParticipantDetailScreen({ route, navigation }: Props) {
     return new Date(dateString).toLocaleString();
   };
 
+  const performUndo = async (scanContextId?: string, contextName?: string) => {
+    if (!state.currentEvent) return;
+    setIsUndoing(true);
+    try {
+      await api.undoCheckIn(state.currentEvent.id, currentParticipant.participant_event_id, scanContextId);
+      
+      // Update scans_by_context to remove the undone context
+      const updatedScans = scanContextId 
+        ? currentParticipant.scans_by_context?.filter(s => s.scan_context_id !== scanContextId)
+        : [];
+      
+      // Only clear checked_in_at if no check-in scans remain
+      const hasCheckInScans = updatedScans?.some(s => s.checks_in);
+      
+      const updated = { 
+        ...currentParticipant, 
+        checked_in_at: hasCheckInScans ? currentParticipant.checked_in_at : undefined,
+        scans_by_context: updatedScans,
+      };
+      setCurrentParticipant(updated);
+      updateParticipant(updated);
+      
+      const message = contextName 
+        ? `Scan at "${contextName}" has been undone`
+        : 'All scans have been undone';
+      Alert.alert('Success', message);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to undo check-in');
+    } finally {
+      setIsUndoing(false);
+    }
+  };
+
   const handleUndoCheckIn = () => {
-    Alert.alert(
-      'Undo Check-In',
-      `Are you sure you want to undo the check-in for ${currentParticipant.display_name || currentParticipant.full_name}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Undo',
-          style: 'destructive',
-          onPress: async () => {
-            if (!state.currentEvent) return;
-            setIsUndoing(true);
-            try {
-              await api.undoCheckIn(state.currentEvent.id, currentParticipant.participant_event_id);
-              const updated = { ...currentParticipant, checked_in_at: undefined };
-              setCurrentParticipant(updated);
-              updateParticipant(updated);
-              Alert.alert('Success', 'Check-in has been undone');
-            } catch (error) {
-              Alert.alert('Error', 'Failed to undo check-in');
-            } finally {
-              setIsUndoing(false);
-            }
+    const scans = currentParticipant.scans_by_context || [];
+    
+    if (scans.length === 0) {
+      // No scans by context info, fall back to undo all
+      Alert.alert(
+        'Undo Check-In',
+        `Are you sure you want to undo the check-in for ${currentParticipant.display_name || currentParticipant.full_name}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Undo All',
+            style: 'destructive',
+            onPress: () => performUndo(),
           },
-        },
-      ]
+        ]
+      );
+      return;
+    }
+
+    if (scans.length === 1) {
+      // Only one context, ask to undo it
+      const scan = scans[0];
+      Alert.alert(
+        'Undo Check-In',
+        `Undo scan at "${scan.scan_context_name}" for ${currentParticipant.display_name || currentParticipant.full_name}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Undo',
+            style: 'destructive',
+            onPress: () => performUndo(scan.scan_context_id, scan.scan_context_name),
+          },
+        ]
+      );
+      return;
+    }
+
+    // Multiple contexts - show options
+    const buttons: any[] = scans.map(scan => ({
+      text: `${scan.is_airport ? '✈️ ' : ''}${scan.scan_context_name} (${scan.scan_count} scan${scan.scan_count === 1 ? '' : 's'})`,
+      onPress: () => performUndo(scan.scan_context_id, scan.scan_context_name),
+    }));
+    
+    buttons.push({
+      text: 'Undo All Scans',
+      style: 'destructive',
+      onPress: () => performUndo(),
+    });
+    
+    buttons.push({ text: 'Cancel', style: 'cancel' });
+
+    Alert.alert(
+      'Select Context to Undo',
+      `${currentParticipant.display_name || currentParticipant.full_name} has been scanned at multiple locations. Which would you like to undo?`,
+      buttons
     );
   };
 

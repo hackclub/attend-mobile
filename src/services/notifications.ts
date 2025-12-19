@@ -47,12 +47,12 @@ export const notificationService = {
     return token.data;
   },
 
-  async registerTokenWithServer(eventId: string): Promise<boolean> {
+  async registerTokenWithServer(): Promise<boolean> {
     try {
       const token = await this.registerForPushNotifications();
       if (!token) return false;
 
-      await api.registerPushToken(eventId, token);
+      await api.registerPushToken(token);
       console.log('Push token registered with server');
       return true;
     } catch (error) {
@@ -66,12 +66,12 @@ export const notificationService = {
     }
   },
 
-  async unregisterToken(eventId: string): Promise<void> {
+  async unregisterToken(): Promise<void> {
     try {
       const token = await Notifications.getExpoPushTokenAsync({
         projectId: '1eae2e71-70e1-49b2-8b6a-6aeda7e22b93',
       });
-      await api.unregisterPushToken(eventId, token.data);
+      await api.unregisterPushToken(token.data);
     } catch (error) {
       console.error('Failed to unregister push token:', error);
     }
