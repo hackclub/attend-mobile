@@ -3,10 +3,9 @@ import { ActivityIndicator, View, StyleSheet, Platform } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { BlurView } from 'expo-blur';
-import { Ionicons } from '@expo/vector-icons';
 import { AppProvider, useApp } from './src/context/AppContext';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { EventListScreen } from './src/screens/EventListScreen';
@@ -15,10 +14,8 @@ import { ScannerScreen } from './src/screens/ScannerScreen';
 import { SearchScreen } from './src/screens/SearchScreen';
 import { ParticipantDetailScreen } from './src/screens/ParticipantDetailScreen';
 import { AirportModeScreen } from './src/screens/AirportModeScreen';
-import { BlastsScreen } from './src/screens/BlastsScreen';
-import { NewBlastScreen } from './src/screens/NewBlastScreen';
 import { colors } from './src/theme/colors';
-import type { RootStackParamList, MainTabParamList, BlastsStackParamList } from './src/types';
+import type { RootStackParamList, MainTabParamList } from './src/types';
 import * as Sentry from '@sentry/react-native';
 
 Sentry.init({
@@ -45,7 +42,6 @@ Sentry.init({
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
-const BlastsStack = createNativeStackNavigator<BlastsStackParamList>();
 
 const LiquidGlassTheme = {
   ...DefaultTheme,
@@ -58,50 +54,12 @@ const LiquidGlassTheme = {
   },
 };
 
-function BlastsStackNavigator() {
-  return (
-    <BlastsStack.Navigator screenOptions={{ headerShown: false }}>
-      <BlastsStack.Screen name="BlastsList" component={BlastsScreen} />
-      <BlastsStack.Screen 
-        name="NewBlast" 
-        component={NewBlastScreen}
-        options={{
-          headerShown: true,
-          headerTitle: 'New Blast',
-          headerBackTitle: 'Back',
-          headerTintColor: colors.blue,
-          headerTransparent: Platform.OS === 'ios',
-          headerBlurEffect: 'light',
-          headerStyle: {
-            backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.white,
-          },
-        }}
-      />
-    </BlastsStack.Navigator>
-  );
-}
-
 function MainTabs() {
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.red,
-        tabBarInactiveTintColor: colors.gray[500],
-        tabBarStyle: {
-          position: 'absolute',
-          backgroundColor: Platform.OS === 'ios' ? 'transparent' : 'rgba(255,255,255,0.85)',
-          borderTopWidth: 0,
-          elevation: 0,
-        },
-        tabBarBackground: () =>
-          Platform.OS === 'ios' ? (
-            <BlurView
-              tint="light"
-              intensity={80}
-              style={StyleSheet.absoluteFill}
-            />
-          ) : null,
       }}
     >
       <Tab.Screen
@@ -109,9 +67,7 @@ function MainTabs() {
         component={EventListScreen}
         options={{
           tabBarLabel: 'Events',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar-outline" size={size} color={color} />
-          ),
+          tabBarIcon: ({ color, size }) => <Ionicons name="calendar-outline" size={size} color={color} />,
         }}
       />
       <Tab.Screen
@@ -119,20 +75,15 @@ function MainTabs() {
         component={ScannerScreen}
         options={{
           tabBarLabel: 'Scan',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="qr-code-outline" size={size} color={color} />
-          ),
+          tabBarIcon: ({ color, size }) => <Ionicons name="qr-code-outline" size={size} color={color} />,
         }}
       />
-
       <Tab.Screen
         name="Search"
         component={SearchScreen}
         options={{
           tabBarLabel: 'Search',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="search-outline" size={size} color={color} />
-          ),
+          tabBarIcon: ({ color, size }) => <Ionicons name="search-outline" size={size} color={color} />,
         }}
       />
       <Tab.Screen
@@ -140,19 +91,7 @@ function MainTabs() {
         component={AirportModeScreen}
         options={{
           tabBarLabel: 'Flights',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="airplane-outline" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="Blasts"
-        component={BlastsStackNavigator}
-        options={{
-          tabBarLabel: 'Blasts',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="megaphone-outline" size={size} color={color} />
-          ),
+          tabBarIcon: ({ color, size }) => <Ionicons name="airplane-outline" size={size} color={color} />,
         }}
       />
     </Tab.Navigator>

@@ -6,38 +6,70 @@ const USER_KEY = 'user_data';
 
 export const secureStorage = {
   async setToken(token: string): Promise<void> {
-    await SecureStore.setItemAsync(TOKEN_KEY, token);
+    try {
+      await SecureStore.setItemAsync(TOKEN_KEY, token);
+    } catch (error) {
+      console.error('SecureStore setToken failed:', error);
+      throw error;
+    }
   },
 
   async getToken(): Promise<string | null> {
-    return await SecureStore.getItemAsync(TOKEN_KEY);
+    try {
+      return await SecureStore.getItemAsync(TOKEN_KEY);
+    } catch (error) {
+      console.error('SecureStore getToken failed:', error);
+      return null;
+    }
   },
 
   async removeToken(): Promise<void> {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    try {
+      await SecureStore.deleteItemAsync(TOKEN_KEY);
+    } catch (error) {
+      console.error('SecureStore removeToken failed:', error);
+    }
   },
 
   async setUser(user: object): Promise<void> {
-    await SecureStore.setItemAsync(USER_KEY, JSON.stringify(user));
+    try {
+      await SecureStore.setItemAsync(USER_KEY, JSON.stringify(user));
+    } catch (error) {
+      console.error('SecureStore setUser failed:', error);
+      throw error;
+    }
   },
 
   async getUser<T>(): Promise<T | null> {
-    const data = await SecureStore.getItemAsync(USER_KEY);
-    if (!data) return null;
     try {
-      return JSON.parse(data) as T;
-    } catch {
+      const data = await SecureStore.getItemAsync(USER_KEY);
+      if (!data) return null;
+      try {
+        return JSON.parse(data) as T;
+      } catch {
+        return null;
+      }
+    } catch (error) {
+      console.error('SecureStore getUser failed:', error);
       return null;
     }
   },
 
   async removeUser(): Promise<void> {
-    await SecureStore.deleteItemAsync(USER_KEY);
+    try {
+      await SecureStore.deleteItemAsync(USER_KEY);
+    } catch (error) {
+      console.error('SecureStore removeUser failed:', error);
+    }
   },
 
   async clear(): Promise<void> {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
-    await SecureStore.deleteItemAsync(USER_KEY);
+    try {
+      await SecureStore.deleteItemAsync(TOKEN_KEY);
+      await SecureStore.deleteItemAsync(USER_KEY);
+    } catch (error) {
+      console.error('SecureStore clear failed:', error);
+    }
   },
 };
 

@@ -59,7 +59,8 @@
           "project": "attend-ios",
           "organization": "hack-club-hcb"
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "extra": {
       "eas": {

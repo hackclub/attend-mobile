@@ -110,22 +110,37 @@ export const authService = {
         return { success: false };
       }
 
-      const isValid = await api.validateToken();
-      if (!isValid) {
-        await this.logout();
-        return { success: false, error: 'Session expired' };
-      }
-
       const user = await secureStorage.getUser<User>();
-      if (!user) {
-        const freshUser = await api.getCurrentUser();
-        await secureStorage.setUser(freshUser);
-        return { success: true, user: freshUser };
+      
+      // Try to validate token, but don't logout on network errors
+      try {
+        const isValid = await api.validateToken();
+        if (!isValid) {
+          // Token is explicitly invalid (401), logout
+          await this.logout();
+          return { success: false, error: 'Session expired' };
+        }
+        
+        // If we have a valid token but no cached user, fetch fresh user
+        if (!user) {
+          const freshUser = await api.getCurrentUser();
+          await secureStorage.setUser(freshUser);
+          return { success: true, user: freshUser };
+        }
+      } catch (error) {
+        // Network error - if we have cached user, continue offline
+        if (user) {
+          console.log('Network error during token validation, using cached session');
+          return { success: true, user };
+        }
+        // No cached user and can't validate - fail but don't clear token
+        return { success: false, error: 'Unable to verify session' };
       }
 
       return { success: true, user };
     } catch (error) {
-      await this.logout();
+      // Only logout on explicit auth failures, not storage errors
+      console.error('Session restore error:', error);
       return { success: false, error: 'Failed to restore session' };
     }
   },

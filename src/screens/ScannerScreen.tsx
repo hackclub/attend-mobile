@@ -9,6 +9,9 @@ import {
   FlatList,
   ActivityIndicator,
   Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
@@ -21,7 +24,7 @@ import { useParticipants } from '../hooks/useParticipants';
 import { AlertBadge } from '../components/AlertBadge';
 import { StatusBadge } from '../components/StatusBadge';
 import { colors } from '../theme/colors';
-import type { RootStackParamList, Participant } from '../types';
+import type { RootStackParamList, Participant, ScanContext } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -33,7 +36,17 @@ type ManualEntryMode = 'none' | 'id' | 'search';
 export function ScannerScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { state } = useApp();
-  const { handleScan, isProcessing, lastScan, clearLastScan, hasEvent } = useScanner();
+  const { 
+    handleScan, 
+    isProcessing, 
+    lastScan, 
+    clearLastScan, 
+    hasEvent,
+    scanContexts,
+    selectedContextId,
+    selectContext,
+    isLoadingContexts,
+  } = useScanner();
   const { search, clearSearch, searchResults, isSearching } = useParticipants();
   const [permission, requestPermission] = useCameraPermissions();
   const [showResult, setShowResult] = useState(false);
@@ -111,6 +124,8 @@ export function ScannerScreen() {
     }
   };
 
+  const selectedContext = scanContexts.find(c => c.id === selectedContextId);
+
   if (!permission) {
     return (
       <SafeAreaView style={styles.container}>
@@ -127,7 +142,7 @@ export function ScannerScreen() {
         <View style={styles.centered}>
           <Text style={styles.messageTitle}>Camera Access Required</Text>
           <Text style={styles.messageText}>
-            AttendScanner needs camera access to scan QR codes.
+            Attend needs camera access to scan QR codes.
           </Text>
           <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
             <Text style={styles.permissionButtonText}>Grant Permission</Text>
@@ -168,6 +183,52 @@ export function ScannerScreen() {
           <Text style={styles.headerTitle}>{state.currentEvent?.name}</Text>
           <Text style={styles.headerSubtitle}>Scan participant QR code</Text>
         </View>
+
+        {/* Context Selector */}
+        {scanContexts.length > 1 && (
+          <View style={styles.contextSelector}>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.contextScrollContent}
+            >
+              {scanContexts.map((context) => (
+                <TouchableOpacity
+                  key={context.id}
+                  style={[
+                    styles.contextChip,
+                    selectedContextId === context.id && styles.contextChipActive,
+                  ]}
+                  onPress={() => selectContext(context.id)}
+                >
+                  <Text style={[
+                    styles.contextChipText,
+                    selectedContextId === context.id && styles.contextChipTextActive,
+                  ]}>
+                    {context.is_airport ? '✈️ ' : ''}{context.name}
+                    {context.checks_in ? ' ✓' : ''}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Single context indicator */}
+        {scanContexts.length === 1 && (
+          <View style={styles.singleContextIndicator}>
+            <Text style={styles.singleContextText}>
+              {scanContexts[0].is_airport ? '✈️ ' : ''}
+              {scanContexts[0].name}
+            </Text>
+          </View>
+        )}
+
+        {isLoadingContexts && (
+          <View style={styles.loadingContexts}>
+            <ActivityIndicator color={colors.white} size="small" />
+          </View>
+        )}
 
         <View style={styles.scanAreaContainer}>
           <View style={styles.scanArea}>
@@ -220,7 +281,10 @@ export function ScannerScreen() {
 
         {/* Manual ID entry */}
         {manualEntryMode === 'id' && (
-          <View style={styles.manualInputOverlay}>
+          <KeyboardAvoidingView 
+            style={styles.manualInputOverlay}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
             <View style={styles.manualInputHeader}>
               <Text style={styles.manualInputTitle}>Enter Participant ID</Text>
               <TouchableOpacity onPress={closeManualEntry}>
@@ -246,7 +310,7 @@ export function ScannerScreen() {
                 <Text style={styles.manualSubmitButtonText}>Check In</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         )}
 
         {/* Search by name */}
@@ -339,6 +403,8 @@ interface ResultOverlayProps {
     participant?: Participant;
     error?: string;
     alreadyCheckedIn?: boolean;
+    firstScanInContext?: boolean;
+    scanContext?: ScanContext;
   };
   onViewDetails: () => void;
   onDismiss: () => void;
@@ -352,6 +418,7 @@ function ResultOverlay({ result, onViewDetails, onDismiss }: ResultOverlayProps)
     : colors.red;
 
   const participant = result.participant;
+  const contextName = result.scanContext?.name;
 
   return (
     <View style={[styles.resultOverlay, { backgroundColor }]}>
@@ -372,7 +439,11 @@ function ResultOverlay({ result, onViewDetails, onDismiss }: ResultOverlayProps)
           <View style={styles.resultStatus}>
             <StatusBadge
               status={result.alreadyCheckedIn ? 'checkedIn' : 'checkedIn'}
-              label={result.alreadyCheckedIn ? 'Already Checked In' : 'Checked In!'}
+              label={result.alreadyCheckedIn 
+                ? `Already scanned${contextName ? ` @ ${contextName}` : ''}` 
+                : result.firstScanInContext 
+                  ? `Scanned in${contextName ? ` @ ${contextName}` : ''}!`
+                  : 'Checked In!'}
             />
           </View>
 
@@ -465,6 +536,50 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 14,
     color: colors.gray[300],
+  },
+  contextSelector: {
+    marginTop: 12,
+    paddingHorizontal: 8,
+  },
+  contextScrollContent: {
+    paddingHorizontal: 8,
+    gap: 8,
+  },
+  contextChip: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  contextChipActive: {
+    backgroundColor: colors.red,
+    borderColor: colors.red,
+  },
+  contextChipText: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  contextChipTextActive: {
+    fontWeight: '600',
+  },
+  singleContextIndicator: {
+    marginTop: 12,
+    alignItems: 'center',
+  },
+  singleContextText: {
+    color: colors.gray[300],
+    fontSize: 14,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+  },
+  loadingContexts: {
+    marginTop: 12,
+    alignItems: 'center',
   },
   scanAreaContainer: {
     flex: 1,
@@ -626,7 +741,7 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: 'rgba(0,0,0,0.9)',
     padding: 20,
-    paddingBottom: 120,
+    paddingBottom: 40,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
   },

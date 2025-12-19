@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -17,8 +17,9 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useParticipants } from '../hooks/useParticipants';
 import { ParticipantRow } from '../components/ParticipantRow';
+import { api } from '../services/api';
 import { colors } from '../theme/colors';
-import type { RootStackParamList, Participant } from '../types';
+import type { RootStackParamList, Participant, ScanContext } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -41,6 +42,40 @@ export function SearchScreen() {
   const [inputValue, setInputValue] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [travelFilter, setTravelFilter] = useState<TravelFilter>('any');
+  const [scanContexts, setScanContexts] = useState<ScanContext[]>([]);
+  const [selectedContextFilter, setSelectedContextFilter] = useState<string | null>(null);
+  const [isLoadingContexts, setIsLoadingContexts] = useState(false);
+
+  // Load scan contexts when event changes
+  useEffect(() => {
+    async function loadContexts() {
+      if (!currentEvent) {
+        setScanContexts([]);
+        setSelectedContextFilter(null);
+        return;
+      }
+
+      setIsLoadingContexts(true);
+      try {
+        const contexts = await api.getScanContexts(currentEvent.id);
+        setScanContexts(contexts);
+      } catch (error) {
+        console.error('Failed to load scan contexts:', error);
+        setScanContexts([]);
+      } finally {
+        setIsLoadingContexts(false);
+      }
+    }
+
+    loadContexts();
+  }, [currentEvent?.id]);
+
+  // Reset context filter when status filter changes away from checked-in
+  useEffect(() => {
+    if (statusFilter !== 'checked-in') {
+      setSelectedContextFilter(null);
+    }
+  }, [statusFilter]);
 
   const handleSearch = useCallback((text: string) => {
     setInputValue(text);
@@ -69,6 +104,13 @@ export function SearchScreen() {
     // Apply status filter
     if (statusFilter === 'checked-in') {
       result = result.filter(p => !!p.checked_in_at);
+      
+      // Apply context filter if selected
+      if (selectedContextFilter) {
+        result = result.filter(p => 
+          p.scans_by_context?.some(s => s.scan_context_id === selectedContextFilter)
+        );
+      }
     } else if (statusFilter === 'not-checked-in') {
       result = result.filter(p => !p.checked_in_at);
     }
@@ -83,7 +125,7 @@ export function SearchScreen() {
     }
 
     return result;
-  }, [baseParticipants, statusFilter, travelFilter]);
+  }, [baseParticipants, statusFilter, travelFilter, selectedContextFilter]);
 
   const sortedParticipants = useMemo(() => {
     if (statusFilter === 'checked-in') {
@@ -102,6 +144,19 @@ export function SearchScreen() {
     const notCheckedIn = all - checkedIn;
     return { all, checkedIn, notCheckedIn };
   }, [baseParticipants]);
+
+  const contextCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const checkedInParticipants = baseParticipants.filter(p => !!p.checked_in_at);
+    
+    scanContexts.forEach(context => {
+      counts[context.id] = checkedInParticipants.filter(p =>
+        p.scans_by_context?.some(s => s.scan_context_id === context.id)
+      ).length;
+    });
+    
+    return counts;
+  }, [baseParticipants, scanContexts]);
 
   const travelCounts = useMemo(() => {
     const any = baseParticipants.length;
@@ -178,6 +233,31 @@ export function SearchScreen() {
             color={colors.orange}
           />
         </ScrollView>
+
+        {/* Context filter - show when checked-in is selected and there are multiple contexts */}
+        {statusFilter === 'checked-in' && scanContexts.length > 1 && (
+          <>
+            <View style={styles.filterSpacer} />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersScroll}>
+              <FilterChip
+                label="All Contexts"
+                count={statusCounts.checkedIn}
+                isActive={selectedContextFilter === null}
+                onPress={() => setSelectedContextFilter(null)}
+              />
+              {scanContexts.map(context => (
+                <FilterChip
+                  key={context.id}
+                  label={`${context.is_airport ? '✈️ ' : ''}${context.name}`}
+                  count={contextCounts[context.id] || 0}
+                  isActive={selectedContextFilter === context.id}
+                  onPress={() => setSelectedContextFilter(context.id)}
+                  color={context.is_airport ? colors.blue : context.checks_in ? colors.green : colors.gray[500]}
+                />
+              ))}
+            </ScrollView>
+          </>
+        )}
 
         <View style={styles.filterSpacer} />
 
@@ -269,7 +349,7 @@ export function SearchScreen() {
               <Text style={styles.emptyText}>
                 Type at least 2 characters to search
               </Text>
-            ) : (statusFilter !== 'all' || travelFilter !== 'any') ? (
+            ) : (statusFilter !== 'all' || travelFilter !== 'any' || selectedContextFilter) ? (
               <>
                 <Text style={styles.emptyTitle}>No Participants</Text>
                 <Text style={styles.emptyText}>

@@ -115,21 +115,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const restoreAuth = async () => {
-      const result = await authService.restoreSession();
-      if (result.success && result.user) {
-        const token = await authService.getToken();
-        dispatch({ type: 'SET_AUTH', payload: { user: result.user, token: token! } });
-        
-        const cachedEvent = await syncService.getCurrentEvent();
-        if (cachedEvent) {
-          dispatch({ type: 'SET_CURRENT_EVENT', payload: cachedEvent });
-          const participants = await syncService.getCachedParticipants(cachedEvent.id);
-          dispatch({ type: 'SET_PARTICIPANTS', payload: participants });
+      try {
+        const result = await authService.restoreSession();
+        if (result.success && result.user) {
+          const token = await authService.getToken();
+          dispatch({ type: 'SET_AUTH', payload: { user: result.user, token: token! } });
+          
+          try {
+            const cachedEvent = await syncService.getCurrentEvent();
+            if (cachedEvent) {
+              dispatch({ type: 'SET_CURRENT_EVENT', payload: cachedEvent });
+              const participants = await syncService.getCachedParticipants(cachedEvent.id);
+              dispatch({ type: 'SET_PARTICIPANTS', payload: participants });
+            }
+            
+            const events = await syncService.getCachedEvents();
+            dispatch({ type: 'SET_EVENTS', payload: events });
+          } catch (cacheError) {
+            console.error('Failed to restore cached data:', cacheError);
+          }
+        } else {
+          dispatch({ type: 'SET_LOADING', payload: false });
         }
-        
-        const events = await syncService.getCachedEvents();
-        dispatch({ type: 'SET_EVENTS', payload: events });
-      } else {
+      } catch (error) {
+        console.error('Failed to restore auth session:', error);
         dispatch({ type: 'SET_LOADING', payload: false });
       }
     };
@@ -144,6 +153,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     syncService.getStatus().then((status) => {
       dispatch({ type: 'SET_SYNC_STATUS', payload: status });
+    }).catch((error) => {
+      console.error('Failed to get sync status:', error);
     });
 
     return unsubscribe;
@@ -178,8 +189,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } catch {
     }
 
-    // Register for push notifications for this event
-    notificationService.registerTokenWithServer(event.id).catch(() => {
+    // Register for push notifications
+    notificationService.registerTokenWithServer().catch(() => {
       // Silently fail - notifications are optional
     });
   }, []);
