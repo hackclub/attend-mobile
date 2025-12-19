@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,8 +11,8 @@ import {
   Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BarCodeScanner, BarCodeScannerResult } from 'expo-barcode-scanner';
-import { useNavigation } from '@react-navigation/native';
+import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useScanner } from '../hooks/useScanner';
@@ -35,18 +35,20 @@ export function ScannerScreen() {
   const { state } = useApp();
   const { handleScan, isProcessing, lastScan, clearLastScan, hasEvent } = useScanner();
   const { search, clearSearch, searchResults, isSearching } = useParticipants();
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const [permission, requestPermission] = useCameraPermissions();
   const [showResult, setShowResult] = useState(false);
   const [manualEntryMode, setManualEntryMode] = useState<ManualEntryMode>('none');
   const [manualId, setManualId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const lastScannedRef = useRef<string | null>(null);
+  const [isFocused, setIsFocused] = useState(true);
 
-  useEffect(() => {
-    (async () => {
-      const { status } = await BarCodeScanner.requestPermissionsAsync();
-      setHasPermission(status === 'granted');
-    })();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      setIsFocused(true);
+      return () => setIsFocused(false);
+    }, [])
+  );
 
   useEffect(() => {
     if (lastScan) {
@@ -54,13 +56,16 @@ export function ScannerScreen() {
       const timer = setTimeout(() => {
         setShowResult(false);
         clearLastScan();
+        lastScannedRef.current = null;
       }, 30000);
       return () => clearTimeout(timer);
     }
   }, [lastScan, clearLastScan]);
 
-  const handleBarcodeScanned = async (result: BarCodeScannerResult) => {
+  const handleBarcodeScanned = async (result: BarcodeScanningResult) => {
     if (isProcessing || showResult) return;
+    if (lastScannedRef.current === result.data) return;
+    lastScannedRef.current = result.data;
     await handleScan(result.data);
   };
 
@@ -98,11 +103,6 @@ export function ScannerScreen() {
     Keyboard.dismiss();
   };
 
-  const requestPermission = async () => {
-    const { status } = await BarCodeScanner.requestPermissionsAsync();
-    setHasPermission(status === 'granted');
-  };
-
   const handleViewDetails = () => {
     if (lastScan?.participant) {
       setShowResult(false);
@@ -111,7 +111,7 @@ export function ScannerScreen() {
     }
   };
 
-  if (hasPermission === null) {
+  if (!permission) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centered}>
@@ -121,7 +121,7 @@ export function ScannerScreen() {
     );
   }
 
-  if (!hasPermission) {
+  if (!permission.granted) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.centered}>
@@ -152,12 +152,16 @@ export function ScannerScreen() {
 
   return (
     <View style={styles.container}>
-      <BarCodeScanner
-        style={StyleSheet.absoluteFillObject}
-        type={BarCodeScanner.Constants.Type.back}
-        barCodeTypes={[BarCodeScanner.Constants.BarCodeType.qr]}
-        onBarCodeScanned={handleBarcodeScanned}
-      />
+      {isFocused && (
+        <CameraView
+          style={StyleSheet.absoluteFillObject}
+          facing="back"
+          barcodeScannerSettings={{
+            barcodeTypes: ['qr'],
+          }}
+          onBarcodeScanned={handleBarcodeScanned}
+        />
+      )}
 
       <SafeAreaView style={styles.overlay}>
         <View style={styles.header}>
@@ -181,6 +185,7 @@ export function ScannerScreen() {
             onDismiss={() => {
               setShowResult(false);
               clearLastScan();
+              lastScannedRef.current = null;
             }}
           />
         )}

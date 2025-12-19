@@ -76,7 +76,7 @@ export function CheckedInScreen() {
             </Text>
           </View>
         }
-        contentContainerStyle={sortedParticipants.length === 0 ? styles.emptyList : undefined}
+        contentContainerStyle={sortedParticipants.length === 0 ? styles.emptyList : styles.listContent}
       />
     </SafeAreaView>
   );
@@ -118,6 +118,9 @@ const styles = StyleSheet.create({
   },
   emptyList: {
     flexGrow: 1,
+  },
+  listContent: {
+    paddingBottom: 100,
   },
   emptyTitle: {
     fontSize: 18,

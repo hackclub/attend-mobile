@@ -20,6 +20,7 @@
       "bundleIdentifier": "com.hackclub.attend",
       "infoPlist": {
         "NSCameraUsageDescription": "Attend needs camera access to scan QR codes for event check-in.",
+        "NSFaceIDUsageDescription": "Attend uses Face ID to protect sensitive participant information.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -42,6 +43,13 @@
         "expo-camera",
         {
           "cameraPermission": "Allow Attend to access your camera for QR code scanning."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#EC3750"
         }
       ],
       [

@@ -20,6 +20,13 @@ export function useScanner() {
   const scanCooldownRef = useRef<boolean>(false);
 
   const parseQRCode = useCallback((data: string): QRCodeData | null => {
+    // Handle attend://checkin/{participant_id} URLs
+    const checkinUrlMatch = data.match(/^attend:\/\/checkin\/([0-9a-f-]+)$/i);
+    if (checkinUrlMatch) {
+      return { type: 'participant', id: checkinUrlMatch[1] };
+    }
+
+    // Legacy format: attend:P:{id}
     if (data.startsWith('attend:P:')) {
       const id = data.replace('attend:P:', '');
       if (id && id.length > 0) {
@@ -27,6 +34,7 @@ export function useScanner() {
       }
     }
     
+    // Fallback: raw UUID
     const uuidMatch = data.match(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     );

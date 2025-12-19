@@ -14,10 +14,8 @@ const OAUTH_CONFIG = {
 };
 
 const redirectUri = AuthSession.makeRedirectUri({
-  scheme: 'attendscanner',
+  scheme: 'attend',
   path: 'oauth/callback',
-  // Use Expo's proxy for development (provides stable redirect URI)
-  useProxy: true,
 });
 
 export interface AuthResult {
@@ -58,7 +56,6 @@ export const authService = {
       
       const result = await request.promptAsync({
         authorizationEndpoint: OAUTH_CONFIG.authorizationEndpoint,
-        useProxy: true,
       });
 
       console.log('=== OAuth Result ===');

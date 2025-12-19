@@ -1,5 +1,5 @@
 import { secureStorage } from './storage';
-import type { Event, Participant, Scan, User, ApiResponse } from '../types';
+import type { Event, Participant, ParticipantNote, Scan, User, ApiResponse, AirportModeData, SlackBlast } from '../types';
 
 // Use local Rails server for development
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL || (__DEV__ ? 'http://10.19.99.207:3000' : 'https://attend.hackclub.com');
@@ -13,6 +13,7 @@ class ApiClient {
 
   private async getHeaders(): Promise<HeadersInit> {
     const token = await secureStorage.getToken();
+    console.log('[API] Token present:', !!token, token ? `${token.substring(0, 10)}...` : 'none');
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
@@ -145,6 +146,70 @@ class ApiClient {
     } catch {
       return false;
     }
+  }
+
+  async getAirportMode(eventId: string): Promise<AirportModeData> {
+    const response = await this.request<AirportModeData>(
+      `/api/v1/events/${eventId}/airport_mode`
+    );
+    return response;
+  }
+
+  async registerPushToken(eventId: string, token: string): Promise<void> {
+    await this.request(`/api/v1/events/${eventId}/push_tokens`, {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+  }
+
+  async unregisterPushToken(eventId: string, token: string): Promise<void> {
+    await this.request(`/api/v1/events/${eventId}/push_tokens`, {
+      method: 'DELETE',
+      body: JSON.stringify({ token }),
+    });
+  }
+
+  async getParticipantNotes(eventId: string, participantEventId: string): Promise<ParticipantNote[]> {
+    const response = await this.request<{ notes: ParticipantNote[] }>(
+      `/api/v1/events/${eventId}/participants/${participantEventId}/notes`
+    );
+    return response.notes || [];
+  }
+
+  async createParticipantNote(eventId: string, participantEventId: string, content: string): Promise<ParticipantNote> {
+    const response = await this.request<{ note: ParticipantNote }>(
+      `/api/v1/events/${eventId}/participants/${participantEventId}/notes`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ content }),
+      }
+    );
+    return response.note;
+  }
+
+  async getSlackBlasts(eventId: string): Promise<SlackBlast[]> {
+    const response = await this.request<{ slack_blasts: SlackBlast[] }>(
+      `/api/v1/events/${eventId}/slack_blasts`
+    );
+    return response.slack_blasts || [];
+  }
+
+  async getSlackBlast(eventId: string, blastId: string): Promise<SlackBlast> {
+    const response = await this.request<{ slack_blast: SlackBlast }>(
+      `/api/v1/events/${eventId}/slack_blasts/${blastId}`
+    );
+    return response.slack_blast;
+  }
+
+  async createSlackBlast(eventId: string, message: string): Promise<SlackBlast> {
+    const response = await this.request<{ slack_blast: SlackBlast }>(
+      `/api/v1/events/${eventId}/slack_blasts`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ message }),
+      }
+    );
+    return response.slack_blast;
   }
 }
 
