@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -117,6 +119,64 @@ const FILTER_SECTION_MAP: Record<FilterType, string[]> = {
   checked_in: ['Checked In'],
 };
 
+function AirportPickerModal({
+  visible,
+  airports,
+  selectedAirport,
+  onSelect,
+  onClose,
+}: {
+  visible: boolean;
+  airports: { code: string; count: number }[];
+  selectedAirport: string | null;
+  onSelect: (airport: string | null) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={onClose}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Filter by Destination</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Ionicons name="close" size={24} color={colors.gray[500]} />
+            </TouchableOpacity>
+          </View>
+          <FlatList
+            data={[{ code: null, count: airports.reduce((sum, a) => sum + a.count, 0) }, ...airports]}
+            keyExtractor={(item) => item.code || 'all'}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={[
+                  styles.airportOption,
+                  (item.code === selectedAirport || (item.code === null && selectedAirport === null)) && styles.airportOptionSelected,
+                ]}
+                onPress={() => {
+                  onSelect(item.code);
+                  onClose();
+                }}
+              >
+                <Text
+                  style={[
+                    styles.airportOptionText,
+                    (item.code === selectedAirport || (item.code === null && selectedAirport === null)) && styles.airportOptionTextSelected,
+                  ]}
+                >
+                  {item.code || 'All airports'}
+                </Text>
+                <Text style={styles.airportOptionCount}>({item.count})</Text>
+                {(item.code === selectedAirport || (item.code === null && selectedAirport === null)) && (
+                  <Ionicons name="checkmark" size={20} color={colors.blue} style={styles.checkmark} />
+                )}
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
 export function AirportModeScreen() {
   const { state } = useApp();
   const navigation = useNavigation<NavigationProp>();
@@ -125,6 +185,8 @@ export function AirportModeScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterType>('all');
+  const [destinationFilter, setDestinationFilter] = useState<string | null>(null);
+  const [showAirportPicker, setShowAirportPicker] = useState(false);
 
   const fetchData = useCallback(async (showRefresh = false) => {
     if (!state.currentEvent) return;
@@ -152,6 +214,59 @@ export function AirportModeScreen() {
   }, [fetchData]);
 
   const handleRefresh = () => fetchData(true);
+
+  const handleFilterPress = (newFilter: FilterType) => {
+    setFilter(filter === newFilter ? 'all' : newFilter);
+  };
+
+  const handleFlightPress = async (flight: Flight) => {
+    if (!state.currentEvent) return;
+    
+    try {
+      const participant = await api.getParticipant(state.currentEvent.id, flight.participantEventId);
+      navigation.navigate('ParticipantDetail', { participant });
+    } catch (e) {
+      Alert.alert('Error', 'Could not load participant details');
+    }
+  };
+
+  const allSections: FlightSection[] = data?.sections || [];
+
+  const destinationAirports = useMemo(() => {
+    const airportCounts = new Map<string, number>();
+    for (const section of allSections) {
+      for (const flight of section.data) {
+        if (flight.destination) {
+          airportCounts.set(flight.destination, (airportCounts.get(flight.destination) || 0) + 1);
+        }
+      }
+    }
+    return Array.from(airportCounts.entries())
+      .map(([code, count]) => ({ code, count }))
+      .sort((a, b) => a.code.localeCompare(b.code));
+  }, [allSections]);
+
+  const sectionsFilteredByStatus = filter === 'all' || filter === 'inbound'
+    ? allSections
+    : allSections.filter(s => FILTER_SECTION_MAP[filter].includes(s.title));
+
+  const sections = useMemo(() => {
+    if (!destinationFilter) return sectionsFilteredByStatus;
+    return sectionsFilteredByStatus
+      .map(section => ({
+        ...section,
+        data: section.data.filter(flight => flight.destination === destinationFilter),
+      }))
+      .filter(section => section.data.length > 0);
+  }, [sectionsFilteredByStatus, destinationFilter]);
+
+  const filteredAlerts = useMemo(() => {
+    if (!data?.alerts) return [];
+    if (!destinationFilter) return data.alerts;
+    return data.alerts.filter(alert => alert.destination === destinationFilter);
+  }, [data?.alerts, destinationFilter]);
+
+  const hasAlerts = filteredAlerts.length > 0;
 
   if (!state.currentEvent) {
     return (
@@ -189,36 +304,37 @@ export function AirportModeScreen() {
     );
   }
 
-  const handleFilterPress = (newFilter: FilterType) => {
-    setFilter(filter === newFilter ? 'all' : newFilter);
-  };
-
-  const handleFlightPress = async (flight: Flight) => {
-    if (!state.currentEvent) return;
-    
-    try {
-      const participant = await api.getParticipant(state.currentEvent.id, flight.participantEventId);
-      navigation.navigate('ParticipantDetail', { participant });
-    } catch (e) {
-      Alert.alert('Error', 'Could not load participant details');
-    }
-  };
-
-  const allSections: FlightSection[] = data?.sections || [];
-  const sections = filter === 'all' || filter === 'inbound'
-    ? allSections
-    : allSections.filter(s => FILTER_SECTION_MAP[filter].includes(s.title));
-  const hasAlerts = data && data.alerts.length > 0;
-
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <View style={styles.headerTop}>
-          <Ionicons name="airplane" size={24} color={colors.blue} />
-          <Text style={styles.headerTitle}>Airport Mode</Text>
+          <View style={styles.headerTitleRow}>
+            <Ionicons name="airplane" size={24} color={colors.blue} />
+            <Text style={styles.headerTitle}>Airport Mode</Text>
+          </View>
+          {destinationAirports.length > 1 && (
+            <TouchableOpacity
+              style={[styles.airportFilterButton, destinationFilter && styles.airportFilterButtonActive]}
+              onPress={() => setShowAirportPicker(true)}
+            >
+              <Ionicons name="location" size={16} color={destinationFilter ? colors.white : colors.blue} />
+              <Text style={[styles.airportFilterButtonText, destinationFilter && styles.airportFilterButtonTextActive]}>
+                {destinationFilter || 'All'}
+              </Text>
+              <Ionicons name="chevron-down" size={14} color={destinationFilter ? colors.white : colors.blue} />
+            </TouchableOpacity>
+          )}
         </View>
         <Text style={styles.headerSubtitle}>{state.currentEvent.name}</Text>
       </View>
+
+      <AirportPickerModal
+        visible={showAirportPicker}
+        airports={destinationAirports}
+        selectedAirport={destinationFilter}
+        onSelect={setDestinationFilter}
+        onClose={() => setShowAirportPicker(false)}
+      />
 
       <SectionList
         sections={sections}
@@ -240,9 +356,9 @@ export function AirportModeScreen() {
                 <StatCard label="Checked In" value={data.stats.checked_in} color={colors.green} onPress={() => handleFilterPress('checked_in')} isActive={filter === 'checked_in'} />
               </View>
             )}
-            {filter !== 'all' && (
-              <TouchableOpacity style={styles.clearFilter} onPress={() => setFilter('all')}>
-                <Text style={styles.clearFilterText}>Clear filter</Text>
+            {(filter !== 'all' || destinationFilter) && (
+              <TouchableOpacity style={styles.clearFilter} onPress={() => { setFilter('all'); setDestinationFilter(null); }}>
+                <Text style={styles.clearFilterText}>Clear filter{destinationFilter ? ` (${destinationFilter})` : ''}</Text>
                 <Ionicons name="close-circle" size={16} color={colors.gray[500]} />
               </TouchableOpacity>
             )}
@@ -253,7 +369,7 @@ export function AirportModeScreen() {
                   <Ionicons name="warning" size={18} color={colors.red} />
                   <Text style={styles.alertsTitle}>Flight Alerts</Text>
                 </View>
-                {data?.alerts.map((alert) => (
+                {filteredAlerts.map((alert) => (
                   <AlertRow key={alert.id} alert={alert} />
                 ))}
               </View>
@@ -304,12 +420,40 @@ const styles = StyleSheet.create({
   headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: colors.text.primary,
+  },
+  airportFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: colors.blue + '15',
+    borderWidth: 1,
+    borderColor: colors.blue + '30',
+  },
+  airportFilterButtonActive: {
+    backgroundColor: colors.blue,
+    borderColor: colors.blue,
+  },
+  airportFilterButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.blue,
+  },
+  airportFilterButtonTextActive: {
+    color: colors.white,
   },
   headerSubtitle: {
     fontSize: 14,
@@ -544,5 +688,60 @@ const styles = StyleSheet.create({
   retryButtonText: {
     color: colors.white,
     fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  modalContent: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    width: '100%',
+    maxHeight: '70%',
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[200],
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text.primary,
+  },
+  airportOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[100],
+  },
+  airportOptionSelected: {
+    backgroundColor: colors.blue + '10',
+  },
+  airportOptionText: {
+    fontSize: 16,
+    color: colors.text.primary,
+    fontWeight: '500',
+  },
+  airportOptionTextSelected: {
+    color: colors.blue,
+  },
+  airportOptionCount: {
+    fontSize: 14,
+    color: colors.text.secondary,
+    marginLeft: 6,
+  },
+  checkmark: {
+    marginLeft: 'auto',
   },
 });

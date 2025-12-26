@@ -18,10 +18,24 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.hackclub.attend",
+      "entitlements": {
+        "com.apple.security.application-groups": ["group.com.hackclub.attend"]
+      },
       "infoPlist": {
         "NSCameraUsageDescription": "Attend needs camera access to scan QR codes for event check-in.",
         "NSFaceIDUsageDescription": "Attend uses Face ID to protect sensitive participant information.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSSupportsLiveActivities": true,
+        "NSSupportsLiveActivitiesFrequentUpdates": true,
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true,
+          "NSExceptionDomains": {
+            "attend.local": {
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSIncludesSubdomains": true
+            }
+          }
+        }
       }
     },
     "android": {
@@ -29,7 +43,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#EC3750"
       },
-      "package": "com.hackclub.attendscanner",
+      "package": "com.hackclub.attend",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
@@ -60,7 +74,15 @@
           "organization": "hack-club-hcb"
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "expo-font",
+      [
+        "@bacons/apple-targets",
+        {
+          "appleTeamId": "P6PV2R9443"
+        }
+      ],
+      "./plugins/withActivityController.js"
     ],
     "extra": {
       "eas": {

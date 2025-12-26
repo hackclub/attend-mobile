@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { ActivityIndicator, View, StyleSheet, Platform } from 'react-native';
-import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, NavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import * as Linking from 'expo-linking';
 import { AppProvider, useApp } from './src/context/AppContext';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { EventListScreen } from './src/screens/EventListScreen';
@@ -137,11 +138,57 @@ function RootNavigator() {
   );
 }
 
+const linking = {
+  prefixes: [Linking.createURL('/'), 'attend://'],
+  config: {
+    screens: {
+      Main: {
+        screens: {
+          Scanner: 'scanner',
+          Events: 'events',
+          Search: 'search',
+          AirportMode: 'airport',
+        },
+      },
+      ParticipantDetail: 'participant/:id',
+    },
+  },
+};
+
 export default Sentry.wrap(function App() {
+  const navigationRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
+
+  useEffect(() => {
+    const handleDeepLink = (event: { url: string }) => {
+      const url = event.url;
+      if (url.includes('scanner') && navigationRef.current) {
+        // Navigate to scanner tab when tapping Live Activity
+        navigationRef.current.navigate('Main', { screen: 'Scanner' } as any);
+      }
+    };
+
+    const subscription = Linking.addEventListener('url', handleDeepLink);
+
+    // Handle initial URL (app opened from Live Activity)
+    Linking.getInitialURL().then((url) => {
+      if (url?.includes('scanner') && navigationRef.current) {
+        navigationRef.current.navigate('Main', { screen: 'Scanner' } as any);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
   return (
     <SafeAreaProvider>
       <AppProvider>
-        <NavigationContainer theme={LiquidGlassTheme}>
+        <NavigationContainer 
+          ref={navigationRef}
+          theme={LiquidGlassTheme}
+          linking={linking}
+        >
           <StatusBar style="dark" />
           <RootNavigator />
         </NavigationContainer>

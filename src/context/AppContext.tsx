@@ -2,6 +2,7 @@ import React, { createContext, useContext, useReducer, useEffect, useCallback, R
 import { authService } from '../services/auth';
 import { syncService, SyncStatus } from '../services/sync';
 import { notificationService } from '../services/notifications';
+import { liveActivityService } from '../services/liveActivity';
 import type { User, Event, Participant, AuthState, SyncState } from '../types';
 
 interface AppState {
@@ -106,6 +107,8 @@ interface AppContextValue {
   refreshParticipants: () => Promise<void>;
   updateParticipant: (participant: Participant) => void;
   syncNow: () => Promise<void>;
+  startLiveActivity: () => Promise<void>;
+  stopLiveActivity: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -212,6 +215,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_PARTICIPANTS', payload: participants });
   }, [state.currentEvent]);
 
+  const startLiveActivity = useCallback(async (): Promise<void> => {
+    if (!state.currentEvent) return;
+    const checkedInCount = state.participants.filter(p => p.checked_in_at).length;
+    const totalCount = state.participants.length;
+    await liveActivityService.start(
+      state.currentEvent.id,
+      state.currentEvent.name,
+      checkedInCount,
+      totalCount
+    );
+  }, [state.currentEvent, state.participants]);
+
+  const stopLiveActivity = useCallback(async (): Promise<void> => {
+    await liveActivityService.stop();
+  }, []);
+
+  // Update Live Activity when participants change
+  useEffect(() => {
+    if (liveActivityService.isRunning() && state.currentEvent) {
+      const checkedInCount = state.participants.filter(p => p.checked_in_at).length;
+      const totalCount = state.participants.length;
+      liveActivityService.update(checkedInCount, totalCount);
+    }
+  }, [state.participants, state.currentEvent]);
+
   const value: AppContextValue = {
     state,
     login,
@@ -220,6 +248,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     refreshParticipants,
     updateParticipant,
     syncNow,
+    startLiveActivity,
+    stopLiveActivity,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
