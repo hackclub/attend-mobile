@@ -46,7 +46,13 @@ class ApiClient {
         const errorJson = JSON.parse(errorBody);
         message = errorJson.message || errorJson.error || message;
       } catch {
-        message = errorBody || message;
+        // If the response is HTML (like a Rails error page), show a generic message
+        if (errorBody.includes('<!DOCTYPE') || errorBody.includes('<html')) {
+          console.error(`[API] Server error ${response.status} at ${endpoint}:`, errorBody);
+          message = `Server error (${response.status})`;
+        } else if (errorBody && errorBody.length < 200) {
+          message = errorBody;
+        }
       }
       throw new ApiError(message, response.status);
     }

@@ -240,6 +240,7 @@ export interface FlightAlert {
   participantName: string;
   flightCode: string;
   message: string;
+  destination?: string;
 }
 
 export interface FlightSection {

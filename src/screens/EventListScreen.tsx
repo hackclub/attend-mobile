@@ -8,6 +8,7 @@ import {
   RefreshControl,
   Alert,
   Switch,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -17,6 +18,7 @@ import { useApp } from '../context/AppContext';
 import { useBiometric } from '../hooks/useBiometric';
 import { api } from '../services/api';
 import { syncService } from '../services/sync';
+import { liveActivityService } from '../services/liveActivity';
 import { colors } from '../theme/colors';
 import type { Event, MainTabParamList } from '../types';
 
@@ -24,11 +26,36 @@ type NavigationProp = NativeStackNavigationProp<MainTabParamList, 'Events'>;
 
 export function EventListScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const { state, selectEvent, logout } = useApp();
+  const { state, selectEvent, logout, startLiveActivity, stopLiveActivity } = useApp();
   const { isAvailable, isEnabled, biometricType, toggleEnabled } = useBiometric();
   const [events, setEvents] = useState<Event[]>(state.events);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [liveActivityRunning, setLiveActivityRunning] = useState(false);
+  const liveActivitySupported = Platform.OS === 'ios' && liveActivityService.isSupported();
+
+  useEffect(() => {
+    console.log('[LiveActivity] Checking support:', {
+      platform: Platform.OS,
+      supported: liveActivitySupported,
+      currentEvent: state.currentEvent?.name,
+    });
+    setLiveActivityRunning(liveActivityService.isRunning());
+  }, [state.currentEvent, liveActivitySupported]);
+
+  const handleToggleLiveActivity = async () => {
+    console.log('[LiveActivity] Toggle pressed, currently running:', liveActivityRunning);
+    if (liveActivityRunning) {
+      await stopLiveActivity();
+      setLiveActivityRunning(false);
+    } else {
+      console.log('[LiveActivity] Starting...');
+      await startLiveActivity();
+      const isNowRunning = liveActivityService.isRunning();
+      console.log('[LiveActivity] After start, running:', isNowRunning);
+      setLiveActivityRunning(isNowRunning);
+    }
+  };
 
   const loadEvents = useCallback(async () => {
     try {
@@ -154,6 +181,36 @@ export function EventListScreen() {
               trackColor={{ false: colors.gray[300], true: colors.blue }}
               thumbColor={colors.white}
             />
+          </View>
+        </View>
+      )}
+
+      {liveActivitySupported && state.currentEvent && (
+        <View style={styles.liveActivitySection}>
+          <View style={styles.securityRow}>
+            <View style={styles.securityInfo}>
+              <Ionicons name="pulse" size={22} color={colors.red} />
+              <View style={styles.securityTextContainer}>
+                <Text style={styles.securityTitle}>Live Activity</Text>
+                <Text style={styles.securitySubtitle}>
+                  Show check-in progress on Lock Screen
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.liveActivityButton,
+                liveActivityRunning && styles.liveActivityButtonActive,
+              ]}
+              onPress={handleToggleLiveActivity}
+            >
+              <Text style={[
+                styles.liveActivityButtonText,
+                liveActivityRunning && styles.liveActivityButtonTextActive,
+              ]}>
+                {liveActivityRunning ? 'Stop' : 'Start'}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       )}
@@ -347,5 +404,30 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     color: colors.text.secondary,
+  },
+  liveActivitySection: {
+    backgroundColor: colors.white,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+  },
+  liveActivityButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: colors.red,
+    borderRadius: 8,
+  },
+  liveActivityButtonActive: {
+    backgroundColor: colors.gray[200],
+  },
+  liveActivityButtonText: {
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  liveActivityButtonTextActive: {
+    color: colors.text.primary,
   },
 });

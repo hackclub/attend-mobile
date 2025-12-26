@@ -9,12 +9,18 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": {
+        "buildType": "app-bundle"
+      }
     },
     "production": {
       "autoIncrement": true,
       "ios": {
         "image": "latest"
+      },
+      "android": {
+        "buildType": "app-bundle"
       },
       "env": {
         "EXPO_PUBLIC_OAUTH_CLIENT_ID": "aaa422633e9a7df85892eb2ba84f02d9",

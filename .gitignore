@@ -7,8 +7,8 @@ dist/
 web-build/
 
 # Native build folders
-ios/
-android/
+/ios/
+/android/
 
 # Environment
 .env
