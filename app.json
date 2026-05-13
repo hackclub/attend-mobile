@@ -22,6 +22,7 @@
         "com.apple.security.application-groups": ["group.com.hackclub.attend"]
       },
       "infoPlist": {
+        "NFCReaderUsageDescription": "Attend uses NFC to scan and write badges for event check-in.",
         "NSCameraUsageDescription": "Attend needs camera access to scan QR codes for event check-in.",
         "NSFaceIDUsageDescription": "Attend uses Face ID to protect sensitive participant information.",
         "ITSAppUsesNonExemptEncryption": false,
@@ -82,7 +83,14 @@
           "appleTeamId": "P6PV2R9443"
         }
       ],
-      "./plugins/withActivityController.js"
+      "./plugins/withActivityController.js",
+      [
+        "react-native-nfc-manager",
+        {
+          "nfcPermission": "Attend uses NFC to scan and write badges for event check-in.",
+          "includeNdefEntitlement": false
+        }
+      ]
     ],
     "extra": {
       "eas": {

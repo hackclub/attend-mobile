@@ -21,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useScanner } from '../hooks/useScanner';
 import { useApp } from '../context/AppContext';
 import { useParticipants } from '../hooks/useParticipants';
+import { useNFC } from '../hooks/useNFC';
 import { AlertBadge } from '../components/AlertBadge';
 import { StatusBadge } from '../components/StatusBadge';
 import { colors } from '../theme/colors';
@@ -37,7 +38,8 @@ export function ScannerScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { state } = useApp();
   const { 
-    handleScan, 
+    handleScan,
+    handleNFCScan,
     isProcessing, 
     lastScan, 
     clearLastScan, 
@@ -48,6 +50,7 @@ export function ScannerScreen() {
     isLoadingContexts,
   } = useScanner();
   const { search, clearSearch, searchResults, isSearching } = useParticipants();
+  const { isSupported: nfcSupported, isReading: nfcReading } = useNFC();
   const [permission, requestPermission] = useCameraPermissions();
   const [showResult, setShowResult] = useState(false);
   const [manualEntryMode, setManualEntryMode] = useState<ManualEntryMode>('none');
@@ -261,21 +264,37 @@ export function ScannerScreen() {
 
         {/* Manual entry options */}
         {manualEntryMode === 'none' && !showResult && (
-          <View style={styles.manualEntryButtons}>
-            <TouchableOpacity 
-              style={styles.manualEntryButton} 
-              onPress={() => setManualEntryMode('search')}
-            >
-              <Ionicons name="search" size={18} color={colors.white} />
-              <Text style={styles.manualEntryButtonText}>Search by Name</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.manualEntryButton, styles.manualEntryButtonSecondary]} 
-              onPress={() => setManualEntryMode('id')}
-            >
-              <Ionicons name="keypad" size={18} color={colors.white} />
-              <Text style={styles.manualEntryButtonText}>Enter ID</Text>
-            </TouchableOpacity>
+          <View style={styles.manualEntryContainer}>
+            {/* NFC Button - prominent when available */}
+            {nfcSupported && Platform.OS === 'ios' && (
+              <TouchableOpacity 
+                style={[styles.nfcButton, (isProcessing || nfcReading) && styles.nfcButtonDisabled]}
+                onPress={handleNFCScan}
+                disabled={isProcessing || nfcReading}
+              >
+                <Ionicons name="radio-outline" size={24} color={colors.white} />
+                <Text style={styles.nfcButtonText}>
+                  {nfcReading ? 'Scanning...' : 'Scan NFC Badge'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            
+            <View style={styles.manualEntryButtons}>
+              <TouchableOpacity 
+                style={styles.manualEntryButton} 
+                onPress={() => setManualEntryMode('search')}
+              >
+                <Ionicons name="search" size={18} color={colors.white} />
+                <Text style={styles.manualEntryButtonText}>Search by Name</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.manualEntryButton, styles.manualEntryButtonSecondary]} 
+                onPress={() => setManualEntryMode('id')}
+              >
+                <Ionicons name="keypad" size={18} color={colors.white} />
+                <Text style={styles.manualEntryButtonText}>Enter ID</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -422,7 +441,12 @@ function ResultOverlay({ result, onViewDetails, onDismiss }: ResultOverlayProps)
 
   return (
     <View style={[styles.resultOverlay, { backgroundColor }]}>
-      <TouchableOpacity style={styles.dismissButton} onPress={onDismiss}>
+      <TouchableOpacity 
+        style={styles.dismissButton} 
+        onPress={onDismiss}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        activeOpacity={0.7}
+      >
         <Text style={styles.dismissText}>✕</Text>
       </TouchableOpacity>
 
@@ -634,12 +658,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 16,
     right: 16,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: 'rgba(0,0,0,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 10,
   },
   dismissText: {
     color: colors.white,
@@ -708,11 +733,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  manualEntryButtons: {
+  manualEntryContainer: {
     position: 'absolute',
     bottom: 100,
     left: 16,
     right: 16,
+    gap: 10,
+  },
+  nfcButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.red,
+    padding: 16,
+    borderRadius: 12,
+    gap: 10,
+  },
+  nfcButtonDisabled: {
+    opacity: 0.6,
+  },
+  nfcButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  manualEntryButtons: {
     flexDirection: 'row',
     gap: 8,
   },
