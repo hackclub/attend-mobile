@@ -19,8 +19,126 @@ export interface EmergencyContact {
   id?: string;
   name: string;
   phone: string;
+  email?: string;
   relationship?: string;
   priority?: number;
+}
+
+export interface Address {
+  line_1?: string;
+  line_2?: string;
+  city?: string;
+  state?: string;
+  postal_code?: string;
+  country?: string;
+}
+
+export interface PersonalDetails {
+  legal_first_name?: string;
+  legal_last_name?: string;
+  preferred_name?: string;
+  date_of_birth?: string;
+  age?: number | null;
+  tshirt_size?: string;
+  secondary_email?: string;
+  engagement_preference?: string;
+  engagement_notes?: string;
+  address?: Address;
+}
+
+export interface Accommodation {
+  check_in_date?: string;
+  check_out_date?: string;
+  gender_identity?: string;
+  gender_identity_other?: string;
+  assigned_room?: string;
+  rooming_exempt?: boolean;
+  venue_name?: string;
+  preferred_roommate_genders?: string[];
+  roommate_preferences?: string;
+  roommate_exclusions?: string;
+  quiet_room_preference?: boolean;
+  room_type_preference?: string;
+  accessibility_needs?: string;
+  notes?: string;
+}
+
+export interface MedicalDetail {
+  allergy_severity?: string;
+  emergency_action_plan?: string;
+  additional_notes?: string;
+}
+
+export interface DietaryDetail {
+  intolerances?: string;
+  notes?: string;
+}
+
+export interface AccessibilityDetail {
+  mobility_needs?: string;
+  uses_wheelchair?: boolean;
+  step_free_required?: boolean;
+  sensory_needs?: string;
+  light_sensitivity?: boolean;
+  noise_sensitivity?: boolean;
+  strobe_sensitivity?: boolean;
+  communication_needs?: string;
+  needs_captioning?: boolean;
+  needs_large_print?: boolean;
+  needs_sign_language?: boolean;
+  neurodivergent_notes?: string;
+  has_adhd?: boolean;
+  has_autism?: boolean;
+  has_dyslexia?: boolean;
+  religious_practices?: string;
+  prayer_space_required?: boolean;
+  requires_private_space?: boolean;
+  distance_limitations?: string;
+  unavailable_times?: string;
+  other_needs?: string;
+}
+
+export interface SafeguardingDetail {
+  high_support_notes?: string;
+  authorized_pickup_adults?: string;
+  other_instructions?: string;
+  curfew_acknowledged?: boolean;
+  overnight_rules_acknowledged?: boolean;
+}
+
+export interface Consent {
+  id: string;
+  consent_type: string;
+  status: string;
+  pending_on?: string;
+  sent_at?: string;
+  viewed_at?: string | null;
+  participant_signed_at?: string;
+  guardian_signed_at?: string;
+  signed_at?: string;
+  document_url?: string;
+  failure_reason?: string;
+}
+
+export interface Guardian {
+  id: string;
+  guardian_id?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  relationship?: string;
+  is_primary?: boolean;
+  status?: string;
+  accepted_at?: string;
+  completed_at?: string;
+  invited_via_email?: string;
+  invite_token_sent_at?: string;
+  media_permission?: boolean;
+  photo_permission?: boolean;
+  travel_permission?: boolean;
+  emergency_medical_consent?: boolean;
+  otc_medication_consent?: boolean;
+  emergency_contacts?: EmergencyContact[];
 }
 
 export interface ParticipantNote {
@@ -54,8 +172,29 @@ export interface Travel {
   id: string;
   direction: 'inbound' | 'outbound';
   mode?: 'plane' | 'train' | 'car' | 'bus' | 'other';
+  visa_required?: boolean;
   visa_status?: 'not_required' | 'pending' | 'applied' | 'approved' | 'denied';
+  visa_type?: string;
+  visa_number?: string;
+  passport_nationality?: string;
   is_unaccompanied_minor: boolean;
+  carrier?: string;
+  flight_number?: string;
+  train_departure_station?: string;
+  train_arrival_station?: string;
+  departure_station?: string;
+  arrival_station?: string;
+  departure_city?: string;
+  arrival_city?: string;
+  departure_time?: string;
+  arrival_time?: string;
+  expected_arrival_time?: string;
+  bus_departure_location?: string;
+  bus_arrival_location?: string;
+  origin_address?: string;
+  other_details?: string;
+  notes?: string;
+  pickup_dismissed_at?: string;
   legs: TravelLeg[];
 }
 
@@ -109,9 +248,24 @@ export interface Participant {
   // Travel
   travel_inbound?: Travel;
   travel_outbound?: Travel;
-  
+
   // Scans by context
   scans_by_context?: ScanByContext[];
+
+  // Detailed fields (only present when fetched via show endpoint)
+  personal?: PersonalDetails;
+  accommodation?: Accommodation;
+  consents?: Consent[];
+  guardians?: Guardian[];
+  medical_detail?: MedicalDetail;
+  dietary_detail?: DietaryDetail;
+  accessibility?: AccessibilityDetail;
+  safeguarding_detail?: SafeguardingDetail;
+  
+  // NFC Badge
+  nfc_badge_token?: string;
+  nfc_badge_assigned?: boolean;
+  slack_user_id?: string;
   
   // Timestamp
   updated_at?: string;
@@ -208,6 +362,18 @@ export type QRCodeData = {
   id: string;
 };
 
+export type JourneyStatus =
+  | 'scheduled'
+  | 'in_flight'
+  | 'landed'
+  | 'picked_up'
+  | 'cancelled'
+  | 'diverted';
+
+export type StatusColor = 'gray' | 'blue' | 'amber' | 'green' | 'red' | 'orange';
+
+export type AirportTab = 'inbound' | 'outbound';
+
 export interface FlightLeg {
   id: string;
   flightCode: string;
@@ -215,51 +381,73 @@ export interface FlightLeg {
   destination: string;
   departureTime?: string;
   arrivalTime?: string;
-  status: string;
+  status: JourneyStatus | string;
+  statusLabel?: string;
+  statusColor?: StatusColor;
+  departureTerminal?: string;
+  departureGate?: string;
+  arrivalTerminal?: string;
+  arrivalGate?: string;
+  delayMinutes?: number;
+  isDelayed?: boolean;
 }
 
-export interface Flight {
+export interface Journey {
   id: string;
   participantId: string;
   participantEventId: string;
   participantName: string;
-  flightCode: string;
-  legs: FlightLeg[];
-  origin: string;
-  destination: string;
-  eta?: string;
-  status: string;
-  statusColor: string;
+  participantFullName: string;
+  participantHasHeadshot: boolean;
+  participantHeadshotUrl?: string | null;
+  direction: AirportTab;
+  status: JourneyStatus;
+  statusLabel: string;
+  statusColor: StatusColor;
+  isDelayed: boolean;
+  delayMinutes: number;
   isUnaccompaniedMinor: boolean;
-  checkedInAt?: string;
+  arrivingNow: boolean;
+  isAlert: boolean;
+  scannedIn: boolean;
+  scannedAt?: string | null;
+  legCount: number;
+  primaryAirport?: string | null;
+  primaryTerminal?: string | null;
+  primaryGate?: string | null;
+  primaryTimezone?: string | null;
+  primaryTimeIso?: string | null;
+  primaryScheduledIso?: string | null;
+  progress?: number | null;
+  lastTrackedAt?: string | null;
+  legs: FlightLeg[];
 }
 
-export interface FlightAlert {
-  id: string;
-  type: 'delayed' | 'cancelled' | 'diverted';
-  participantName: string;
-  flightCode: string;
-  message: string;
-  destination?: string;
-}
-
-export interface FlightSection {
-  title: string;
-  data: Flight[];
-}
-
-export interface AirportModeStats {
-  inbound: number;
+export interface AirportCounts {
+  total: number;
+  alerts: number;
+  cancelled: number;
+  diverted: number;
+  delayed: number;
+  landed_waiting: number;
+  picked_up: number;
   in_flight: number;
-  arriving: number;
-  waiting: number;
-  checked_in: number;
+  scheduled: number;
+  arriving_now: number;
+  ums: number;
 }
 
 export interface AirportModeData {
-  stats: AirportModeStats;
-  alerts: FlightAlert[];
-  sections: FlightSection[];
+  tab: AirportTab;
+  last_refreshed_at?: string | null;
+  event_timezone?: string;
+  counts: {
+    inbound: Partial<AirportCounts>;
+    outbound: Partial<AirportCounts>;
+  };
+  airports: string[];
+  terminals: string[];
+  journeys: Journey[];
 }
 
 
