@@ -135,6 +135,21 @@ class ApiClient {
     return response;
   }
 
+  async createNfcScan(eventId: string, badgeToken: string, scanContextId?: string): Promise<{ scan: Scan; participant: Participant; first_scan_in_context: boolean }> {
+    const response = await this.request<{ scan: Scan; participant: Participant; first_scan_in_context: boolean }>(
+      `/api/v1/events/${eventId}/scans`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          badge_token: badgeToken,
+          scan_context_id: scanContextId,
+          scanned_at: new Date().toISOString(),
+        }),
+      }
+    );
+    return response;
+  }
+
   async undoCheckIn(eventId: string, participantEventId: string, scanContextId?: string): Promise<void> {
     const url = scanContextId 
       ? `/api/v1/events/${eventId}/scans/${participantEventId}?scan_context_id=${scanContextId}`
@@ -170,9 +185,9 @@ class ApiClient {
     }
   }
 
-  async getAirportMode(eventId: string): Promise<AirportModeData> {
+  async getAirportMode(eventId: string, tab: 'inbound' | 'outbound' = 'inbound'): Promise<AirportModeData> {
     const response = await this.request<AirportModeData>(
-      `/api/v1/events/${eventId}/airport_mode`
+      `/api/v1/events/${eventId}/airport_mode?tab=${tab}`
     );
     return response;
   }

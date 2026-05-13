@@ -22,9 +22,10 @@ import { StatusBadge } from '../components/StatusBadge';
 import { EmergencyContactCard } from '../components/EmergencyContactCard';
 import { useApp } from '../context/AppContext';
 import { useBiometric } from '../hooks/useBiometric';
+import { useNFC } from '../hooks/useNFC';
 import { api } from '../services/api';
 import { colors } from '../theme/colors';
-import type { RootStackParamList, Participant, ParticipantNote, Travel, TravelLeg, ScanByContext } from '../types';
+import type { RootStackParamList, Participant, ParticipantNote, Travel, TravelLeg, ScanByContext, Guardian, Consent, Accommodation, AccessibilityDetail, SafeguardingDetail, PersonalDetails } from '../types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ParticipantDetail'>;
 
@@ -32,7 +33,9 @@ export function ParticipantDetailScreen({ route, navigation }: Props) {
   const { participant } = route.params;
   const { state, updateParticipant } = useApp();
   const { authenticate, isEnabled } = useBiometric();
+  const { isSupported: nfcSupported, writeTag } = useNFC();
   const [isUndoing, setIsUndoing] = useState(false);
+  const [isWritingBadge, setIsWritingBadge] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentParticipant, setCurrentParticipant] = useState<Participant>(participant);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -82,6 +85,24 @@ export function ParticipantDetailScreen({ route, navigation }: Props) {
     }
   }, [isAuthenticated, loadNotes]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !state.currentEvent) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const fresh = await api.getParticipant(state.currentEvent!.id, currentParticipant.participant_event_id);
+        if (!cancelled) {
+          setCurrentParticipant(fresh);
+          updateParticipant(fresh);
+        }
+      } catch {
+        // keep cached data
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, state.currentEvent?.id]);
+
   const handleSubmitNote = async () => {
     if (!newNoteText.trim() || !state.currentEvent || isSubmittingNote) return;
     
@@ -120,7 +141,7 @@ export function ParticipantDetailScreen({ route, navigation }: Props) {
 
   const handleCall = (phone: string) => {
     const phoneNumber = phone.replace(/[^0-9+]/g, '');
-    Linking.openURL(`dialpad://${phoneNumber}`).catch(() => {
+    Linking.openURL(`tel:${phoneNumber}`).catch(() => {
       Alert.alert('Error', 'Unable to make phone call');
     });
   };
@@ -236,6 +257,38 @@ export function ParticipantDetailScreen({ route, navigation }: Props) {
     });
   };
 
+  const handleWriteBadge = async () => {
+    if (isWritingBadge) return;
+    
+    if (!currentParticipant.nfc_badge_token) {
+      Alert.alert('Error', 'No NFC badge token available for this participant. Try checking them in first.');
+      return;
+    }
+    
+    if (!currentParticipant.slack_user_id) {
+      Alert.alert('Error', 'No Slack ID available for this participant.');
+      return;
+    }
+    
+    setIsWritingBadge(true);
+    try {
+      const result = await writeTag({
+        badgeUrl: `https://badge.hackclub.com/t/${currentParticipant.slack_user_id}`,
+        attendToken: currentParticipant.nfc_badge_token,
+      });
+      
+      if (result.success) {
+        Alert.alert('Success', 'Badge written successfully');
+      } else if (result.error !== 'Cancelled') {
+        Alert.alert('Error', result.error || 'Failed to write badge');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to write badge');
+    } finally {
+      setIsWritingBadge(false);
+    }
+  };
+
   if (isAuthenticating) {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -310,12 +363,26 @@ export function ParticipantDetailScreen({ route, navigation }: Props) {
           {currentParticipant.phone && (
             <InfoRow label="Phone" value={currentParticipant.phone} onPress={() => handleCall(currentParticipant.phone!)} />
           )}
+          {currentParticipant.personal?.secondary_email && (
+            <InfoRow label="Secondary Email" value={currentParticipant.personal.secondary_email} onPress={() => handleEmail(currentParticipant.personal!.secondary_email!)} />
+          )}
         </Section>
 
-        {(currentParticipant.allergies || currentParticipant.medical_conditions || currentParticipant.medications) && (
+        {currentParticipant.personal && (
+          <PersonalSection personal={currentParticipant.personal} />
+        )}
+
+        {currentParticipant.accommodation && (
+          <AccommodationSection accommodation={currentParticipant.accommodation} />
+        )}
+
+        {(currentParticipant.allergies || currentParticipant.medical_conditions || currentParticipant.medications || currentParticipant.medical_detail) && (
           <Section title="Medical Information">
             {currentParticipant.allergies && (
               <InfoRow label="Allergies" value={currentParticipant.allergies} highlight />
+            )}
+            {currentParticipant.medical_detail?.allergy_severity && (
+              <InfoRow label="Allergy Severity" value={currentParticipant.medical_detail.allergy_severity} highlight />
             )}
             {currentParticipant.medical_conditions && (
               <InfoRow label="Medical Conditions" value={currentParticipant.medical_conditions} highlight />
@@ -326,10 +393,16 @@ export function ParticipantDetailScreen({ route, navigation }: Props) {
             {currentParticipant.requires_refrigeration && (
               <InfoRow label="Refrigeration Required" value="Yes" highlight />
             )}
+            {currentParticipant.medical_detail?.emergency_action_plan && (
+              <InfoRow label="Emergency Action Plan" value={currentParticipant.medical_detail.emergency_action_plan} highlight />
+            )}
+            {currentParticipant.medical_detail?.additional_notes && (
+              <InfoRow label="Additional Notes" value={currentParticipant.medical_detail.additional_notes} />
+            )}
           </Section>
         )}
 
-        {(currentParticipant.diet_type || currentParticipant.life_threatening_allergies) && (
+        {(currentParticipant.diet_type || currentParticipant.life_threatening_allergies || currentParticipant.dietary_detail) && (
           <Section title="Dietary Requirements">
             {currentParticipant.diet_type && (
               <InfoRow label="Diet Type" value={currentParticipant.diet_type} />
@@ -340,7 +413,17 @@ export function ParticipantDetailScreen({ route, navigation }: Props) {
             {currentParticipant.cross_contamination_risk && (
               <InfoRow label="Cross Contamination Risk" value="Yes" highlight />
             )}
+            {currentParticipant.dietary_detail?.intolerances && (
+              <InfoRow label="Intolerances" value={currentParticipant.dietary_detail.intolerances} />
+            )}
+            {currentParticipant.dietary_detail?.notes && (
+              <InfoRow label="Notes" value={currentParticipant.dietary_detail.notes} />
+            )}
           </Section>
+        )}
+
+        {currentParticipant.accessibility && (
+          <AccessibilitySection a={currentParticipant.accessibility} />
         )}
 
         <Section title="Safeguarding">
@@ -360,6 +443,27 @@ export function ParticipantDetailScreen({ route, navigation }: Props) {
               {currentParticipant.can_leave_unaccompanied ? 'Yes' : 'No'}
             </Text>
           </View>
+          {currentParticipant.safeguarding_detail?.high_support_notes && (
+            <InfoRow label="High Support Notes" value={currentParticipant.safeguarding_detail.high_support_notes} highlight />
+          )}
+          {currentParticipant.safeguarding_detail?.authorized_pickup_adults && (
+            <InfoRow label="Authorized for Pickup" value={currentParticipant.safeguarding_detail.authorized_pickup_adults} />
+          )}
+          {currentParticipant.safeguarding_detail?.other_instructions && (
+            <InfoRow label="Other Instructions" value={currentParticipant.safeguarding_detail.other_instructions} />
+          )}
+          {currentParticipant.safeguarding_detail && (
+            <>
+              <View style={styles.safeguardingRow}>
+                <Text style={styles.safeguardingLabel}>Curfew Acknowledged</Text>
+                <Text style={styles.safeguardingValue}>{currentParticipant.safeguarding_detail.curfew_acknowledged ? 'Yes' : 'No'}</Text>
+              </View>
+              <View style={styles.safeguardingRow}>
+                <Text style={styles.safeguardingLabel}>Overnight Rules Acknowledged</Text>
+                <Text style={styles.safeguardingValue}>{currentParticipant.safeguarding_detail.overnight_rules_acknowledged ? 'Yes' : 'No'}</Text>
+              </View>
+            </>
+          )}
         </Section>
 
         <Section title="Waiver Status">
@@ -369,27 +473,37 @@ export function ParticipantDetailScreen({ route, navigation }: Props) {
           </View>
         </Section>
 
-        {currentParticipant.parent_guardian_name && (
+        {currentParticipant.consents && currentParticipant.consents.length > 0 && (
+          <ConsentsSection consents={currentParticipant.consents} />
+        )}
+
+        {currentParticipant.guardians && currentParticipant.guardians.length > 0 ? (
+          <GuardiansSection
+            guardians={currentParticipant.guardians}
+            onCall={handleCall}
+            onEmail={handleEmail}
+          />
+        ) : currentParticipant.parent_guardian_name ? (
           <Section title="Parent/Guardian">
             <InfoRow label="Name" value={currentParticipant.parent_guardian_name} />
             {currentParticipant.parent_guardian_phone && (
-              <InfoRow 
-                label="Phone" 
-                value={currentParticipant.parent_guardian_phone} 
-                onPress={() => handleCall(currentParticipant.parent_guardian_phone!)} 
+              <InfoRow
+                label="Phone"
+                value={currentParticipant.parent_guardian_phone}
+                onPress={() => handleCall(currentParticipant.parent_guardian_phone!)}
               />
             )}
             {currentParticipant.parent_guardian_email && (
-              <InfoRow 
-                label="Email" 
-                value={currentParticipant.parent_guardian_email} 
-                onPress={() => handleEmail(currentParticipant.parent_guardian_email!)} 
+              <InfoRow
+                label="Email"
+                value={currentParticipant.parent_guardian_email}
+                onPress={() => handleEmail(currentParticipant.parent_guardian_email!)}
               />
             )}
           </Section>
-        )}
+        ) : null}
 
-        {currentParticipant.emergency_contacts && currentParticipant.emergency_contacts.length > 0 && (
+        {!currentParticipant.guardians?.length && currentParticipant.emergency_contacts && currentParticipant.emergency_contacts.length > 0 && (
           <Section title="Emergency Contacts">
             {currentParticipant.emergency_contacts.map((contact, index) => (
               <EmergencyContactCard key={contact.id || `contact-${index}`} contact={contact} />
@@ -464,6 +578,23 @@ export function ParticipantDetailScreen({ route, navigation }: Props) {
 
         {/* Action Buttons */}
         <View style={styles.actionButtons}>
+          {nfcSupported && (
+            <TouchableOpacity 
+              style={[styles.writeBadgeButton, isWritingBadge && styles.writeBadgeButtonDisabled]} 
+              onPress={handleWriteBadge}
+              disabled={isWritingBadge}
+            >
+              {isWritingBadge ? (
+                <ActivityIndicator color={colors.white} size="small" />
+              ) : (
+                <>
+                  <Ionicons name="radio-outline" size={20} color={colors.white} />
+                  <Text style={styles.writeBadgeButtonText}>Write to NFC Badge</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity 
             style={styles.openInBrowserButton} 
             onPress={handleOpenInBrowser}
@@ -491,6 +622,194 @@ export function ParticipantDetailScreen({ route, navigation }: Props) {
         </View>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function PersonalSection({ personal }: { personal: PersonalDetails }) {
+  const fullLegalName = [personal.legal_first_name, personal.legal_last_name].filter(Boolean).join(' ');
+  const addr = personal.address;
+  const addressLines = [
+    [addr?.line_1, addr?.line_2].filter(Boolean).join(', '),
+    [addr?.city, addr?.state, addr?.postal_code].filter(Boolean).join(', '),
+    addr?.country,
+  ].filter(Boolean).join('\n');
+  return (
+    <Section title="Personal Details">
+      {fullLegalName && <InfoRow label="Legal Name" value={fullLegalName} />}
+      {personal.preferred_name && <InfoRow label="Preferred Name" value={personal.preferred_name} />}
+      {personal.date_of_birth && (
+        <InfoRow
+          label="Date of Birth"
+          value={`${new Date(personal.date_of_birth).toLocaleDateString()}${personal.age != null ? ` (age ${personal.age})` : ''}`}
+        />
+      )}
+      {personal.tshirt_size && <InfoRow label="T-Shirt Size" value={personal.tshirt_size} />}
+      {personal.engagement_preference && <InfoRow label="Engagement" value={personal.engagement_preference.replace(/_/g, ' ')} />}
+      {personal.engagement_notes && <InfoRow label="Engagement Notes" value={personal.engagement_notes} />}
+      {addressLines && <InfoRow label="Address" value={addressLines} />}
+    </Section>
+  );
+}
+
+function AccommodationSection({ accommodation: a }: { accommodation: Accommodation }) {
+  const hasContent =
+    a.check_in_date || a.check_out_date || a.gender_identity || a.assigned_room ||
+    a.rooming_exempt || a.preferred_roommate_genders?.length || a.roommate_preferences ||
+    a.roommate_exclusions || a.venue_name || a.accessibility_needs || a.notes;
+  if (!hasContent) return null;
+  return (
+    <Section title="Accommodation">
+      {a.venue_name && <InfoRow label="Venue" value={a.venue_name} />}
+      {a.assigned_room && <InfoRow label="Room" value={a.assigned_room} highlight />}
+      {a.rooming_exempt && <InfoRow label="Rooming Exempt" value="Yes" />}
+      {a.check_in_date && <InfoRow label="Check-in" value={new Date(a.check_in_date).toLocaleDateString()} />}
+      {a.check_out_date && <InfoRow label="Check-out" value={new Date(a.check_out_date).toLocaleDateString()} />}
+      {a.gender_identity && <InfoRow label="Gender Identity" value={a.gender_identity_other || a.gender_identity.replace(/_/g, ' ')} />}
+      {a.preferred_roommate_genders?.length ? (
+        <InfoRow label="Preferred Roommate Genders" value={a.preferred_roommate_genders.join(', ').replace(/_/g, ' ')} />
+      ) : null}
+      {a.roommate_preferences && <InfoRow label="Roommate Preferences" value={a.roommate_preferences} />}
+      {a.roommate_exclusions && <InfoRow label="Roommate Exclusions" value={a.roommate_exclusions} highlight />}
+      {a.room_type_preference && <InfoRow label="Room Type" value={a.room_type_preference} />}
+      {a.quiet_room_preference && <InfoRow label="Quiet Room" value="Yes" />}
+      {a.accessibility_needs && <InfoRow label="Accessibility Needs" value={a.accessibility_needs} />}
+      {a.notes && <InfoRow label="Notes" value={a.notes} />}
+    </Section>
+  );
+}
+
+function AccessibilitySection({ a }: { a: AccessibilityDetail }) {
+  const flags: string[] = [];
+  if (a.uses_wheelchair) flags.push('Wheelchair user');
+  if (a.step_free_required) flags.push('Step-free access');
+  if (a.needs_captioning) flags.push('Captioning');
+  if (a.needs_large_print) flags.push('Large print');
+  if (a.needs_sign_language) flags.push('Sign language');
+  if (a.light_sensitivity) flags.push('Light sensitivity');
+  if (a.noise_sensitivity) flags.push('Noise sensitivity');
+  if (a.strobe_sensitivity) flags.push('Strobe sensitivity');
+  if (a.has_adhd) flags.push('ADHD');
+  if (a.has_autism) flags.push('Autism');
+  if (a.has_dyslexia) flags.push('Dyslexia');
+  if (a.prayer_space_required) flags.push('Prayer space');
+  if (a.requires_private_space) flags.push('Private space');
+
+  const hasContent =
+    flags.length || a.mobility_needs || a.sensory_needs || a.communication_needs ||
+    a.neurodivergent_notes || a.religious_practices || a.distance_limitations ||
+    a.unavailable_times || a.other_needs;
+  if (!hasContent) return null;
+
+  return (
+    <Section title="Accessibility">
+      {flags.length > 0 && <InfoRow label="Flags" value={flags.join(', ')} />}
+      {a.mobility_needs && <InfoRow label="Mobility" value={a.mobility_needs} />}
+      {a.sensory_needs && <InfoRow label="Sensory" value={a.sensory_needs} />}
+      {a.communication_needs && <InfoRow label="Communication" value={a.communication_needs} />}
+      {a.neurodivergent_notes && <InfoRow label="Neurodivergent" value={a.neurodivergent_notes} />}
+      {a.religious_practices && <InfoRow label="Religious" value={a.religious_practices} />}
+      {a.distance_limitations && <InfoRow label="Distance Limits" value={a.distance_limitations} />}
+      {a.unavailable_times && <InfoRow label="Unavailable Times" value={a.unavailable_times} />}
+      {a.other_needs && <InfoRow label="Other" value={a.other_needs} />}
+    </Section>
+  );
+}
+
+function ConsentsSection({ consents }: { consents: Consent[] }) {
+  const labelFor = (type: string) => type.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+  const toneFor = (status: string) => {
+    switch (status) {
+      case 'signed': return { bg: colors.green + '20', fg: colors.green };
+      case 'sent':
+      case 'viewed': return { bg: colors.blue + '20', fg: colors.blue };
+      case 'failed':
+      case 'voided': return { bg: colors.red + '20', fg: colors.red };
+      default: return { bg: colors.gray[200], fg: colors.gray[700] };
+    }
+  };
+  return (
+    <Section title="Consents">
+      {consents.map((c) => {
+        const tone = toneFor(c.status);
+        const signed = c.signed_at ? new Date(c.signed_at).toLocaleDateString() : null;
+        return (
+          <View key={c.id} style={styles.consentRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.consentType}>{labelFor(c.consent_type)}</Text>
+              {signed && <Text style={styles.consentMeta}>Signed {signed}</Text>}
+              {!signed && c.pending_on && <Text style={styles.consentMeta}>Pending: {c.pending_on}</Text>}
+              {c.failure_reason && <Text style={[styles.consentMeta, { color: colors.red }]}>{c.failure_reason}</Text>}
+            </View>
+            <View style={[styles.consentBadge, { backgroundColor: tone.bg }]}>
+              <Text style={[styles.consentBadgeText, { color: tone.fg }]}>{c.status}</Text>
+            </View>
+          </View>
+        );
+      })}
+    </Section>
+  );
+}
+
+function GuardiansSection({ guardians, onCall, onEmail }: { guardians: Guardian[]; onCall: (n: string) => void; onEmail: (e: string) => void }) {
+  return (
+    <Section title={`Guardians (${guardians.length})`}>
+      {guardians.map((g) => (
+        <View key={g.id} style={styles.guardianCard}>
+          <View style={styles.guardianHeader}>
+            <Text style={styles.guardianName}>{g.name || 'Unnamed guardian'}</Text>
+            {g.is_primary && (
+              <View style={styles.primaryBadge}><Text style={styles.primaryBadgeText}>Primary</Text></View>
+            )}
+            {g.status && (
+              <View style={[styles.guardianStatusBadge, g.status === 'completed' ? { backgroundColor: colors.green + '20' } : { backgroundColor: colors.gray[200] }]}>
+                <Text style={[styles.guardianStatusText, g.status === 'completed' ? { color: colors.green } : { color: colors.gray[700] }]}>{g.status}</Text>
+              </View>
+            )}
+          </View>
+          {g.relationship && <Text style={styles.guardianMeta}>{g.relationship}</Text>}
+          {g.email && (
+            <TouchableOpacity onPress={() => onEmail(g.email!)}><Text style={styles.guardianLink}>{g.email}</Text></TouchableOpacity>
+          )}
+          {g.phone && (
+            <TouchableOpacity onPress={() => onCall(g.phone!)}><Text style={styles.guardianLink}>{g.phone}</Text></TouchableOpacity>
+          )}
+          {(g.media_permission != null || g.photo_permission != null || g.travel_permission != null || g.emergency_medical_consent != null || g.otc_medication_consent != null) && (
+            <View style={styles.permRow}>
+              {g.media_permission != null && <PermChip label="Media" granted={g.media_permission} />}
+              {g.photo_permission != null && <PermChip label="Photo" granted={g.photo_permission} />}
+              {g.travel_permission != null && <PermChip label="Travel" granted={g.travel_permission} />}
+              {g.emergency_medical_consent != null && <PermChip label="Med" granted={g.emergency_medical_consent} />}
+              {g.otc_medication_consent != null && <PermChip label="OTC" granted={g.otc_medication_consent} />}
+            </View>
+          )}
+          {g.emergency_contacts && g.emergency_contacts.length > 0 && (
+            <View style={styles.guardianContactsList}>
+              <Text style={styles.guardianContactsTitle}>Emergency Contacts</Text>
+              {g.emergency_contacts.map((ec) => (
+                <View key={ec.id || ec.name} style={styles.guardianContact}>
+                  <Text style={styles.guardianContactName}>{ec.name}{ec.relationship ? ` · ${ec.relationship}` : ''}</Text>
+                  {ec.phone && (
+                    <TouchableOpacity onPress={() => onCall(ec.phone)}><Text style={styles.guardianLink}>{ec.phone}</Text></TouchableOpacity>
+                  )}
+                  {ec.email && (
+                    <TouchableOpacity onPress={() => onEmail(ec.email!)}><Text style={styles.guardianLink}>{ec.email}</Text></TouchableOpacity>
+                  )}
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      ))}
+    </Section>
+  );
+}
+
+function PermChip({ label, granted }: { label: string; granted: boolean }) {
+  return (
+    <View style={[styles.permChip, granted ? styles.permChipOn : styles.permChipOff]}>
+      <Ionicons name={granted ? 'checkmark' : 'close'} size={10} color={granted ? colors.green : colors.red} />
+      <Text style={[styles.permChipText, { color: granted ? colors.green : colors.red }]}>{label}</Text>
+    </View>
   );
 }
 
@@ -547,7 +866,78 @@ function TravelSection({ title, travel }: { title: string; travel: Travel }) {
           <Text style={styles.infoLabel}>Mode</Text>
           <Text style={styles.infoValue}>{getModeLabel(travel.mode)}</Text>
         </View>
-        
+
+        {travel.mode === 'train' && (
+          <>
+            {(travel.train_departure_station || travel.departure_station) && (
+              <View style={styles.infoRow}><Text style={styles.infoLabel}>Departure Station</Text><Text style={styles.infoValue}>{travel.train_departure_station || travel.departure_station}</Text></View>
+            )}
+            {(travel.train_arrival_station || travel.arrival_station) && (
+              <View style={styles.infoRow}><Text style={styles.infoLabel}>Arrival Station</Text><Text style={styles.infoValue}>{travel.train_arrival_station || travel.arrival_station}</Text></View>
+            )}
+            {travel.departure_time && (
+              <View style={styles.infoRow}><Text style={styles.infoLabel}>Departure</Text><Text style={styles.infoValue}>{formatDateTime(travel.departure_time)}</Text></View>
+            )}
+            {travel.arrival_time && (
+              <View style={styles.infoRow}><Text style={styles.infoLabel}>Arrival</Text><Text style={styles.infoValue}>{formatDateTime(travel.arrival_time)}</Text></View>
+            )}
+          </>
+        )}
+
+        {travel.mode === 'car' && (
+          <>
+            {travel.origin_address && (
+              <View style={styles.infoRow}><Text style={styles.infoLabel}>From</Text><Text style={styles.infoValue}>{travel.origin_address}</Text></View>
+            )}
+            {travel.expected_arrival_time && (
+              <View style={styles.infoRow}><Text style={styles.infoLabel}>Expected Arrival</Text><Text style={styles.infoValue}>{formatDateTime(travel.expected_arrival_time)}</Text></View>
+            )}
+          </>
+        )}
+
+        {travel.mode === 'bus' && (
+          <>
+            {travel.bus_departure_location && (
+              <View style={styles.infoRow}><Text style={styles.infoLabel}>From</Text><Text style={styles.infoValue}>{travel.bus_departure_location}</Text></View>
+            )}
+            {travel.bus_arrival_location && (
+              <View style={styles.infoRow}><Text style={styles.infoLabel}>To</Text><Text style={styles.infoValue}>{travel.bus_arrival_location}</Text></View>
+            )}
+            {travel.departure_time && (
+              <View style={styles.infoRow}><Text style={styles.infoLabel}>Departure</Text><Text style={styles.infoValue}>{formatDateTime(travel.departure_time)}</Text></View>
+            )}
+            {travel.arrival_time && (
+              <View style={styles.infoRow}><Text style={styles.infoLabel}>Arrival</Text><Text style={styles.infoValue}>{formatDateTime(travel.arrival_time)}</Text></View>
+            )}
+          </>
+        )}
+
+        {travel.mode === 'other' && travel.other_details && (
+          <View style={styles.infoRow}><Text style={styles.infoLabel}>Details</Text><Text style={styles.infoValue}>{travel.other_details}</Text></View>
+        )}
+
+        {travel.notes && (
+          <View style={styles.infoRow}><Text style={styles.infoLabel}>Notes</Text><Text style={styles.infoValue}>{travel.notes}</Text></View>
+        )}
+
+        {(travel.visa_required || travel.visa_status || travel.visa_type || travel.visa_number || travel.passport_nationality) && (
+          <View style={styles.visaBox}>
+            <Text style={styles.visaTitle}>Visa</Text>
+            {travel.passport_nationality && (
+              <View style={styles.infoRow}><Text style={styles.infoLabel}>Passport</Text><Text style={styles.infoValue}>{travel.passport_nationality}</Text></View>
+            )}
+            {travel.visa_status && (
+              <View style={styles.infoRow}><Text style={styles.infoLabel}>Status</Text><Text style={styles.infoValue}>{travel.visa_status}</Text></View>
+            )}
+            {travel.visa_type && (
+              <View style={styles.infoRow}><Text style={styles.infoLabel}>Type</Text><Text style={styles.infoValue}>{travel.visa_type}</Text></View>
+            )}
+            {travel.visa_number && (
+              <View style={styles.infoRow}><Text style={styles.infoLabel}>Number</Text><Text style={styles.infoValue}>{travel.visa_number}</Text></View>
+            )}
+          </View>
+        )}
+
         {travel.legs && travel.legs.length > 0 && (
           <View style={styles.flightLegsContainer}>
             {travel.legs.map((leg, index) => (
@@ -762,6 +1152,23 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     gap: 12,
   },
+  writeBadgeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.red,
+    padding: 16,
+    borderRadius: 12,
+    gap: 8,
+  },
+  writeBadgeButtonDisabled: {
+    opacity: 0.6,
+  },
+  writeBadgeButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '600',
+  },
   openInBrowserButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -974,4 +1381,50 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     lineHeight: 20,
   },
+  visaBox: {
+    marginTop: 8,
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: colors.gray[100],
+  },
+  visaTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.gray[700],
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  consentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[100],
+  },
+  consentType: { fontSize: 14, fontWeight: '600', color: colors.text.primary },
+  consentMeta: { fontSize: 12, color: colors.text.secondary, marginTop: 2 },
+  consentBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
+  consentBadgeText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
+  guardianCard: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[100],
+  },
+  guardianHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  guardianName: { fontSize: 15, fontWeight: '600', color: colors.text.primary },
+  primaryBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: colors.red },
+  primaryBadgeText: { fontSize: 9, fontWeight: '800', color: colors.white, letterSpacing: 0.5 },
+  guardianStatusBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  guardianStatusText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
+  guardianMeta: { fontSize: 12, color: colors.text.secondary, marginTop: 2 },
+  guardianLink: { fontSize: 13, color: colors.blue, marginTop: 2 },
+  permRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 },
+  permChip: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  permChipOn: { backgroundColor: colors.green + '15' },
+  permChipOff: { backgroundColor: colors.red + '15' },
+  permChipText: { fontSize: 10, fontWeight: '700' },
+  guardianContactsList: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.gray[100] },
+  guardianContactsTitle: { fontSize: 11, fontWeight: '700', color: colors.gray[600], textTransform: 'uppercase', marginBottom: 4 },
+  guardianContact: { marginTop: 4 },
+  guardianContactName: { fontSize: 13, fontWeight: '600', color: colors.text.primary },
 });
