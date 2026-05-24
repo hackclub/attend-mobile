@@ -1,0 +1,864 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Attend — iPad Landscape Split-View Mockup</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  /* ---------- Tokens (mirror src/theme/colors.ts) ---------- */
+  :root {
+    --red: #EC3750;
+    --orange: #FF8C37;
+    --yellow: #F1C40F;
+    --green: #33D6A6;
+    --blue: #338EDA;
+    --purple: #A633D6;
+    --teal: #14B8A6;
+
+    --white: #FFFFFF;
+    --background: #F8FAFC;
+    --gray-50: #F8FAFC;
+    --gray-100: #F1F5F9;
+    --gray-200: #E2E8F0;
+    --gray-300: #CBD5E1;
+    --gray-400: #94A3B8;
+    --gray-500: #64748B;
+    --gray-600: #475569;
+    --gray-700: #334155;
+    --gray-800: #1E293B;
+    --gray-900: #0F172A;
+
+    --text-primary: #0F172A;
+    --text-secondary: #475569;
+    --text-muted: #94A3B8;
+
+    --glass-dark: rgba(255, 255, 255, 0.95);
+    --glass-border: rgba(255, 255, 255, 0.18);
+    --shadow: 0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.04);
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: #1a1a1c;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+    color: var(--text-primary);
+    -webkit-font-smoothing: antialiased;
+    padding: 40px 20px 80px;
+  }
+
+  .page-title {
+    color: #fff;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: center;
+    margin: 0 auto 24px;
+    opacity: 0.7;
+    letter-spacing: 0.02em;
+  }
+  .page-title b { color: #fff; opacity: 1; font-weight: 600; }
+  .page-title small { display:block; opacity:0.5; font-weight:400; margin-top:4px; }
+
+  /* ---------- iPad frame ---------- */
+  .ipad {
+    width: 1194px;
+    height: 834px;
+    margin: 0 auto 48px;
+    background: var(--background);
+    border-radius: 28px;
+    box-shadow: 0 30px 80px rgba(0,0,0,0.4), 0 0 0 12px #2a2a2c, 0 0 0 14px #0a0a0a;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* status bar */
+  .status-bar {
+    height: 28px;
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: var(--white);
+    border-bottom: 1px solid var(--gray-200);
+  }
+  .status-bar .icons { display:flex; gap:6px; align-items:center; opacity:0.8; font-size:12px; }
+
+  /* ---------- App content (split) ---------- */
+  .app {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    background: var(--background);
+  }
+
+  /* ---------- Sidebar (master) ---------- */
+  .sidebar {
+    width: 360px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--gray-200);
+    background: var(--background);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .header {
+    padding: 16px;
+    background: var(--white);
+    border-bottom: 1px solid var(--gray-200);
+  }
+  .header-title {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+  .header-subtitle {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin: 2px 0 0;
+  }
+
+  .search-wrap {
+    padding: 16px 16px 12px;
+    background: var(--white);
+  }
+  .search-input {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--background);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 15px;
+    color: var(--text-muted);
+  }
+  .search-input svg { color: var(--text-muted); flex-shrink:0; }
+
+  .filters {
+    background: var(--white);
+    padding: 0 0 12px;
+    border-bottom: 1px solid var(--gray-200);
+  }
+  .filters-row {
+    display: flex;
+    gap: 8px;
+    padding: 4px 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .filters-row::-webkit-scrollbar { display: none; }
+  .filters-row + .filters-row { margin-top: 8px; }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    border: 1px solid var(--gray-300);
+    border-radius: 20px;
+    background: var(--white);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .chip .count {
+    background: var(--gray-200);
+    color: var(--text-secondary);
+    border-radius: 10px;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 600;
+    min-width: 22px;
+    text-align: center;
+  }
+  .chip.active-red    { background: rgba(236,55,80,0.08);  border-color: var(--red);   color: var(--red); }
+  .chip.active-red    .count { background: var(--red); color: #fff; }
+  .chip.active-green  { background: rgba(51,214,166,0.10); border-color: var(--green); color: var(--green); }
+  .chip.active-green  .count { background: var(--green); color: #fff; }
+  .chip.active-blue   { background: rgba(51,142,218,0.10); border-color: var(--blue);  color: var(--blue); }
+  .chip.active-blue   .count { background: var(--blue); color: #fff; }
+
+  /* ---------- Participant list ---------- */
+  .list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 0 12px;
+  }
+  .list::-webkit-scrollbar { width: 0; }
+
+  .row {
+    background: var(--glass-dark);
+    margin: 6px 16px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    border: 1px solid var(--gray-200);
+    position: relative;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  .row .row-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2px;
+    gap: 8px;
+  }
+  .row .name-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+  }
+  .row .name {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .row .pronouns {
+    font-size: 13px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+  .row .email {
+    font-size: 13px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 0;
+  }
+  .row .alerts { display:flex; gap:6px; margin-top: 6px; flex-wrap: wrap; }
+
+  /* Selected state */
+  .row.selected {
+    background: rgba(236, 55, 80, 0.07);
+    border-color: var(--red);
+  }
+  .row.selected::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 10px;
+    bottom: 10px;
+    width: 3px;
+    background: var(--red);
+    border-radius: 0 3px 3px 0;
+  }
+
+  /* Status badges */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  .badge-success { background: rgba(51,214,166,0.12); color: #129e74; }
+  .badge-pending { background: rgba(255,140,55,0.12); color: #c8631f; }
+  .badge-info    { background: rgba(51,142,218,0.12); color: var(--blue); }
+
+  .alert-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .alert-anaphylaxis { background: rgba(236,55,80,0.10); color: var(--red); }
+  .alert-high-support { background: rgba(255,140,55,0.12); color: #c8631f; }
+
+  /* ---------- Detail pane ---------- */
+  .detail {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 28px 48px;
+  }
+  .detail-hero {
+    background: var(--white);
+    border-radius: 16px;
+    padding: 24px;
+    border: 1px solid var(--gray-200);
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  .avatar {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--red), #ff6a85);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    font-weight: 700;
+    flex-shrink: 0;
+    box-shadow: 0 6px 16px rgba(236,55,80,0.25);
+  }
+  .hero-info { flex: 1; min-width: 0; }
+  .hero-name {
+    font-size: 26px;
+    font-weight: 700;
+    margin: 0 0 4px;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+  }
+  .hero-pronouns { color: var(--text-secondary); font-weight: 500; font-size: 16px; }
+  .hero-meta {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .hero-meta .dot { width: 3px; height: 3px; background: var(--gray-400); border-radius: 50%; }
+
+  .alert-strip {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .alert-strip .alert-badge {
+    padding: 8px 14px;
+    font-size: 13px;
+    border-radius: 10px;
+  }
+
+  .card {
+    background: var(--white);
+    border: 1px solid var(--gray-200);
+    border-radius: 14px;
+    padding: 18px 20px;
+    margin-bottom: 12px;
+  }
+  .card-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 0 0 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-title svg { color: var(--text-muted); }
+
+  .kv {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--gray-100);
+    font-size: 14px;
+    gap: 12px;
+  }
+  .kv:last-child { border-bottom: none; padding-bottom: 0; }
+  .kv:first-of-type { padding-top: 0; }
+  .kv .k { color: var(--text-secondary); flex-shrink: 0; }
+  .kv .v { color: var(--text-primary); font-weight: 500; text-align: right; }
+  .kv .v a { color: var(--blue); text-decoration: none; }
+
+  .columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  /* Action buttons */
+  .actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    flex: 1;
+    min-width: 140px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--gray-200);
+    background: var(--white);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+  }
+  .btn-primary { background: var(--red); color: #fff; border-color: var(--red); }
+  .btn-warn    { color: var(--orange); border-color: rgba(255,140,55,0.4); }
+
+  /* ---------- Tab bar ---------- */
+  .tab-bar {
+    height: 56px;
+    background: var(--white);
+    border-top: 1px solid var(--gray-200);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 80px;
+    flex-shrink: 0;
+  }
+  .tab {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-muted);
+  }
+  .tab.active { color: var(--red); }
+  .tab svg { width: 22px; height: 22px; }
+
+  /* ---------- Empty state (second mock) ---------- */
+  .empty-detail {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 32px;
+  }
+  .empty-icon {
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    background: var(--gray-100);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+    color: var(--gray-400);
+  }
+  .empty-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: 0 0 6px;
+  }
+  .empty-text {
+    font-size: 14px;
+    color: var(--text-muted);
+    max-width: 280px;
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  /* labels above each iPad */
+  .frame-label {
+    color: #fff;
+    text-align: center;
+    margin: 0 auto 16px;
+    font-size: 13px;
+    font-weight: 600;
+    opacity: 0.85;
+    letter-spacing: 0.02em;
+  }
+  .frame-label .pill {
+    display: inline-block;
+    padding: 4px 10px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 100px;
+    margin-left: 6px;
+    font-weight: 500;
+    font-size: 11px;
+    opacity: 0.8;
+  }
+</style>
+</head>
+<body>
+
+<div class="page-title">
+  <b>Attend — iPad Landscape Split-View</b>
+  <small>Mockup of the proposed master-detail layout for SearchScreen / CheckedInScreen / AirportModeScreen on iPad in landscape orientation.</small>
+</div>
+
+<!-- =====================================================================
+     MOCK 1: Participant selected — detail pane populated
+     ===================================================================== -->
+<div class="frame-label">Mock 1 — Participant selected <span class="pill">SearchScreen · iPad Pro 12.9" landscape · 1194×834</span></div>
+<div class="ipad">
+
+  <!-- iPad status bar -->
+  <div class="status-bar">
+    <span>9:41 AM</span>
+    <span class="icons">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2 17h2v3H2zm4-3h2v6H6zm4-3h2v9h-2zm4-3h2v12h-2zm4-3h2v15h-2z"/></svg>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4c-4.97 0-9 1.74-9 3.88v.62L12 14l9-5.5v-.62C21 5.74 16.97 4 12 4z" opacity=".4"/><path d="M12 14L3 8.5v3.62C3 14.26 7.03 16 12 16s9-1.74 9-3.88V8.5L12 14z"/></svg>
+      <span>100%</span>
+    </span>
+  </div>
+
+  <div class="app">
+
+    <!-- ============ SIDEBAR ============ -->
+    <aside class="sidebar">
+
+      <div class="header">
+        <h1 class="header-title">Participants</h1>
+        <p class="header-subtitle">The Hack Foundation Assemble</p>
+      </div>
+
+      <div class="search-wrap">
+        <div class="search-input">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <span>Search by name or email…</span>
+        </div>
+      </div>
+
+      <div class="filters">
+        <div class="filters-row">
+          <span class="chip">All <span class="count">324</span></span>
+          <span class="chip active-green">Checked In <span class="count">187</span></span>
+          <span class="chip">Not Checked In <span class="count">137</span></span>
+        </div>
+        <div class="filters-row">
+          <span class="chip">Any Travel <span class="count">324</span></span>
+          <span class="chip">✈️ Plane <span class="count">142</span></span>
+          <span class="chip">🚂 Train <span class="count">38</span></span>
+          <span class="chip">🚗 Car <span class="count">61</span></span>
+        </div>
+      </div>
+
+      <div class="list">
+
+        <div class="row">
+          <div class="row-top">
+            <div class="name-wrap">
+              <span class="name">Anya Petrov</span>
+              <span class="pronouns">(she/her)</span>
+            </div>
+            <span class="badge badge-success">Checked in</span>
+          </div>
+          <div class="email">anya.petrov@example.org</div>
+        </div>
+
+        <!-- SELECTED ROW -->
+        <div class="row selected">
+          <div class="row-top">
+            <div class="name-wrap">
+              <span class="name">Marcus Chen</span>
+              <span class="pronouns">(he/him)</span>
+            </div>
+            <span class="badge badge-success">Checked in</span>
+          </div>
+          <div class="email">marcus.chen@example.com</div>
+          <div class="alerts">
+            <span class="alert-badge alert-anaphylaxis">⚠ Anaphylaxis</span>
+            <span class="alert-badge alert-high-support">★ High Support</span>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-top">
+            <div class="name-wrap">
+              <span class="name">Priya Raghunathan</span>
+              <span class="pronouns">(they/them)</span>
+            </div>
+            <span class="badge badge-success">Checked in</span>
+          </div>
+          <div class="email">priya.r@example.net</div>
+        </div>
+
+        <div class="row">
+          <div class="row-top">
+            <div class="name-wrap">
+              <span class="name">Daniel O'Sullivan</span>
+            </div>
+            <span class="badge badge-pending">Pending</span>
+          </div>
+          <div class="email">daniel.o@example.io</div>
+        </div>
+
+        <div class="row">
+          <div class="row-top">
+            <div class="name-wrap">
+              <span class="name">Léa Dubois</span>
+              <span class="pronouns">(she/her)</span>
+            </div>
+            <span class="badge badge-success">Checked in</span>
+          </div>
+          <div class="email">lea.dubois@example.fr</div>
+          <div class="alerts">
+            <span class="alert-badge alert-anaphylaxis">⚠ Anaphylaxis</span>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-top">
+            <div class="name-wrap">
+              <span class="name">Kwame Asante</span>
+              <span class="pronouns">(he/him)</span>
+            </div>
+            <span class="badge badge-pending">Pending</span>
+          </div>
+          <div class="email">kwame.asante@example.gh</div>
+        </div>
+
+        <div class="row">
+          <div class="row-top">
+            <div class="name-wrap">
+              <span class="name">Sofia Hernández</span>
+              <span class="pronouns">(she/her)</span>
+            </div>
+            <span class="badge badge-success">Checked in</span>
+          </div>
+          <div class="email">sofia.h@example.mx</div>
+        </div>
+
+        <div class="row">
+          <div class="row-top">
+            <div class="name-wrap">
+              <span class="name">Yuki Tanaka</span>
+              <span class="pronouns">(they/them)</span>
+            </div>
+            <span class="badge badge-pending">Pending</span>
+          </div>
+          <div class="email">yuki.tanaka@example.jp</div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- ============ DETAIL PANE ============ -->
+    <main class="detail">
+
+      <div class="detail-hero">
+        <div class="avatar">MC</div>
+        <div class="hero-info">
+          <h2 class="hero-name">Marcus Chen <span class="hero-pronouns">(he/him)</span></h2>
+          <div class="hero-meta">
+            <span class="badge badge-success">Checked in</span>
+            <span>at the Venue</span>
+            <span class="dot"></span>
+            <span>9:14 AM</span>
+            <span class="dot"></span>
+            <span>Age 16</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="alert-strip">
+        <span class="alert-badge alert-anaphylaxis">⚠ Anaphylaxis risk</span>
+        <span class="alert-badge alert-high-support">★ High support needs</span>
+      </div>
+
+      <div class="columns">
+        <div>
+          <div class="card">
+            <p class="card-title">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 2.06 4.18 2 2 0 0 1 4 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8 10a16 16 0 0 0 6 6l1.36-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+              Contact
+            </p>
+            <div class="kv"><span class="k">Email</span><span class="v"><a>marcus.chen@example.com</a></span></div>
+            <div class="kv"><span class="k">Phone</span><span class="v"><a>+1 (415) 555-0182</a></span></div>
+            <div class="kv"><span class="k">Address</span><span class="v">San Francisco, CA</span></div>
+          </div>
+
+          <div class="card">
+            <p class="card-title">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              Personal
+            </p>
+            <div class="kv"><span class="k">Legal name</span><span class="v">Marcus J. Chen</span></div>
+            <div class="kv"><span class="k">Date of birth</span><span class="v">Mar 14, 2009</span></div>
+            <div class="kv"><span class="k">T-shirt size</span><span class="v">M</span></div>
+            <div class="kv"><span class="k">Engagement</span><span class="v">Building, Music</span></div>
+          </div>
+
+          <div class="card">
+            <p class="card-title">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+              Accommodation
+            </p>
+            <div class="kv"><span class="k">Room</span><span class="v">Building B · 204</span></div>
+            <div class="kv"><span class="k">Check-in</span><span class="v">May 24</span></div>
+            <div class="kv"><span class="k">Check-out</span><span class="v">May 31</span></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="card">
+            <p class="card-title" style="color: var(--red);">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+              Medical
+            </p>
+            <div class="kv"><span class="k">Allergies</span><span class="v">Peanuts, Shellfish</span></div>
+            <div class="kv"><span class="k">Severity</span><span class="v" style="color: var(--red);">Life-threatening</span></div>
+            <div class="kv"><span class="k">Medications</span><span class="v">EpiPen (carry)</span></div>
+            <div class="kv"><span class="k">Refrigeration</span><span class="v">No</span></div>
+          </div>
+
+          <div class="card">
+            <p class="card-title">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>
+              Travel
+            </p>
+            <div class="kv"><span class="k">Inbound</span><span class="v">✈ UA 1834 · 8:05 AM</span></div>
+            <div class="kv"><span class="k">Pickup</span><span class="v" style="color: var(--green);">Confirmed</span></div>
+            <div class="kv"><span class="k">Outbound</span><span class="v">✈ UA 1199 · May 31</span></div>
+          </div>
+
+          <div class="card">
+            <p class="card-title">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-3-3.87"/><path d="M4 21v-2a4 4 0 0 1 4-4h4"/><circle cx="9" cy="7" r="4"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              Guardian
+            </p>
+            <div class="kv"><span class="k">Name</span><span class="v">Dr. Emily Chen</span></div>
+            <div class="kv"><span class="k">Phone</span><span class="v"><a>+1 (415) 555-0144</a></span></div>
+            <div class="kv"><span class="k">Media consent</span><span class="v" style="color: var(--green);">✓ Granted</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn btn-primary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+          Write to NFC badge
+        </button>
+        <button class="btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          View on attend.hackclub.com
+        </button>
+        <button class="btn btn-warn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          Undo check-in
+        </button>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Tab bar -->
+  <div class="tab-bar">
+    <div class="tab">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      <span>Events</span>
+    </div>
+    <div class="tab">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      <span>Scan</span>
+    </div>
+    <div class="tab active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <span>Search</span>
+    </div>
+    <div class="tab">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>
+      <span>Flights</span>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================================
+     MOCK 2: Empty / no selection
+     ===================================================================== -->
+<div class="frame-label">Mock 2 — No selection (initial state) <span class="pill">right pane placeholder</span></div>
+<div class="ipad">
+
+  <div class="status-bar">
+    <span>9:41 AM</span>
+    <span class="icons">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2 17h2v3H2zm4-3h2v6H6zm4-3h2v9h-2zm4-3h2v12h-2zm4-3h2v15h-2z"/></svg>
+      <span>100%</span>
+    </span>
+  </div>
+
+  <div class="app">
+
+    <aside class="sidebar">
+      <div class="header">
+        <h1 class="header-title">Participants</h1>
+        <p class="header-subtitle">The Hack Foundation Assemble</p>
+      </div>
+
+      <div class="search-wrap">
+        <div class="search-input">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <span>Search by name or email…</span>
+        </div>
+      </div>
+
+      <div class="filters">
+        <div class="filters-row">
+          <span class="chip active-red">All <span class="count">324</span></span>
+          <span class="chip">Checked In <span class="count">187</span></span>
+          <span class="chip">Not Checked In <span class="count">137</span></span>
+        </div>
+      </div>
+
+      <div class="list">
+        <div class="row">
+          <div class="row-top"><div class="name-wrap"><span class="name">Anya Petrov</span><span class="pronouns">(she/her)</span></div><span class="badge badge-success">Checked in</span></div>
+          <div class="email">anya.petrov@example.org</div>
+        </div>
+        <div class="row">
+          <div class="row-top"><div class="name-wrap"><span class="name">Marcus Chen</span><span class="pronouns">(he/him)</span></div><span class="badge badge-success">Checked in</span></div>
+          <div class="email">marcus.chen@example.com</div>
+          <div class="alerts"><span class="alert-badge alert-anaphylaxis">⚠ Anaphylaxis</span></div>
+        </div>
+        <div class="row">
+          <div class="row-top"><div class="name-wrap"><span class="name">Priya Raghunathan</span></div><span class="badge badge-success">Checked in</span></div>
+          <div class="email">priya.r@example.net</div>
+        </div>
+        <div class="row">
+          <div class="row-top"><div class="name-wrap"><span class="name">Daniel O'Sullivan</span></div><span class="badge badge-pending">Pending</span></div>
+          <div class="email">daniel.o@example.io</div>
+        </div>
+        <div class="row">
+          <div class="row-top"><div class="name-wrap"><span class="name">Léa Dubois</span></div><span class="badge badge-success">Checked in</span></div>
+          <div class="email">lea.dubois@example.fr</div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="empty-detail">
+      <div class="empty-icon">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </div>
+      <h3 class="empty-title">No participant selected</h3>
+      <p class="empty-text">Select a participant from the list on the left to view their details, alerts, and travel information.</p>
+    </div>
+
+  </div>
+
+  <div class="tab-bar">
+    <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>Events</span></div>
+    <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg><span>Scan</span></div>
+    <div class="tab active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><span>Search</span></div>
+    <div class="tab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2L16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg><span>Flights</span></div>
+  </div>
+</div>
+
+</body>
+</html>
