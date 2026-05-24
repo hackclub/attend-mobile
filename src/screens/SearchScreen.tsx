@@ -16,7 +16,10 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useParticipants } from '../hooks/useParticipants';
+import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { ParticipantRow } from '../components/ParticipantRow';
+import { SplitView } from '../components/SplitView';
+import { ParticipantDetailContent } from './ParticipantDetailContent';
 import { api } from '../services/api';
 import { colors } from '../theme/colors';
 import type { RootStackParamList, Participant, ScanContext } from '../types';
@@ -28,6 +31,7 @@ type TravelFilter = 'any' | 'plane' | 'train' | 'car' | 'bus' | 'other' | 'none'
 
 export function SearchScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const { useSplitView } = useResponsiveLayout();
   const {
     search,
     clearSearch,
@@ -45,6 +49,11 @@ export function SearchScreen() {
   const [scanContexts, setScanContexts] = useState<ScanContext[]>([]);
   const [selectedContextFilter, setSelectedContextFilter] = useState<string | null>(null);
   const [isLoadingContexts, setIsLoadingContexts] = useState(false);
+  const [selectedParticipant, setSelectedParticipant] = useState<Participant | null>(null);
+
+  useEffect(() => {
+    setSelectedParticipant(null);
+  }, [currentEvent?.id]);
 
   // Load scan contexts when event changes
   useEffect(() => {
@@ -93,7 +102,11 @@ export function SearchScreen() {
   }, [clearSearch]);
 
   const handleParticipantPress = (participant: Participant) => {
-    navigation.navigate('ParticipantDetail', { participant });
+    if (useSplitView) {
+      setSelectedParticipant(participant);
+    } else {
+      navigation.navigate('ParticipantDetail', { participant });
+    }
   };
 
   const baseParticipants = searchResults ?? participants;
@@ -182,8 +195,8 @@ export function SearchScreen() {
     );
   }
 
-  return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+  const sidebar = (
+    <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Participants</Text>
         <Text style={styles.headerSubtitle}>{currentEvent.name}</Text>
@@ -325,6 +338,7 @@ export function SearchScreen() {
           <ParticipantRow
             participant={item}
             onPress={() => handleParticipantPress(item)}
+            selected={useSplitView && selectedParticipant?.participant_event_id === item.participant_event_id}
           />
         )}
         keyExtractor={(item, index) => item.participant_id || item.participant_event_id || `item-${index}`}
@@ -368,6 +382,29 @@ export function SearchScreen() {
         }
         contentContainerStyle={sortedParticipants.length === 0 ? styles.emptyList : styles.listContent}
       />
+    </View>
+  );
+
+  if (useSplitView) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <SplitView
+          sidebar={sidebar}
+          detail={selectedParticipant ? (
+            <ParticipantDetailContent
+              participant={selectedParticipant}
+              topInset={16}
+              bottomInset={100}
+            />
+          ) : null}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {sidebar}
     </SafeAreaView>
   );
 }

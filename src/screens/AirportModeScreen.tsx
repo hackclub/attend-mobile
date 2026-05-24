@@ -21,12 +21,16 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
+import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
+import { SplitView } from '../components/SplitView';
+import { ParticipantDetailContent } from './ParticipantDetailContent';
 import { api } from '../services/api';
 import { colors } from '../theme/colors';
 import type {
   AirportModeData,
   AirportTab,
   Journey,
+  Participant,
   RootStackParamList,
   StatusColor,
 } from '../types';
@@ -167,7 +171,7 @@ function DayBadge({ tone, label }: { tone: 'today' | 'tomorrow' | 'past' | 'futu
   );
 }
 
-function JourneyRow({ journey, onPress }: { journey: Journey; onPress: () => void }) {
+function JourneyRow({ journey, onPress, selected }: { journey: Journey; onPress: () => void; selected?: boolean }) {
   const tz = journey.primaryTimezone || undefined;
   const eta = journey.primaryTimeIso ? formatTimeInZone(journey.primaryTimeIso, tz) : null;
   const day = journey.primaryTimeIso ? dayBadge(journey.primaryTimeIso, tz) : null;
@@ -185,7 +189,7 @@ function JourneyRow({ journey, onPress }: { journey: Journey; onPress: () => voi
 
   return (
     <TouchableOpacity
-      style={[styles.row, journey.isUnaccompaniedMinor && styles.rowUm]}
+      style={[styles.row, journey.isUnaccompaniedMinor && styles.rowUm, selected && styles.rowSelected]}
       onPress={onPress}
       activeOpacity={0.7}
     >
@@ -346,6 +350,7 @@ function AirportPicker({
 export function AirportModeScreen() {
   const { state } = useApp();
   const navigation = useNavigation<NavigationProp>();
+  const { useSplitView } = useResponsiveLayout();
   const [tab, setTab] = useState<AirportTab>('inbound');
   const [data, setData] = useState<AirportModeData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -356,6 +361,13 @@ export function AirportModeScreen() {
   const [showAirportPicker, setShowAirportPicker] = useState(false);
   const [search, setSearch] = useState('');
   const [tickKey, setTickKey] = useState(0);
+  const [selectedParticipant, setSelectedParticipant] = useState<Participant | null>(null);
+  const [selectedJourneyId, setSelectedJourneyId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelectedParticipant(null);
+    setSelectedJourneyId(null);
+  }, [state.currentEvent?.id]);
 
   const fetchData = useCallback(async (showRefresh = false, targetTab: AirportTab = tab) => {
     if (!state.currentEvent) return;
@@ -385,9 +397,16 @@ export function AirportModeScreen() {
 
   const handleJourneyPress = async (journey: Journey) => {
     if (!state.currentEvent) return;
+    if (useSplitView) {
+      setSelectedJourneyId(journey.id);
+    }
     try {
       const participant = await api.getParticipant(state.currentEvent.id, journey.participantEventId);
-      navigation.navigate('ParticipantDetail', { participant });
+      if (useSplitView) {
+        setSelectedParticipant(participant);
+      } else {
+        navigation.navigate('ParticipantDetail', { participant });
+      }
     } catch {
       Alert.alert('Error', 'Could not load participant details');
     }
@@ -474,8 +493,8 @@ export function AirportModeScreen() {
     );
   }
 
-  return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+  const sidebar = (
+    <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View style={styles.headerTitleRow}>
@@ -582,7 +601,13 @@ export function AirportModeScreen() {
       <SectionList
         sections={sections}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <JourneyRow journey={item} onPress={() => handleJourneyPress(item)} />}
+        renderItem={({ item }) => (
+          <JourneyRow
+            journey={item}
+            onPress={() => handleJourneyPress(item)}
+            selected={useSplitView && selectedJourneyId === item.id}
+          />
+        )}
         renderSectionHeader={({ section }) => (
           <View style={styles.sectionHeader}>
             <Ionicons name="location-outline" size={14} color={colors.gray[500]} />
@@ -609,6 +634,29 @@ export function AirportModeScreen() {
         stickySectionHeadersEnabled={false}
         contentContainerStyle={sections.length === 0 ? styles.emptyList : styles.listContent}
       />
+    </View>
+  );
+
+  if (useSplitView) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <SplitView
+          sidebar={sidebar}
+          detail={selectedParticipant ? (
+            <ParticipantDetailContent
+              participant={selectedParticipant}
+              topInset={16}
+              bottomInset={100}
+            />
+          ) : null}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {sidebar}
     </SafeAreaView>
   );
 }
@@ -746,6 +794,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   rowUm: { borderLeftWidth: 3, borderLeftColor: colors.red },
+  rowSelected: { backgroundColor: colors.red + '0A', borderLeftWidth: 3, borderLeftColor: colors.red },
   avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.gray[200] },
   avatarFallback: { alignItems: 'center', justifyContent: 'center' },
   avatarInitials: { fontSize: 14, fontWeight: '700', color: colors.gray[600] },
