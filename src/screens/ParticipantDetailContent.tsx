@@ -233,7 +233,7 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
 
   const handleOpenInBrowser = () => {
     if (!state.currentEvent) return;
-    const url = `https://attend.hackclub.com/admin/events/${state.currentEvent.id}/participants/${currentParticipant.participant_event_id}`;
+    const url = `https://attend.hackclub.com/admin/events/${state.currentEvent.slug}/participants/${currentParticipant.participant_event_id}`;
     Linking.openURL(url).catch(() => {
       Alert.alert('Error', 'Unable to open browser');
     });
