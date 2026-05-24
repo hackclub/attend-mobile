@@ -348,6 +348,8 @@ export type RootStackParamList = {
   Login: undefined;
   Main: undefined;
   ParticipantDetail: { participant: Participant };
+  KioskSetup: undefined;
+  Kiosk: { pin: string; biometricUnlock: boolean };
 };
 
 export type MainTabParamList = {
