@@ -8,13 +8,19 @@ import type { Participant } from '../types';
 interface ParticipantRowProps {
   participant: Participant;
   onPress: () => void;
+  selected?: boolean;
 }
 
-export function ParticipantRow({ participant, onPress }: ParticipantRowProps) {
+export function ParticipantRow({ participant, onPress, selected }: ParticipantRowProps) {
   const hasAlerts = participant.has_anaphylaxis_risk || participant.high_support_flag;
 
   return (
-    <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity
+      style={[styles.container, selected && styles.containerSelected]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      {selected && <View style={styles.selectionBar} />}
       <View style={styles.content}>
         <View style={styles.nameRow}>
           <View style={styles.mainInfo}>
@@ -61,6 +67,21 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.glass.border,
+    position: 'relative',
+  },
+  containerSelected: {
+    backgroundColor: colors.red + '12',
+    borderColor: colors.red,
+  },
+  selectionBar: {
+    position: 'absolute',
+    left: 0,
+    top: 10,
+    bottom: 10,
+    width: 3,
+    backgroundColor: colors.red,
+    borderTopRightRadius: 3,
+    borderBottomRightRadius: 3,
   },
   content: {
     flex: 1,

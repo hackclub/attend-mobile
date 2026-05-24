@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useParticipants } from '../hooks/useParticipants';
+import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { ParticipantRow } from '../components/ParticipantRow';
+import { SplitView } from '../components/SplitView';
+import { ParticipantDetailContent } from './ParticipantDetailContent';
 import { colors } from '../theme/colors';
 import type { RootStackParamList, Participant } from '../types';
 
@@ -18,10 +21,20 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export function CheckedInScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const { useSplitView } = useResponsiveLayout();
   const { checkedInParticipants, isRefreshing, refresh, currentEvent } = useParticipants();
+  const [selectedParticipant, setSelectedParticipant] = useState<Participant | null>(null);
+
+  useEffect(() => {
+    setSelectedParticipant(null);
+  }, [currentEvent?.id]);
 
   const handleParticipantPress = (participant: Participant) => {
-    navigation.navigate('ParticipantDetail', { participant });
+    if (useSplitView) {
+      setSelectedParticipant(participant);
+    } else {
+      navigation.navigate('ParticipantDetail', { participant });
+    }
   };
 
   const sortedParticipants = [...checkedInParticipants].sort((a, b) => {
@@ -43,8 +56,8 @@ export function CheckedInScreen() {
     );
   }
 
-  return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+  const sidebar = (
+    <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Checked In</Text>
         <Text style={styles.headerSubtitle}>
@@ -58,6 +71,7 @@ export function CheckedInScreen() {
           <ParticipantRow
             participant={item}
             onPress={() => handleParticipantPress(item)}
+            selected={useSplitView && selectedParticipant?.participant_event_id === item.participant_event_id}
           />
         )}
         keyExtractor={(item, index) => item.participant_id || item.participant_event_id || `item-${index}`}
@@ -78,6 +92,29 @@ export function CheckedInScreen() {
         }
         contentContainerStyle={sortedParticipants.length === 0 ? styles.emptyList : styles.listContent}
       />
+    </View>
+  );
+
+  if (useSplitView) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <SplitView
+          sidebar={sidebar}
+          detail={selectedParticipant ? (
+            <ParticipantDetailContent
+              participant={selectedParticipant}
+              topInset={16}
+              bottomInset={100}
+            />
+          ) : null}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {sidebar}
     </SafeAreaView>
   );
 }
