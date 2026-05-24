@@ -15,6 +15,8 @@ import { ScannerScreen } from './src/screens/ScannerScreen';
 import { SearchScreen } from './src/screens/SearchScreen';
 import { ParticipantDetailScreen } from './src/screens/ParticipantDetailScreen';
 import { AirportModeScreen } from './src/screens/AirportModeScreen';
+import { KioskSetupScreen } from './src/screens/KioskSetupScreen';
+import { KioskScreen } from './src/screens/KioskScreen';
 import { colors } from './src/theme/colors';
 import type { RootStackParamList, MainTabParamList } from './src/types';
 import * as Sentry from '@sentry/react-native';
@@ -128,6 +130,20 @@ function RootNavigator() {
               headerStyle: {
                 backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.white,
               },
+            }}
+          />
+          <Stack.Screen
+            name="KioskSetup"
+            component={KioskSetupScreen}
+            options={{ presentation: 'modal' }}
+          />
+          <Stack.Screen
+            name="Kiosk"
+            component={KioskScreen}
+            options={{
+              presentation: 'fullScreenModal',
+              gestureEnabled: false,
+              animation: 'fade',
             }}
           />
         </>

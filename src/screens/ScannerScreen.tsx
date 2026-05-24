@@ -22,6 +22,7 @@ import { useScanner } from '../hooks/useScanner';
 import { useApp } from '../context/AppContext';
 import { useParticipants } from '../hooks/useParticipants';
 import { useNFC } from '../hooks/useNFC';
+import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { AlertBadge } from '../components/AlertBadge';
 import { StatusBadge } from '../components/StatusBadge';
 import { colors } from '../theme/colors';
@@ -51,6 +52,7 @@ export function ScannerScreen() {
   } = useScanner();
   const { search, clearSearch, searchResults, isSearching } = useParticipants();
   const { isSupported: nfcSupported, isReading: nfcReading } = useNFC();
+  const { isPad } = useResponsiveLayout();
   const [permission, requestPermission] = useCameraPermissions();
   const [showResult, setShowResult] = useState(false);
   const [manualEntryMode, setManualEntryMode] = useState<ManualEntryMode>('none');
@@ -186,6 +188,16 @@ export function ScannerScreen() {
           <Text style={styles.headerTitle}>{state.currentEvent?.name}</Text>
           <Text style={styles.headerSubtitle}>Scan participant QR code</Text>
         </View>
+
+        {isPad && (
+          <TouchableOpacity
+            style={styles.kioskEntryBtn}
+            onPress={() => navigation.navigate('KioskSetup')}
+          >
+            <Ionicons name="lock-closed" size={16} color={colors.white} />
+            <Text style={styles.kioskEntryText}>Kiosk Mode</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Context Selector */}
         {scanContexts.length > 1 && (
@@ -560,6 +572,25 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 14,
     color: colors.gray[300],
+  },
+  kioskEntryBtn: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  kioskEntryText: {
+    color: colors.white,
+    fontSize: 13,
+    fontWeight: '600',
   },
   contextSelector: {
     marginTop: 12,
