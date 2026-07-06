@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Publish an OTA update without leaking local .env values into the bundle.
+# Usage: bin/ota "update message" [branch]
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+MESSAGE="${1:?usage: bin/ota \"update message\" [branch]}"
+BRANCH="${2:-production}"
+
+restore() {
+  [ -f .env.ota-bak ] && mv .env.ota-bak .env
+  [ -f .env.local.ota-bak ] && mv .env.local.ota-bak .env.local
+}
+trap restore EXIT
+
+[ -f .env ] && mv .env .env.ota-bak
+[ -f .env.local ] && mv .env.local .env.local.ota-bak
+
+EXPO_PUBLIC_API_URL=https://attend.hackclub.com \
+EXPO_PUBLIC_OAUTH_CLIENT_ID=aaa422633e9a7df85892eb2ba84f02d9 \
+SENTRY_DISABLE_AUTO_UPLOAD=true \
+eas update --branch "$BRANCH" --message "$MESSAGE" --non-interactive

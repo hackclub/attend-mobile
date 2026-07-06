@@ -37,3 +37,7 @@ yarn-error.log*
 coverage/
 
 .env.local
+
+# EAS credentials - never commit
+credentials.json
+credentials/

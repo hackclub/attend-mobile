@@ -16,18 +16,28 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useParticipants } from '../hooks/useParticipants';
+import { useParticipantViews } from '../hooks/useParticipantViews';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { ParticipantRow } from '../components/ParticipantRow';
 import { SplitView } from '../components/SplitView';
+import { FilterSheet } from '../components/FilterSheet';
 import { ParticipantDetailContent } from './ParticipantDetailContent';
 import { api } from '../services/api';
 import { colors } from '../theme/colors';
+import {
+  applyFilters,
+  applySort,
+  getField,
+  getSortField,
+  ruleIsComplete,
+  operatorNeedsValue,
+  OPERATOR_LABELS,
+  type FilterContext,
+  type SavedView,
+} from '../services/participantFilters';
 import type { RootStackParamList, Participant, ScanContext } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
-
-type StatusFilter = 'all' | 'checked-in' | 'not-checked-in';
-type TravelFilter = 'any' | 'plane' | 'train' | 'car' | 'bus' | 'other' | 'none';
 
 export function SearchScreen() {
   const navigation = useNavigation<NavigationProp>();
@@ -43,48 +53,48 @@ export function SearchScreen() {
     isRefreshing,
     refresh,
   } = useParticipants();
+  const {
+    rules,
+    setRules,
+    conjunction,
+    setConjunction,
+    sort,
+    setSort,
+    savedViews,
+    allViews,
+    activeViewId,
+    applyView,
+    saveView,
+    deleteView,
+  } = useParticipantViews(currentEvent?.id);
   const [inputValue, setInputValue] = useState('');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [travelFilter, setTravelFilter] = useState<TravelFilter>('any');
   const [scanContexts, setScanContexts] = useState<ScanContext[]>([]);
-  const [selectedContextFilter, setSelectedContextFilter] = useState<string | null>(null);
-  const [isLoadingContexts, setIsLoadingContexts] = useState(false);
+  const [isFilterSheetVisible, setIsFilterSheetVisible] = useState(false);
   const [selectedParticipant, setSelectedParticipant] = useState<Participant | null>(null);
 
   useEffect(() => {
     setSelectedParticipant(null);
   }, [currentEvent?.id]);
 
-  // Load scan contexts when event changes
+  // Load scan contexts when event changes (used for the "Scanned At" filter field)
   useEffect(() => {
     async function loadContexts() {
       if (!currentEvent) {
         setScanContexts([]);
-        setSelectedContextFilter(null);
         return;
       }
 
-      setIsLoadingContexts(true);
       try {
         const contexts = await api.getScanContexts(currentEvent.id);
         setScanContexts(contexts);
       } catch (error) {
         console.error('Failed to load scan contexts:', error);
         setScanContexts([]);
-      } finally {
-        setIsLoadingContexts(false);
       }
     }
 
     loadContexts();
   }, [currentEvent?.id]);
-
-  // Reset context filter when status filter changes away from checked-in
-  useEffect(() => {
-    if (statusFilter !== 'checked-in') {
-      setSelectedContextFilter(null);
-    }
-  }, [statusFilter]);
 
   const handleSearch = useCallback((text: string) => {
     setInputValue(text);
@@ -111,76 +121,50 @@ export function SearchScreen() {
 
   const baseParticipants = searchResults ?? participants;
 
-  const filteredParticipants = useMemo(() => {
-    let result = baseParticipants;
+  // Options (status, diet, etc.) derive from the full roster, not the current search subset
+  const filterContext = useMemo<FilterContext>(
+    () => ({ scanContexts, participants }),
+    [scanContexts, participants],
+  );
 
-    // Apply status filter
-    if (statusFilter === 'checked-in') {
-      result = result.filter(p => !!p.checked_in_at);
-      
-      // Apply context filter if selected
-      if (selectedContextFilter) {
-        result = result.filter(p => 
-          p.scans_by_context?.some(s => s.scan_context_id === selectedContextFilter)
-        );
-      }
-    } else if (statusFilter === 'not-checked-in') {
-      result = result.filter(p => !p.checked_in_at);
-    }
+  const activeRules = useMemo(() => rules.filter(ruleIsComplete), [rules]);
 
-    // Apply travel filter
-    if (travelFilter !== 'any') {
-      if (travelFilter === 'none') {
-        result = result.filter(p => !p.travel_inbound);
-      } else {
-        result = result.filter(p => p.travel_inbound?.mode === travelFilter);
-      }
-    }
+  // Match the old behavior: filtering to checked-in sorts newest check-in first unless
+  // the user picked an explicit sort
+  const effectiveSort = useMemo(() => {
+    if (sort) return sort;
+    const filtersToCheckedIn = activeRules.some(
+      r => r.field === 'checked_in' && r.operator === 'is_true',
+    );
+    return filtersToCheckedIn ? { field: 'checked_in_at', direction: 'desc' as const } : null;
+  }, [sort, activeRules]);
 
-    return result;
-  }, [baseParticipants, statusFilter, travelFilter, selectedContextFilter]);
+  const filteredParticipants = useMemo(
+    () => applySort(applyFilters(baseParticipants, rules, conjunction, filterContext), effectiveSort),
+    [baseParticipants, rules, conjunction, effectiveSort, filterContext],
+  );
 
-  const sortedParticipants = useMemo(() => {
-    if (statusFilter === 'checked-in') {
-      return [...filteredParticipants].sort((a, b) => {
-        const aTime = a.checked_in_at ? new Date(a.checked_in_at).getTime() : 0;
-        const bTime = b.checked_in_at ? new Date(b.checked_in_at).getTime() : 0;
-        return bTime - aTime;
-      });
-    }
-    return filteredParticipants;
-  }, [filteredParticipants, statusFilter]);
-
-  const statusCounts = useMemo(() => {
-    const all = baseParticipants.length;
-    const checkedIn = baseParticipants.filter(p => !!p.checked_in_at).length;
-    const notCheckedIn = all - checkedIn;
-    return { all, checkedIn, notCheckedIn };
-  }, [baseParticipants]);
-
-  const contextCounts = useMemo(() => {
+  const viewCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    const checkedInParticipants = baseParticipants.filter(p => !!p.checked_in_at);
-    
-    scanContexts.forEach(context => {
-      counts[context.id] = checkedInParticipants.filter(p =>
-        p.scans_by_context?.some(s => s.scan_context_id === context.id)
-      ).length;
-    });
-    
+    for (const view of allViews) {
+      counts[view.id] = applyFilters(baseParticipants, view.rules, view.conjunction, filterContext).length;
+    }
     return counts;
-  }, [baseParticipants, scanContexts]);
+  }, [allViews, baseParticipants, filterContext]);
 
-  const travelCounts = useMemo(() => {
-    const any = baseParticipants.length;
-    const plane = baseParticipants.filter(p => p.travel_inbound?.mode === 'plane').length;
-    const train = baseParticipants.filter(p => p.travel_inbound?.mode === 'train').length;
-    const car = baseParticipants.filter(p => p.travel_inbound?.mode === 'car').length;
-    const bus = baseParticipants.filter(p => p.travel_inbound?.mode === 'bus').length;
-    const other = baseParticipants.filter(p => p.travel_inbound?.mode === 'other').length;
-    const none = baseParticipants.filter(p => !p.travel_inbound).length;
-    return { any, plane, train, car, bus, other, none };
-  }, [baseParticipants]);
+  const handleViewPress = useCallback(
+    (view: SavedView) => {
+      applyView(view);
+    },
+    [applyView],
+  );
+
+  const removeRule = useCallback(
+    (ruleId: string) => {
+      setRules(rules.filter(r => r.id !== ruleId));
+    },
+    [rules, setRules],
+  );
 
   if (!currentEvent) {
     return (
@@ -194,6 +178,8 @@ export function SearchScreen() {
       </SafeAreaView>
     );
   }
+
+  const hasActiveFilters = activeRules.length > 0 || sort !== null;
 
   const sidebar = (
     <View style={styles.container}>
@@ -225,104 +211,71 @@ export function SearchScreen() {
 
       <View style={styles.filtersContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersScroll}>
-          <FilterChip
-            label="All"
-            count={statusCounts.all}
-            isActive={statusFilter === 'all'}
-            onPress={() => setStatusFilter('all')}
-          />
-          <FilterChip
-            label="Checked In"
-            count={statusCounts.checkedIn}
-            isActive={statusFilter === 'checked-in'}
-            onPress={() => setStatusFilter('checked-in')}
-            color={colors.green}
-          />
-          <FilterChip
-            label="Not Checked In"
-            count={statusCounts.notCheckedIn}
-            isActive={statusFilter === 'not-checked-in'}
-            onPress={() => setStatusFilter('not-checked-in')}
-            color={colors.orange}
-          />
+          {allViews.map(view => (
+            <ViewChip
+              key={view.id}
+              label={view.name}
+              count={viewCounts[view.id] ?? 0}
+              isActive={activeViewId === view.id}
+              isSaved={savedViews.some(v => v.id === view.id)}
+              onPress={() => handleViewPress(view)}
+            />
+          ))}
         </ScrollView>
-
-        {/* Context filter - show when checked-in is selected and there are multiple contexts */}
-        {statusFilter === 'checked-in' && scanContexts.length > 1 && (
-          <>
-            <View style={styles.filterSpacer} />
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersScroll}>
-              <FilterChip
-                label="All Contexts"
-                count={statusCounts.checkedIn}
-                isActive={selectedContextFilter === null}
-                onPress={() => setSelectedContextFilter(null)}
-              />
-              {scanContexts.map(context => (
-                <FilterChip
-                  key={context.id}
-                  label={`${context.is_airport ? '✈️ ' : ''}${context.name}`}
-                  count={contextCounts[context.id] || 0}
-                  isActive={selectedContextFilter === context.id}
-                  onPress={() => setSelectedContextFilter(context.id)}
-                  color={context.is_airport ? colors.blue : context.checks_in ? colors.green : colors.gray[500]}
-                />
-              ))}
-            </ScrollView>
-          </>
-        )}
 
         <View style={styles.filterSpacer} />
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersScroll}>
-          <FilterChip
-            label="Any Travel"
-            count={travelCounts.any}
-            isActive={travelFilter === 'any'}
-            onPress={() => setTravelFilter('any')}
-          />
-          <FilterChip
-            label="✈️ Plane"
-            count={travelCounts.plane}
-            isActive={travelFilter === 'plane'}
-            onPress={() => setTravelFilter('plane')}
-            color={colors.blue}
-          />
-          <FilterChip
-            label="🚂 Train"
-            count={travelCounts.train}
-            isActive={travelFilter === 'train'}
-            onPress={() => setTravelFilter('train')}
-            color={colors.purple}
-          />
-          <FilterChip
-            label="🚗 Car"
-            count={travelCounts.car}
-            isActive={travelFilter === 'car'}
-            onPress={() => setTravelFilter('car')}
-            color={colors.teal}
-          />
-          <FilterChip
-            label="🚌 Bus"
-            count={travelCounts.bus}
-            isActive={travelFilter === 'bus'}
-            onPress={() => setTravelFilter('bus')}
-            color={colors.yellow}
-          />
-          <FilterChip
-            label="Other"
-            count={travelCounts.other}
-            isActive={travelFilter === 'other'}
-            onPress={() => setTravelFilter('other')}
-            color={colors.gray[500]}
-          />
-          <FilterChip
-            label="No Travel"
-            count={travelCounts.none}
-            isActive={travelFilter === 'none'}
-            onPress={() => setTravelFilter('none')}
-            color={colors.gray[400]}
-          />
+          <TouchableOpacity
+            style={[styles.toolButton, hasActiveFilters && styles.toolButtonActive]}
+            onPress={() => setIsFilterSheetVisible(true)}
+          >
+            <Ionicons
+              name="funnel-outline"
+              size={15}
+              color={hasActiveFilters ? colors.red : colors.text.secondary}
+            />
+            <Text style={[styles.toolButtonText, hasActiveFilters && styles.toolButtonTextActive]}>
+              Filter{activeRules.length > 0 ? ` · ${activeRules.length}` : ''}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.toolButton, sort && styles.toolButtonActive]}
+            onPress={() => setIsFilterSheetVisible(true)}
+          >
+            <Ionicons
+              name="swap-vertical"
+              size={15}
+              color={sort ? colors.red : colors.text.secondary}
+            />
+            <Text style={[styles.toolButtonText, sort && styles.toolButtonTextActive]}>
+              {sort
+                ? `${getSortField(sort.field)?.label ?? 'Sort'} ${sort.direction === 'asc' ? '↑' : '↓'}`
+                : 'Sort'}
+            </Text>
+          </TouchableOpacity>
+
+          {activeRules.map(rule => {
+            const field = getField(rule.field);
+            if (!field) return null;
+            const valueLabel = operatorNeedsValue(rule.operator)
+              ? field.getOptions?.(filterContext).find(o => o.value === rule.value)?.label ?? rule.value
+              : null;
+            return (
+              <TouchableOpacity
+                key={rule.id}
+                style={styles.ruleChip}
+                onPress={() => removeRule(rule.id)}
+              >
+                <Text style={styles.ruleChipText} numberOfLines={1}>
+                  {field.label} {OPERATOR_LABELS[rule.operator]}
+                  {valueLabel ? ` ${valueLabel}` : ''}
+                </Text>
+                <Ionicons name="close" size={14} color={colors.red} />
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
       </View>
 
@@ -333,7 +286,7 @@ export function SearchScreen() {
       )}
 
       <FlatList
-        data={sortedParticipants}
+        data={filteredParticipants}
         renderItem={({ item }) => (
           <ParticipantRow
             participant={item}
@@ -363,11 +316,11 @@ export function SearchScreen() {
               <Text style={styles.emptyText}>
                 Type at least 2 characters to search
               </Text>
-            ) : (statusFilter !== 'all' || travelFilter !== 'any' || selectedContextFilter) ? (
+            ) : activeRules.length > 0 ? (
               <>
                 <Text style={styles.emptyTitle}>No Participants</Text>
                 <Text style={styles.emptyText}>
-                  No participants match the selected filters
+                  No participants match the current filters
                 </Text>
               </>
             ) : (
@@ -380,7 +333,22 @@ export function SearchScreen() {
             )}
           </View>
         }
-        contentContainerStyle={sortedParticipants.length === 0 ? styles.emptyList : styles.listContent}
+        contentContainerStyle={filteredParticipants.length === 0 ? styles.emptyList : styles.listContent}
+      />
+
+      <FilterSheet
+        visible={isFilterSheetVisible}
+        onClose={() => setIsFilterSheetVisible(false)}
+        rules={rules}
+        onRulesChange={setRules}
+        conjunction={conjunction}
+        onConjunctionChange={setConjunction}
+        sort={sort}
+        onSortChange={setSort}
+        savedViews={savedViews}
+        onSaveView={saveView}
+        onDeleteView={deleteView}
+        filterContext={filterContext}
       />
     </View>
   );
@@ -409,35 +377,36 @@ export function SearchScreen() {
   );
 }
 
-interface FilterChipProps {
+interface ViewChipProps {
   label: string;
   count: number;
   isActive: boolean;
+  isSaved: boolean;
   onPress: () => void;
-  color?: string;
 }
 
-function FilterChip({ label, count, isActive, onPress, color }: FilterChipProps) {
-  const activeColor = color || colors.red;
-  
+function ViewChip({ label, count, isActive, isSaved, onPress }: ViewChipProps) {
   return (
     <TouchableOpacity
       style={[
         styles.filterChip,
-        isActive && { backgroundColor: activeColor + '15', borderColor: activeColor },
+        isActive && { backgroundColor: colors.red + '15', borderColor: colors.red },
       ]}
       onPress={onPress}
       activeOpacity={0.7}
     >
+      {isSaved && (
+        <Ionicons name="bookmark" size={12} color={isActive ? colors.red : colors.text.muted} />
+      )}
       <Text
         style={[
           styles.filterChipText,
-          isActive && { color: activeColor },
+          isActive && { color: colors.red },
         ]}
       >
         {label}
       </Text>
-      <View style={[styles.filterChipCount, isActive && { backgroundColor: activeColor }]}>
+      <View style={[styles.filterChipCount, isActive && { backgroundColor: colors.red }]}>
         <Text style={[styles.filterChipCountText, isActive && { color: colors.white }]}>
           {count}
         </Text>
@@ -533,6 +502,44 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: colors.text.secondary,
+  },
+  toolButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.gray[300],
+    backgroundColor: colors.white,
+  },
+  toolButtonActive: {
+    borderColor: colors.red,
+    backgroundColor: colors.red + '10',
+  },
+  toolButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text.secondary,
+  },
+  toolButtonTextActive: {
+    color: colors.red,
+  },
+  ruleChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: colors.red + '10',
+    maxWidth: 240,
+  },
+  ruleChipText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: colors.red,
   },
   loadingContainer: {
     padding: 16,
