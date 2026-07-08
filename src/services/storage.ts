@@ -118,6 +118,10 @@ export const asyncStorage = {
 
 export const STORAGE_KEYS = {
   PARTICIPANTS: (eventId: string) => `participants_${eventId}`,
+  SCANS: (eventId: string) => `scans_${eventId}`,
+  // Raw ISO8601 string from the server (may include fractional seconds) —
+  // stored and re-sent verbatim, never parsed into a Date.
+  SCAN_SYNC_CURSOR: (eventId: string) => `scan_sync_cursor_${eventId}`,
   PENDING_SCANS: 'pending_scans',
   LAST_SYNC: 'last_sync',
   EVENTS: 'cached_events',
