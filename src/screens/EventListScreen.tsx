@@ -19,6 +19,7 @@ import { useBiometric } from '../hooks/useBiometric';
 import { api } from '../services/api';
 import { syncService } from '../services/sync';
 import { liveActivityService } from '../services/liveActivity';
+import { VersionFooter } from '../components/VersionFooter';
 import { colors } from '../theme/colors';
 import type { Event, MainTabParamList } from '../types';
 
@@ -227,6 +228,7 @@ export function EventListScreen() {
             tintColor={colors.red}
           />
         }
+        ListFooterComponent={<VersionFooter />}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             {isLoading ? (
