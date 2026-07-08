@@ -1,5 +1,5 @@
 import { secureStorage } from './storage';
-import type { Event, Participant, ParticipantNote, Scan, User, ApiResponse, AirportModeData, ScanContext } from '../types';
+import type { Event, Participant, ParticipantNote, Scan, ScansSyncPage, User, ApiResponse, AirportModeData, ScanContext } from '../types';
 
 // Use local Rails server for development
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL || (__DEV__ ? 'http://192.168.0.218:3000' : 'https://attend.hackclub.com');
@@ -118,6 +118,18 @@ class ApiClient {
       `/api/v1/events/${eventId}/scan_contexts`
     );
     return response.scan_contexts || [];
+  }
+
+  async getScans(eventId: string, since?: string): Promise<ScansSyncPage> {
+    const query = since ? `?since=${encodeURIComponent(since)}` : '';
+    const response = await this.request<Partial<ScansSyncPage>>(
+      `/api/v1/events/${eventId}/scans${query}`
+    );
+    return {
+      scans: response.scans ?? [],
+      synced_at: response.synced_at ?? '',
+      has_more: response.has_more ?? false,
+    };
   }
 
   async createScan(eventId: string, participantId: string, scanContextId?: string): Promise<{ scan: Scan; participant: Participant; first_scan_in_context: boolean }> {

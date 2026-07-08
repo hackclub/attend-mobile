@@ -1,7 +1,11 @@
 import NetInfo from '@react-native-community/netinfo';
 import { asyncStorage, STORAGE_KEYS } from './storage';
 import { api } from './api';
-import type { Event, Participant, PendingScan } from '../types';
+import type { Event, Participant, PendingScan, RemoteScan } from '../types';
+
+// Upper bound on pages per sync pass; at 500 scans/page this covers 50k
+// scans while still terminating if the server misbehaves.
+const MAX_SCAN_SYNC_PAGES = 100;
 
 export interface SyncStatus {
   isOnline: boolean;
@@ -144,6 +148,57 @@ class SyncService {
     return { synced, failed };
   }
 
+  async getCachedScans(eventId: string): Promise<RemoteScan[]> {
+    return (await asyncStorage.get<RemoteScan[]>(STORAGE_KEYS.SCANS(eventId))) ?? [];
+  }
+
+  async getScanSyncCursor(eventId: string): Promise<string | null> {
+    return asyncStorage.get<string>(STORAGE_KEYS.SCAN_SYNC_CURSOR(eventId));
+  }
+
+  /**
+   * Incrementally sync scans from the server.
+   *
+   * When a cursor is stored, pages through GET /scans?since=<cursor> until
+   * has_more is false, following synced_at as the next cursor. Pages within
+   * a window are oldest-first; merging is by scan id, so ordering and
+   * boundary-scan re-delivery are both harmless. The cursor is kept as the
+   * verbatim server string to preserve fractional seconds.
+   */
+  async syncScans(eventId: string): Promise<RemoteScan[]> {
+    const cached = await this.getCachedScans(eventId);
+    const byId = new Map(cached.map(s => [s.id, s]));
+
+    let cursor = await this.getScanSyncCursor(eventId);
+    let hasMore = true;
+
+    for (let page = 0; hasMore && page < MAX_SCAN_SYNC_PAGES; page++) {
+      const response = await api.getScans(eventId, cursor ?? undefined);
+
+      for (const scan of response.scans) {
+        byId.set(scan.id, scan);
+      }
+
+      hasMore = !!cursor && response.has_more;
+      if (response.synced_at) {
+        if (hasMore && response.synced_at === cursor) {
+          // Cursor didn't advance; bail rather than loop forever.
+          break;
+        }
+        cursor = response.synced_at;
+      } else {
+        break;
+      }
+    }
+
+    const scans = [...byId.values()];
+    await asyncStorage.set(STORAGE_KEYS.SCANS(eventId), scans);
+    if (cursor) {
+      await asyncStorage.set(STORAGE_KEYS.SCAN_SYNC_CURSOR(eventId), cursor);
+    }
+    return scans;
+  }
+
   async syncAll(eventId: string): Promise<void> {
     const netInfo = await NetInfo.fetch();
     if (!netInfo.isConnected) {
@@ -162,6 +217,12 @@ class SyncService {
       await this.cacheEvents(events);
       await this.cacheParticipants(eventId, participants);
       await this.syncPendingScans();
+
+      try {
+        await this.syncScans(eventId);
+      } catch (error) {
+        console.warn('[Sync] Scan sync failed:', error);
+      }
 
       await asyncStorage.set(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
     } finally {
@@ -190,6 +251,8 @@ class SyncService {
     for (const key of keys) {
       if (
         key.startsWith('participants_') ||
+        key.startsWith('scans_') ||
+        key.startsWith('scan_sync_cursor_') ||
         key === STORAGE_KEYS.PENDING_SCANS ||
         key === STORAGE_KEYS.LAST_SYNC ||
         key === STORAGE_KEYS.EVENTS ||

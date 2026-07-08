@@ -304,6 +304,25 @@ export interface Scan {
   };
 }
 
+// Scan as returned by GET /api/v1/events/:event_id/scans (server shape)
+export interface RemoteScan {
+  id: string;
+  participant_id?: string;
+  participant_event_id?: string;
+  scan_context_id?: string;
+  scanned_at?: string;
+  created_at: string;
+}
+
+export interface ScansSyncPage {
+  scans: RemoteScan[];
+  // Next sync cursor. When has_more is true this is the created_at of the
+  // last scan in the page (ISO8601 with fractional seconds) — store it
+  // verbatim, never round-trip it through Date.
+  synced_at: string;
+  has_more: boolean;
+}
+
 export interface PendingScan {
   localId: string;
   participantId: string;

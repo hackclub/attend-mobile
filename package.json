@@ -8,6 +8,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "eslint . --ext .ts,.tsx",
+    "test": "jest",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -46,8 +47,12 @@
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
+    "@types/jest": "^30.0.0",
     "@types/react": "~19.1.10",
     "babel-preset-expo": "^54.0.9",
+    "jest": "^30.4.1",
+    "jest-environment-node": "^30.4.1",
+    "ts-jest": "^29.4.11",
     "typescript": "^5.1.0"
   },
   "private": true

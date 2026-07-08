@@ -243,7 +243,7 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
     if (isWritingBadge) return;
 
     if (!currentParticipant.nfc_badge_token) {
-      Alert.alert('Error', 'No NFC badge token available for this participant. Try checking them in first.');
+      Alert.alert('Error', 'No NFC badge token available for this participant. Make sure NFC badges are enabled for this event, then refresh.');
       return;
     }
 
