@@ -9,6 +9,8 @@ import {
   Alert,
   Switch,
   Platform,
+  ImageBackground,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -109,18 +111,38 @@ export function EventListScreen() {
     }
   };
 
+  // An event is considered finished once its end date has passed (matches the
+  // backend's Event#completed? which compares ends_at.to_date < Date.current).
+  const isFinished = (event: Event): boolean => {
+    if (!event.ends_at) return false;
+    const ends = new Date(event.ends_at);
+    if (isNaN(ends.getTime())) return false;
+    const today = new Date();
+    const endDay = new Date(ends.getFullYear(), ends.getMonth(), ends.getDate());
+    const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    return endDay < startOfToday;
+  };
+
+  const visibleEvents = events.filter((event) => !isFinished(event));
+
   const renderEvent = ({ item }: { item: Event }) => {
     const isSelected = state.currentEvent?.id === item.id;
     const startDate = formatDate(item.starts_at);
+    const hasBanner = !!item.banner_url;
 
-    return (
-      <TouchableOpacity
-        style={[styles.eventCard, isSelected && styles.eventCardSelected]}
-        onPress={() => handleSelectEvent(item)}
-        activeOpacity={0.7}
-      >
+    const content = (
+      <>
         <View style={styles.eventHeader}>
-          <Text style={styles.eventName}>{item.name}</Text>
+          {item.logo_url ? (
+            <Image
+              source={{ uri: item.logo_url }}
+              style={[styles.eventLogo, hasBanner && styles.eventLogoOnBanner]}
+              resizeMode="cover"
+            />
+          ) : null}
+          <Text style={[styles.eventName, hasBanner && styles.textOnBanner]}>
+            {item.name}
+          </Text>
           {isSelected && (
             <View style={styles.selectedBadge}>
               <Text style={styles.selectedBadgeText}>Active</Text>
@@ -129,10 +151,36 @@ export function EventListScreen() {
         </View>
 
         {startDate ? (
-          <Text style={styles.eventDate}>{startDate}</Text>
+          <Text style={[styles.eventDate, hasBanner && styles.subTextOnBanner]}>
+            {startDate}
+          </Text>
         ) : null}
         {item.location_city && (
-          <Text style={styles.eventLocation}>{item.location_city}</Text>
+          <Text style={[styles.eventLocation, hasBanner && styles.subTextOnBanner]}>
+            {item.location_city}
+          </Text>
+        )}
+      </>
+    );
+
+    return (
+      <TouchableOpacity
+        style={[styles.eventCardWrapper, isSelected && styles.eventCardSelected]}
+        onPress={() => handleSelectEvent(item)}
+        activeOpacity={0.7}
+      >
+        {hasBanner ? (
+          <ImageBackground
+            source={{ uri: item.banner_url }}
+            style={styles.eventCard}
+            imageStyle={styles.eventCardImage}
+          >
+            {/* dark scrim keeps the text readable over any banner */}
+            <View style={styles.bannerScrim} />
+            {content}
+          </ImageBackground>
+        ) : (
+          <View style={[styles.eventCard, styles.eventCardPlain]}>{content}</View>
         )}
       </TouchableOpacity>
     );
@@ -217,7 +265,7 @@ export function EventListScreen() {
       )}
 
       <FlatList
-        data={events}
+        data={visibleEvents}
         renderItem={renderEvent}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
@@ -328,11 +376,10 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 100,
   },
-  eventCard: {
-    backgroundColor: colors.glass.dark,
+  eventCardWrapper: {
     borderRadius: 16,
-    padding: 16,
     marginBottom: 12,
+    overflow: 'hidden',
     shadowColor: colors.black,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
@@ -341,10 +388,45 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glass.border,
   },
+  eventCard: {
+    padding: 16,
+  },
+  eventCardPlain: {
+    backgroundColor: colors.glass.dark,
+  },
+  eventCardImage: {
+    borderRadius: 16,
+  },
+  bannerScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
   eventCardSelected: {
     borderWidth: 2,
     borderColor: colors.red,
-    backgroundColor: 'rgba(236, 55, 80, 0.08)',
+  },
+  eventLogo: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    marginRight: 10,
+    backgroundColor: colors.white,
+  },
+  eventLogoOnBanner: {
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.6)',
+  },
+  textOnBanner: {
+    color: colors.white,
+    textShadowColor: 'rgba(0, 0, 0, 0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  subTextOnBanner: {
+    color: 'rgba(255, 255, 255, 0.9)',
+    textShadowColor: 'rgba(0, 0, 0, 0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   eventHeader: {
     flexDirection: 'row',

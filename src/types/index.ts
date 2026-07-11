@@ -13,6 +13,8 @@ export interface Event {
   ends_at?: string;
   timezone?: string;
   location_city?: string;
+  logo_url?: string;
+  banner_url?: string;
 }
 
 export interface EmergencyContact {
