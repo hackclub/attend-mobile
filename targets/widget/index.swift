@@ -5,5 +5,6 @@ import SwiftUI
 struct AttendWidgetBundle: WidgetBundle {
     var body: some Widget {
         AttendLiveActivity()
+        TicketLiveActivity()
     }
 }

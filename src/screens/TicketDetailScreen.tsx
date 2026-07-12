@@ -1,10 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Linking, ImageBackground } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Linking, ImageBackground, Platform, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
 import { WalletButtons } from '../components/WalletButtons';
+import {
+  startTicketActivity,
+  stopTicketActivity,
+  isTicketActivityRunning,
+} from '../../modules/activity-controller/src';
 import { api } from '../services/api';
 import { colors } from '../theme/colors';
 import type { RootStackParamList, Ticket } from '../types';
@@ -92,6 +97,37 @@ export function TicketDetailScreen() {
   const start = formatStart(event.starts_at, event.timezone);
   const countdown = useCountdown(event.starts_at, event.ends_at);
   const venue = event.location_address || event.location_city || event.location_country || 'TBA';
+
+  // Live Activity: let confirmed attendees pin their pass to the Lock Screen.
+  // Shown on any iOS device; whether the OS actually allows it is handled when
+  // the user taps (areLiveActivitiesSupported can read false on simulators).
+  const liveActivitySupported = Platform.OS === 'ios';
+  const [liveActivityOn, setLiveActivityOn] = useState(false);
+  useEffect(() => {
+    setLiveActivityOn(isTicketActivityRunning());
+  }, []);
+
+  const toggleLiveActivity = async () => {
+    if (liveActivityOn) {
+      await stopTicketActivity();
+      setLiveActivityOn(false);
+      return;
+    }
+    const ok = await startTicketActivity(
+      event.name,
+      venue,
+      ticket.short_code,
+      event.starts_at || new Date().toISOString(),
+      ticket.checked_in
+    );
+    if (!ok) {
+      Alert.alert(
+        'Live Activities are off',
+        'Turn on Live Activities for Attend in Settings → Attend to pin your pass to the Lock Screen.'
+      );
+    }
+    setLiveActivityOn(ok);
+  };
 
   const hasCoords = event.location_latitude != null && event.location_longitude != null;
   const hasDestination =
@@ -239,6 +275,24 @@ export function TicketDetailScreen() {
               </View>
             ) : null}
           </View>
+        ) : null}
+
+        {/* Pin the pass to the Lock Screen (Live Activity) */}
+        {ticket.confirmed && liveActivitySupported ? (
+          <TouchableOpacity
+            style={[styles.liveActivityButton, liveActivityOn && styles.liveActivityButtonOn]}
+            activeOpacity={0.85}
+            onPress={toggleLiveActivity}
+          >
+            <Ionicons
+              name={liveActivityOn ? 'checkmark-circle' : 'lock-closed-outline'}
+              size={18}
+              color={liveActivityOn ? colors.green : colors.text.primary}
+            />
+            <Text style={[styles.liveActivityText, liveActivityOn && styles.liveActivityTextOn]}>
+              {liveActivityOn ? 'On your Lock Screen' : 'Show on Lock Screen'}
+            </Text>
+          </TouchableOpacity>
         ) : null}
 
         {/* Messages from organizers */}
@@ -487,6 +541,21 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   directionsText: { color: colors.white, fontSize: 15, fontWeight: '700' },
+  liveActivityButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.white,
+    borderRadius: 14,
+    paddingVertical: 14,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+  },
+  liveActivityButtonOn: { borderColor: colors.green, backgroundColor: '#F0FDF9' },
+  liveActivityText: { fontSize: 15, fontWeight: '700', color: colors.text.primary },
+  liveActivityTextOn: { color: colors.green },
   countdownCard: {
     flexDirection: 'row',
     alignItems: 'center',

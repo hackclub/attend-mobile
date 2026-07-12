@@ -323,6 +323,9 @@ export interface ScanContext {
   checks_in: boolean;
   is_airport: boolean;
   position: number;
+  // iso8601 with the event's utc offset, e.g. "2026-07-15T18:00:00-04:00"
+  starts_at?: string | null;
+  ends_at?: string | null;
 }
 
 export interface ScanByContext {
