@@ -11,16 +11,28 @@ import type { RootStackParamList, Ticket } from '../types';
 
 type TicketDetailRoute = RouteProp<RootStackParamList, 'TicketDetail'>;
 
-function formatStart(iso?: string): { date: string; time: string } {
+// Times are shown in the event's timezone (not the device's) so a 9:30 AM
+// Pacific event reads as 9:30 AM wherever you open the app.
+function formatStart(iso?: string, timezone?: string): { date: string; time: string } {
   if (!iso) return { date: '', time: '' };
   try {
     const d = new Date(iso);
+    const timeZone = timezone || undefined;
     return {
-      date: d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
-      time: d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
+      date: d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone }),
+      time: d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZone }),
     };
   } catch {
-    return { date: '', time: '' };
+    // Invalid timezone identifiers throw — fall back to device-local.
+    try {
+      const d = new Date(iso);
+      return {
+        date: d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
+        time: d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
+      };
+    } catch {
+      return { date: '', time: '' };
+    }
   }
 }
 
@@ -77,7 +89,7 @@ export function TicketDetailScreen() {
   }, [route.params.ticket.id]);
 
   const event = ticket.event;
-  const start = formatStart(event.starts_at);
+  const start = formatStart(event.starts_at, event.timezone);
   const countdown = useCountdown(event.starts_at, event.ends_at);
   const venue = event.location_address || event.location_city || event.location_country || 'TBA';
 
