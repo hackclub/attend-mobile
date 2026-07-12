@@ -195,9 +195,20 @@ export function EventListScreen() {
             {state.auth.user?.name || state.auth.user?.email}
           </Text>
         </View>
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-          <Text style={styles.logoutText}>Sign Out</Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          {state.auth.user?.is_participant && (
+            <TouchableOpacity
+              onPress={() => navigation.getParent()?.navigate('ParticipantMain' as never)}
+              style={styles.ticketsButton}
+            >
+              <Ionicons name="ticket-outline" size={16} color={colors.blue} />
+              <Text style={styles.ticketsText}>My Tickets</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+            <Text style={styles.logoutText}>Sign Out</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {state.sync.pendingScans > 0 && (
@@ -314,6 +325,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.text.secondary,
     marginTop: 2,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  ticketsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: colors.glass.light,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.glass.border,
+  },
+  ticketsText: {
+    fontSize: 14,
+    color: colors.blue,
+    fontWeight: '500',
   },
   logoutButton: {
     paddingVertical: 8,

@@ -103,6 +103,20 @@ export const authService = {
     }
   },
 
+  // Dev-only sign-in that bypasses OAuth by exchanging a known user_id for a
+  // token. Only wired up behind __DEV__ in the UI.
+  async devLogin(userId: string): Promise<AuthResult> {
+    try {
+      const { token, user } = await api.devSession(userId);
+      await secureStorage.setToken(token);
+      await secureStorage.setUser(user);
+      return { success: true, user };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Dev login failed';
+      return { success: false, error: message };
+    }
+  },
+
   async restoreSession(): Promise<AuthResult> {
     try {
       const token = await secureStorage.getToken();

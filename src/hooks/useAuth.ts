@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 
 export function useAuth() {
-  const { state, login, logout } = useApp();
+  const { state, login, devLogin, logout } = useApp();
 
   const handleLogin = useCallback(async () => {
     return await login();
@@ -17,6 +17,7 @@ export function useAuth() {
     isLoading: state.auth.isLoading,
     user: state.auth.user,
     login: handleLogin,
+    devLogin,
     logout: handleLogout,
   };
 }
