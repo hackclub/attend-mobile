@@ -3,6 +3,46 @@ export interface User {
   email: string;
   name: string;
   avatarUrl?: string;
+  // Role flags from the API (/session and /me). Used to decide which
+  // experience to show: organizers get the scanner app, participants get
+  // their tickets. A user can be both.
+  global_admin?: boolean;
+  is_organizer?: boolean;
+  is_participant?: boolean;
+}
+
+// A participant's own ticket for an event (their participant_event), as
+// returned by GET /api/v1/tickets. Distinct from the organizer-facing
+// Participant type.
+export interface Ticket {
+  id: string; // participant_event id
+  participant_id: string;
+  status: string;
+  display_status: string;
+  // True once the attendee has finished onboarding. Only confirmed tickets
+  // show a check-in QR; unconfirmed ones link out to onboarding.
+  confirmed: boolean;
+  checked_in: boolean;
+  attendee_name: string;
+  // QR payload the scanner reads, e.g. "attend://checkin/{participant_id}".
+  qr_payload: string;
+  short_code: string;
+  apple_wallet_url?: string | null;
+  onboarding_url: string;
+  event: Event;
+  travel_inbound?: Travel | null;
+  messages?: TicketMessage[];
+  can_download_ticket?: boolean;
+  can_download_excuse_letter?: boolean;
+}
+
+// A delivered message from an event organizer, shown on the ticket.
+export interface TicketMessage {
+  id: string;
+  subject?: string | null;
+  body: string;
+  sender_name?: string | null;
+  delivered_at?: string | null;
 }
 
 export interface Event {
@@ -13,6 +53,10 @@ export interface Event {
   ends_at?: string;
   timezone?: string;
   location_city?: string;
+  location_address?: string;
+  location_country?: string;
+  location_latitude?: number | null;
+  location_longitude?: number | null;
   logo_url?: string;
   banner_url?: string;
 }
@@ -368,7 +412,9 @@ export interface AppState {
 export type RootStackParamList = {
   Login: undefined;
   Main: undefined;
+  ParticipantMain: undefined;
   ParticipantDetail: { participant: Participant };
+  TicketDetail: { ticket: Ticket };
   KioskSetup: undefined;
   Kiosk: { pin: string; biometricUnlock: boolean };
 };
@@ -378,6 +424,10 @@ export type MainTabParamList = {
   Scanner: undefined;
   Search: undefined;
   AirportMode: undefined;
+};
+
+export type ParticipantTabParamList = {
+  MyTickets: undefined;
 };
 
 export type QRCodeData = {

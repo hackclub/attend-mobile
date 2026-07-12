@@ -1,5 +1,5 @@
 import { secureStorage } from './storage';
-import type { Event, Participant, ParticipantNote, Scan, ScansSyncPage, User, ApiResponse, AirportModeData, ScanContext } from '../types';
+import type { Event, Participant, ParticipantNote, Scan, ScansSyncPage, User, ApiResponse, AirportModeData, ScanContext, Ticket } from '../types';
 
 // Use local Rails server for development
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL || (__DEV__ ? 'http://192.168.0.218:3000' : 'https://attend.hackclub.com');
@@ -74,9 +74,37 @@ class ApiClient {
     });
   }
 
+  // Dev-only: exchange a user_id for a token (the Rails /session endpoint
+  // accepts user_id in development). Used by the LoginScreen dev shortcut.
+  async devSession(userId: string): Promise<{ token: string; user: User }> {
+    return this.request<{ token: string; user: User }>('/api/v1/session', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId }),
+    });
+  }
+
   async getCurrentUser(): Promise<User> {
-    const response = await this.request<ApiResponse<User>>('/api/v1/me');
-    return response.data;
+    // /api/v1/me returns the user fields at the top level (not wrapped in
+    // `data`). Tolerate a legacy `{ data }` shape just in case.
+    const response = await this.request<User & { data?: User }>('/api/v1/me');
+    return response.data ?? response;
+  }
+
+  async getMyTickets(): Promise<Ticket[]> {
+    const response = await this.request<{ tickets: Ticket[] }>('/api/v1/tickets');
+    return response.tickets || [];
+  }
+
+  async getMyTicket(ticketId: string): Promise<Ticket> {
+    const response = await this.request<{ ticket: Ticket }>(`/api/v1/tickets/${ticketId}`);
+    return response.ticket;
+  }
+
+  async getGoogleWalletUrl(ticketId: string): Promise<string> {
+    const response = await this.request<{ url: string }>(
+      `/api/v1/tickets/${ticketId}/google_wallet`
+    );
+    return response.url;
   }
 
   async getEvents(): Promise<Event[]> {

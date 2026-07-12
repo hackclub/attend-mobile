@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  ImageBackground,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -13,9 +14,28 @@ import { useAuth } from '../hooks/useAuth';
 import { HackClubFlag } from '../components/HackClubFlag';
 import { colors } from '../theme/colors';
 
+const HERO = require('../../assets/login-hero.jpg');
+
+// Number of bands used to fake a bottom-up dark gradient over the hero photo.
+const GRADIENT_STOPS = 18;
+
+// Dev-only: a non-admin participant with a confirmed ticket, for testing the
+// participant-only experience without an admin OAuth login.
+const DEV_PARTICIPANT_USER_ID = '749e91d8-4f07-4de8-b959-09573239b0a7';
+
 export function LoginScreen() {
-  const { login } = useAuth();
+  const { login, devLogin } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+
+  const handleDevParticipant = async () => {
+    setIsLoading(true);
+    try {
+      const ok = await devLogin(DEV_PARTICIPANT_USER_ID);
+      if (!ok) Alert.alert('Dev login failed', 'Could not sign in as the demo participant.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleLogin = async () => {
     setIsLoading(true);
@@ -32,105 +52,129 @@ export function LoginScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <ImageBackground source={HERO} style={styles.bg} resizeMode="cover">
       <StatusBar style="light" />
-      
-      <View style={styles.content}>
-        <View style={styles.logoContainer}>
-          <HackClubFlag width={200} />
-          <Text style={styles.title}>Attend</Text>
-          <Text style={styles.subtitle}>Event Check-In</Text>
-        </View>
-
-        <View style={styles.infoContainer}>
-          <Text style={styles.infoText}>
-            Sign in with your Hack Club account to access event check-in.
-          </Text>
-        </View>
-
-        <TouchableOpacity
-          style={[styles.button, isLoading && styles.buttonDisabled]}
-          onPress={handleLogin}
-          disabled={isLoading}
-          activeOpacity={0.8}
-        >
-          {isLoading ? (
-            <ActivityIndicator color={colors.red} />
-          ) : (
-            <Text style={styles.buttonText}>Sign in with Hack Club</Text>
-          )}
-        </TouchableOpacity>
-
-        <Text style={styles.footer}>
-          Only authorized staff can access this app.
-        </Text>
+      {/* Scrims: a light overall darken, plus a smooth bottom-up fade (faked
+          with stacked opacity bands since we don't bundle a gradient lib). */}
+      <View style={styles.scrim} />
+      <View style={styles.gradient} pointerEvents="none">
+        {Array.from({ length: GRADIENT_STOPS }).map((_, i) => (
+          <View
+            key={i}
+            style={{
+              flex: 1,
+              backgroundColor: `rgba(8,10,18,${((i / (GRADIENT_STOPS - 1)) ** 1.4 * 0.9).toFixed(3)})`,
+            }}
+          />
+        ))}
       </View>
-    </SafeAreaView>
+
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.top}>
+          <HackClubFlag width={132} />
+        </View>
+
+        <View style={styles.content}>
+          <Text style={styles.eyebrow}>HACK CLUB</Text>
+          <Text style={styles.title}>Sign in to Attend</Text>
+          <Text style={styles.subtitle}>
+            Your tickets, passes, and event check-in — all in one place.
+          </Text>
+
+          <TouchableOpacity
+            style={[styles.button, isLoading && styles.buttonDisabled]}
+            onPress={handleLogin}
+            disabled={isLoading}
+            activeOpacity={0.85}
+          >
+            {isLoading ? (
+              <ActivityIndicator color={colors.red} />
+            ) : (
+              <Text style={styles.buttonText}>Sign in with Hack Club</Text>
+            )}
+          </TouchableOpacity>
+
+          {__DEV__ && (
+            <TouchableOpacity
+              style={styles.devButton}
+              onPress={handleDevParticipant}
+              disabled={isLoading}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.devButtonText}>Dev: sign in as participant</Text>
+            </TouchableOpacity>
+          )}
+
+          <Text style={styles.footer}>For attendees and event staff.</Text>
+        </View>
+      </SafeAreaView>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.red,
+  bg: { flex: 1, backgroundColor: colors.gray[900] },
+  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(10,12,20,0.32)' },
+  // Smooth bottom-up fade (stacked bands) so the sign-in content stays legible.
+  gradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '85%',
+    flexDirection: 'column',
   },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
-  },
-  logoContainer: {
-    alignItems: 'center',
-    marginBottom: 48,
-  },
-  title: {
-    marginTop: 24,
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: colors.white,
+  safe: { flex: 1, justifyContent: 'space-between' },
+  top: { paddingHorizontal: 28, paddingTop: 16 },
+  content: { paddingHorizontal: 28, paddingBottom: 24 },
+  eyebrow: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 2.5,
+    color: 'rgba(255,255,255,0.75)',
     marginBottom: 8,
   },
+  title: {
+    fontSize: 36,
+    fontWeight: '800',
+    color: colors.red,
+    marginBottom: 12,
+  },
   subtitle: {
-    fontSize: 18,
-    color: colors.white,
-    opacity: 0.9,
-  },
-  infoContainer: {
-    marginBottom: 32,
-  },
-  infoText: {
     fontSize: 16,
-    color: colors.white,
-    textAlign: 'center',
-    lineHeight: 24,
-    opacity: 0.9,
+    color: 'rgba(255,255,255,0.9)',
+    lineHeight: 23,
+    marginBottom: 28,
   },
   button: {
     backgroundColor: colors.white,
     paddingVertical: 16,
     paddingHorizontal: 32,
-    borderRadius: 12,
+    borderRadius: 14,
     width: '100%',
     alignItems: 'center',
     shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 4,
   },
-  buttonDisabled: {
-    opacity: 0.7,
+  buttonDisabled: { opacity: 0.7 },
+  buttonText: { fontSize: 17, fontWeight: '700', color: colors.red },
+  devButton: {
+    marginTop: 14,
+    paddingVertical: 13,
+    borderRadius: 14,
+    width: '100%',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
   },
-  buttonText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.red,
-  },
+  devButtonText: { color: colors.white, fontSize: 14, fontWeight: '600' },
   footer: {
-    marginTop: 24,
-    fontSize: 14,
-    color: colors.white,
-    opacity: 0.7,
+    marginTop: 20,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.6)',
+    textAlign: 'center',
   },
 });
