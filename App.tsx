@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Linking from 'expo-linking';
+import { notificationService } from './src/services/notifications';
 import { AppProvider, useApp } from './src/context/AppContext';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { EventListScreen } from './src/screens/EventListScreen';
@@ -17,6 +18,8 @@ import { ParticipantDetailScreen } from './src/screens/ParticipantDetailScreen';
 import { AirportModeScreen } from './src/screens/AirportModeScreen';
 import { KioskSetupScreen } from './src/screens/KioskSetupScreen';
 import { KioskScreen } from './src/screens/KioskScreen';
+import { MyTicketsScreen } from './src/screens/MyTicketsScreen';
+import { TicketDetailScreen } from './src/screens/TicketDetailScreen';
 import { colors } from './src/theme/colors';
 import type { RootStackParamList, MainTabParamList } from './src/types';
 import * as Sentry from '@sentry/react-native';
@@ -112,11 +115,24 @@ function RootNavigator() {
     );
   }
 
+  const user = state.auth.user;
+  // Organizers (global admins or anyone with a staff role) get the scanner
+  // experience. Everyone else lands on their tickets. A user who is both a
+  // participant and an organizer defaults to the scanner app but can reach
+  // their tickets from the Events header.
+  const isOrganizer = !!(user?.is_organizer ?? user?.global_admin);
+  const isParticipant = !!user?.is_participant;
+  const showParticipant = isParticipant || !isOrganizer;
+
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {state.auth.isAuthenticated ? (
         <>
-          <Stack.Screen name="Main" component={MainTabs} />
+          {isOrganizer && <Stack.Screen name="Main" component={MainTabs} />}
+          {showParticipant && (
+            <Stack.Screen name="ParticipantMain" component={MyTicketsScreen} />
+          )}
+          <Stack.Screen name="TicketDetail" component={TicketDetailScreen} />
           <Stack.Screen
             name="ParticipantDetail"
             component={ParticipantDetailScreen}
@@ -166,6 +182,7 @@ const linking = {
           AirportMode: 'airport',
         },
       },
+      ParticipantMain: 'my-tickets',
       ParticipantDetail: 'participant/:id',
     },
   },
@@ -192,8 +209,17 @@ export default Sentry.wrap(function App() {
       }
     });
 
+    // Tapping an organizer-message push opens the participant's tickets.
+    const notifSub = notificationService.addNotificationResponseListener((response) => {
+      const data = response.notification.request.content.data as { type?: string } | undefined;
+      if (data?.type === 'message' && navigationRef.current) {
+        navigationRef.current.navigate('ParticipantMain' as any);
+      }
+    });
+
     return () => {
       subscription.remove();
+      notifSub.remove();
     };
   }, []);
 

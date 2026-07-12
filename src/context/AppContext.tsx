@@ -102,6 +102,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
 interface AppContextValue {
   state: AppState;
   login: () => Promise<boolean>;
+  devLogin: (userId: string) => Promise<boolean>;
   logout: () => Promise<void>;
   selectEvent: (event: Event) => Promise<void>;
   refreshParticipants: () => Promise<void>;
@@ -149,6 +150,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     restoreAuth();
   }, []);
 
+  // Register this device for push once authenticated (organizers get scan/flight
+  // alerts; participants get organizer messages). No-op on simulators.
+  useEffect(() => {
+    if (state.auth.isAuthenticated) {
+      notificationService.registerTokenWithServer().catch(() => {});
+    }
+  }, [state.auth.isAuthenticated]);
+
   useEffect(() => {
     const unsubscribe = syncService.subscribe((status) => {
       dispatch({ type: 'SET_SYNC_STATUS', payload: status });
@@ -165,6 +174,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (): Promise<boolean> => {
     const result = await authService.authenticate();
+    if (result.success && result.user) {
+      const token = await authService.getToken();
+      dispatch({ type: 'SET_AUTH', payload: { user: result.user, token: token! } });
+      return true;
+    }
+    return false;
+  }, []);
+
+  const devLogin = useCallback(async (userId: string): Promise<boolean> => {
+    const result = await authService.devLogin(userId);
     if (result.success && result.user) {
       const token = await authService.getToken();
       dispatch({ type: 'SET_AUTH', payload: { user: result.user, token: token! } });
@@ -243,6 +262,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const value: AppContextValue = {
     state,
     login,
+    devLogin,
     logout,
     selectEvent,
     refreshParticipants,
