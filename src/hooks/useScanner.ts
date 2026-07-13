@@ -53,7 +53,9 @@ export function useScanner() {
       setIsLoadingContexts(true);
       try {
         const allContexts = await api.getScanContexts(state.currentEvent.id);
-        const contexts = allContexts.filter(isOnCurrentDay);
+        // Fall back to all contexts when none are scheduled for today
+        const todayContexts = allContexts.filter(isOnCurrentDay);
+        const contexts = todayContexts.length > 0 ? todayContexts : allContexts;
         setScanContexts(contexts);
         // Prefer the context whose time window contains now, then the first
         // check-in context, then the first context
