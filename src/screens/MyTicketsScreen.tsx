@@ -24,16 +24,22 @@ import type { RootStackParamList, Ticket } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ParticipantMain'>;
 
-function formatDate(dateString?: string) {
+// Dates are shown in the event's timezone, not the device's, so the day
+// doesn't shift for travellers.
+function formatDate(dateString?: string, timezone?: string) {
   if (!dateString) return '';
+  const opts = { month: 'short', day: 'numeric', year: 'numeric' } as const;
   try {
     return new Date(dateString).toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
+      ...opts,
+      timeZone: timezone || undefined,
     });
   } catch {
-    return '';
+    try {
+      return new Date(dateString).toLocaleDateString(undefined, opts);
+    } catch {
+      return '';
+    }
   }
 }
 
@@ -77,7 +83,7 @@ export function MyTicketsScreen() {
   const renderTicket = ({ item }: { item: Ticket }) => {
     const event = item.event;
     const hasBanner = !!event.banner_url;
-    const startDate = formatDate(event.starts_at);
+    const startDate = formatDate(event.starts_at, event.timezone);
 
     const content = (
       <>

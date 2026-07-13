@@ -6,6 +6,9 @@ interface ActivityControllerModule {
   updateLiveActivity(checkedInCount: number, totalCount: number): Promise<boolean>;
   stopLiveActivity(): Promise<boolean>;
   isLiveActivityRunning(): boolean;
+  startTicketActivity(eventName: string, venue: string, shortCode: string, startsAtIso: string, checkedIn: boolean): Promise<boolean>;
+  stopTicketActivity(): Promise<boolean>;
+  isTicketActivityRunning(): boolean;
 }
 
 const ActivityController: ActivityControllerModule | null = (() => {
@@ -65,4 +68,39 @@ export async function stopLiveActivity(): Promise<boolean> {
 
 export function isLiveActivityRunning(): boolean {
   return ActivityController?.isLiveActivityRunning() ?? false;
+}
+
+// Participant ticket Live Activity (Lock Screen countdown + check-in status).
+export async function startTicketActivity(
+  eventName: string,
+  venue: string,
+  shortCode: string,
+  startsAtIso: string,
+  checkedIn: boolean
+): Promise<boolean> {
+  if (!ActivityController) return false;
+  try {
+    return await ActivityController.startTicketActivity(eventName, venue, shortCode, startsAtIso, checkedIn);
+  } catch (error) {
+    console.error('Failed to start ticket Live Activity:', error);
+    return false;
+  }
+}
+
+export async function stopTicketActivity(): Promise<boolean> {
+  if (!ActivityController) return false;
+  try {
+    return await ActivityController.stopTicketActivity();
+  } catch (error) {
+    console.error('Failed to stop ticket Live Activity:', error);
+    return false;
+  }
+}
+
+export function isTicketActivityRunning(): boolean {
+  return ActivityController?.isTicketActivityRunning() ?? false;
+}
+
+export function areLiveActivitiesSupported(): boolean {
+  return ActivityController?.areLiveActivitiesEnabled() ?? false;
 }

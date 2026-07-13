@@ -102,12 +102,19 @@ export function EventListScreen() {
     ]);
   };
 
-  const formatDate = (dateString?: string) => {
+  // Shown in the event's timezone so the date matches the event schedule.
+  const formatDate = (dateString?: string, timezone?: string) => {
     if (!dateString) return '';
     try {
-      return new Date(dateString).toLocaleDateString();
+      return new Date(dateString).toLocaleDateString(undefined, {
+        timeZone: timezone || undefined,
+      });
     } catch {
-      return '';
+      try {
+        return new Date(dateString).toLocaleDateString();
+      } catch {
+        return '';
+      }
     }
   };
 
@@ -127,7 +134,7 @@ export function EventListScreen() {
 
   const renderEvent = ({ item }: { item: Event }) => {
     const isSelected = state.currentEvent?.id === item.id;
-    const startDate = formatDate(item.starts_at);
+    const startDate = formatDate(item.starts_at, item.timezone);
     const hasBanner = !!item.banner_url;
 
     const content = (
