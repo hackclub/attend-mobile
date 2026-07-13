@@ -58,6 +58,7 @@ export function ScannerScreen() {
   const [manualEntryMode, setManualEntryMode] = useState<ManualEntryMode>('none');
   const [manualId, setManualId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [contextDropdownOpen, setContextDropdownOpen] = useState(false);
   const lastScannedRef = useRef<string | null>(null);
   const [isFocused, setIsFocused] = useState(true);
 
@@ -202,30 +203,54 @@ export function ScannerScreen() {
         {/* Context Selector */}
         {scanContexts.length > 1 && (
           <View style={styles.contextSelector}>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.contextScrollContent}
+            <TouchableOpacity
+              style={styles.contextDropdownButton}
+              onPress={() => setContextDropdownOpen(open => !open)}
             >
-              {scanContexts.map((context) => (
-                <TouchableOpacity
-                  key={context.id}
-                  style={[
-                    styles.contextChip,
-                    selectedContextId === context.id && styles.contextChipActive,
-                  ]}
-                  onPress={() => selectContext(context.id)}
-                >
-                  <Text style={[
-                    styles.contextChipText,
-                    selectedContextId === context.id && styles.contextChipTextActive,
-                  ]}>
-                    {context.is_airport ? '✈️ ' : ''}{context.name}
-                    {context.checks_in ? ' ✓' : ''}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+              <Text style={styles.contextDropdownButtonText} numberOfLines={1}>
+                {selectedContext
+                  ? `${selectedContext.is_airport ? '✈️ ' : ''}${selectedContext.name}${selectedContext.checks_in ? ' ✓' : ''}`
+                  : 'Select context'}
+              </Text>
+              <Ionicons
+                name={contextDropdownOpen ? 'chevron-up' : 'chevron-down'}
+                size={18}
+                color={colors.white}
+              />
+            </TouchableOpacity>
+            {contextDropdownOpen && (
+              <View style={styles.contextDropdownList}>
+                <ScrollView bounces={false}>
+                  {scanContexts.map((context) => (
+                    <TouchableOpacity
+                      key={context.id}
+                      style={[
+                        styles.contextDropdownItem,
+                        selectedContextId === context.id && styles.contextDropdownItemActive,
+                      ]}
+                      onPress={() => {
+                        selectContext(context.id);
+                        setContextDropdownOpen(false);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.contextDropdownItemText,
+                          selectedContextId === context.id && styles.contextDropdownItemTextActive,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {context.is_airport ? '✈️ ' : ''}{context.name}
+                        {context.checks_in ? ' ✓' : ''}
+                      </Text>
+                      {selectedContextId === context.id && (
+                        <Ionicons name="checkmark" size={18} color={colors.white} />
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
           </View>
         )}
 
@@ -594,30 +619,60 @@ const styles = StyleSheet.create({
   },
   contextSelector: {
     marginTop: 12,
-    paddingHorizontal: 8,
-  },
-  contextScrollContent: {
-    paddingHorizontal: 8,
-    gap: 8,
-  },
-  contextChip: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingVertical: 8,
     paddingHorizontal: 16,
-    borderRadius: 20,
+    zIndex: 20,
+  },
+  contextDropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.3)',
+    gap: 8,
   },
-  contextChipActive: {
+  contextDropdownButtonText: {
+    flex: 1,
+    color: colors.white,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  contextDropdownList: {
+    position: 'absolute',
+    top: '100%',
+    left: 16,
+    right: 16,
+    marginTop: 4,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+    maxHeight: 260,
+    overflow: 'hidden',
+  },
+  contextDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.15)',
+  },
+  contextDropdownItemActive: {
     backgroundColor: colors.red,
-    borderColor: colors.red,
   },
-  contextChipText: {
+  contextDropdownItemText: {
+    flex: 1,
     color: colors.white,
     fontSize: 14,
     fontWeight: '500',
   },
-  contextChipTextActive: {
+  contextDropdownItemTextActive: {
     fontWeight: '600',
   },
   singleContextIndicator: {

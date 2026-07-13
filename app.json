@@ -99,8 +99,6 @@
           "appleTeamId": "P6PV2R9443"
         }
       ],
-      "./plugins/withActivityController.js",
-      "./plugins/withWalletModule.js",
       [
         "react-native-nfc-manager",
         {

@@ -15,6 +15,22 @@ interface ScanResult {
   scanContext?: ScanContext;
 }
 
+// starts_at/ends_at are serialized with the event's utc offset, so the first
+// 10 chars are the event-local calendar date — comparable to the device's
+// local date since scanners are physically at the event
+function isOnCurrentDay(context: ScanContext): boolean {
+  if (!context.starts_at) return true;
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return context.starts_at.slice(0, 10) === today;
+}
+
+function isInCurrentTimeWindow(context: ScanContext): boolean {
+  if (!context.starts_at || !context.ends_at) return false;
+  const now = Date.now();
+  return now >= Date.parse(context.starts_at) && now <= Date.parse(context.ends_at);
+}
+
 export function useScanner() {
   const { state, updateParticipant } = useApp();
   const [isProcessing, setIsProcessing] = useState(false);
@@ -36,10 +52,17 @@ export function useScanner() {
 
       setIsLoadingContexts(true);
       try {
-        const contexts = await api.getScanContexts(state.currentEvent.id);
+        const allContexts = await api.getScanContexts(state.currentEvent.id);
+        // Fall back to all contexts when none are scheduled for today
+        const todayContexts = allContexts.filter(isOnCurrentDay);
+        const contexts = todayContexts.length > 0 ? todayContexts : allContexts;
         setScanContexts(contexts);
-        // Default to the first check-in context or first context
-        const defaultContext = contexts.find(c => c.checks_in) || contexts[0];
+        // Prefer the context whose time window contains now, then the first
+        // check-in context, then the first context
+        const defaultContext =
+          contexts.find(isInCurrentTimeWindow) ||
+          contexts.find(c => c.checks_in) ||
+          contexts[0];
         setSelectedContextId(defaultContext?.id || null);
       } catch (error) {
         console.error('Failed to load scan contexts:', error);

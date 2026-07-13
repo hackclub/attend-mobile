@@ -146,3 +146,100 @@ struct LockScreenView: View {
     AttendActivityAttributes.ContentState(checkedInCount: 42, totalCount: 150, lastUpdated: Date())
     AttendActivityAttributes.ContentState(checkedInCount: 100, totalCount: 150, lastUpdated: Date())
 }
+
+// MARK: - Participant ticket Live Activity
+
+struct TicketLiveActivity: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: TicketActivityAttributes.self) { context in
+            TicketLockScreenView(context: context)
+                .widgetURL(URL(string: "attend://my-tickets"))
+        } dynamicIsland: { context in
+            DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "ticket.fill").foregroundColor(.red)
+                        Text("Ticket").font(.caption).fontWeight(.semibold)
+                    }
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    if context.state.checkedIn {
+                        Text("Checked in").font(.caption2).fontWeight(.bold).foregroundColor(.green)
+                    } else {
+                        Text(context.attributes.startsAt, style: .relative)
+                            .font(.caption).fontWeight(.bold).monospacedDigit()
+                            .foregroundColor(.white).multilineTextAlignment(.trailing)
+                    }
+                }
+                DynamicIslandExpandedRegion(.center) {
+                    Text(context.attributes.eventName).font(.headline).lineLimit(1)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    HStack {
+                        Image(systemName: "mappin.and.ellipse").foregroundColor(.secondary)
+                        Text(context.attributes.venue).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                        Spacer()
+                        Text(context.attributes.shortCode).font(.caption).fontWeight(.bold).monospaced()
+                    }
+                    .padding(.horizontal, 4)
+                }
+            } compactLeading: {
+                Image(systemName: "ticket.fill").foregroundColor(.red)
+            } compactTrailing: {
+                if context.state.checkedIn {
+                    Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
+                } else {
+                    Text(context.attributes.startsAt, style: .relative)
+                        .font(.caption2).fontWeight(.bold).monospacedDigit().frame(maxWidth: 64)
+                }
+            } minimal: {
+                Image(systemName: "ticket.fill").foregroundColor(.red)
+            }
+            .widgetURL(URL(string: "attend://my-tickets"))
+        }
+    }
+}
+
+struct TicketLockScreenView: View {
+    let context: ActivityViewContext<TicketActivityAttributes>
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack {
+                HStack(spacing: 8) {
+                    Image(systemName: "ticket.fill").font(.title2).foregroundColor(.red)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(context.attributes.eventName)
+                            .font(.headline).fontWeight(.semibold).lineLimit(1)
+                        HStack(spacing: 4) {
+                            Image(systemName: "mappin.and.ellipse").font(.caption2).foregroundColor(.secondary)
+                            Text(context.attributes.venue).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                        }
+                    }
+                }
+                Spacer()
+                if context.state.checkedIn {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Image(systemName: "checkmark.circle.fill").font(.title3).foregroundColor(.green)
+                        Text("Checked in").font(.caption2).foregroundColor(.green)
+                    }
+                } else {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(context.attributes.startsAt, style: .relative)
+                            .font(.title3).fontWeight(.bold).monospacedDigit()
+                            .foregroundColor(.red).multilineTextAlignment(.trailing)
+                        Text("until doors").font(.caption2).foregroundColor(.secondary)
+                    }
+                }
+            }
+            HStack {
+                Text("ATTENDEE PASS").font(.caption2).fontWeight(.bold)
+                    .foregroundColor(.secondary).tracking(1)
+                Spacer()
+                Text(context.attributes.shortCode).font(.caption).fontWeight(.bold).monospaced()
+            }
+        }
+        .padding(16)
+        .activityBackgroundTint(.black.opacity(0.85))
+    }
+}
