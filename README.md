@@ -93,6 +93,17 @@ bin/ota "what changed"
 
 The `bin/ota` script temporarily stashes local `.env` files so development values never leak into a production bundle.
 
+## Contributing
+
+Contributions are welcome! If you've found a bug or have an idea:
+
+1. Open an issue first for anything non-trivial so we can talk it through
+2. Fork the repo and create a branch for your change
+3. Make sure `npm test`, `npm run lint`, and `npm run typecheck` pass
+4. Open a pull request with a clear description of what changed and why
+
+If you're at a Hack Club event and something in the app breaks, an issue with steps to reproduce is hugely appreciated — even if you don't have time to fix it yourself.
+
 ## License
 
 [GPL-3.0](LICENSE)
