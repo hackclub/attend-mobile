@@ -1,109 +1,94 @@
-# AttendScanner
+# Attend for iOS & Android
 
-A cross-platform React Native Expo app for event check-in via QR codes at Hack Club events.
+The mobile companion app for [Attend](https://attend.hackclub.com), Hack Club's event attendance platform. Organizers use it to check participants in at the door; participants use it to carry their tickets.
 
-## Features
+Built with Expo / React Native, with native Swift modules for Live Activities and Apple Wallet.
 
-- **QR Code Scanning**: Scan participant QR codes (`attend:P:{uuid}` format) for instant check-in
-- **OAuth Authentication**: Secure login with Hack Club OAuth
-- **Offline Support**: Queue scans when offline and sync when connection is restored
-- **Medical Alerts**: Prominently display anaphylaxis risks and high support needs
-- **Participant Search**: Search participants by name or email
-- **Emergency Contacts**: Tap-to-call emergency contacts
+## What it does
 
-## Getting Started
+**For organizers:**
+
+- **QR check-in** — scan participant QR codes (`attend:P:{uuid}`) for instant check-in
+- **NFC badges** — write and scan NFC badges for tap-to-check-in
+- **Offline-first** — scans queue locally when offline and sync automatically when connectivity returns
+- **Participant search & filtering** — Airtable-style filtering across the participant list, with medical alerts (anaphylaxis risk, high support needs) surfaced prominently
+- **Emergency contacts** — tap-to-call from a participant's detail view
+- **Airport mode** — live view of participants in transit: flight legs, arrival status, and unaccompanied-minor pickup tracking
+- **Kiosk mode** — PIN-locked self-serve check-in station for a spare iPad at the door
+- **Biometric lock** — Face ID / Touch ID gate on sensitive participant information
+
+**For participants:**
+
+- **My tickets** — view event tickets with QR codes
+- **Apple Wallet** — add tickets as Wallet passes
+- **Live Activities** — event-day status on the Lock Screen and Dynamic Island
+- **Push notifications** — event updates from organizers
+
+## Getting started
 
 ### Prerequisites
 
 - Node.js 18+
-- Expo CLI (`npm install -g expo-cli`)
-- iOS Simulator (Mac) or Android Emulator, or Expo Go app on a physical device
+- Xcode (for iOS) or Android Studio (for Android)
+- An [Attend](https://attend.hackclub.com) account
 
-### Installation
+> [!NOTE]
+> The app uses native modules (NFC, Live Activities, Wallet), so it will not run in Expo Go — you need a development build.
+
+### Setup
 
 ```bash
-cd attend-ios
 npm install
 ```
 
-### Development
+Create a `.env.local` with your backend and OAuth config:
 
 ```bash
-# Start the development server
-npx expo start
-
-# Run on iOS simulator
-npx expo start --ios
-
-# Run on Android emulator
-npx expo start --android
+EXPO_PUBLIC_API_URL=http://localhost:3000
+EXPO_PUBLIC_OAUTH_CLIENT_ID=your-oauth-client-id
 ```
 
-## Project Structure
+Then build and run a development client:
 
-```
-attend-ios/
-├── App.tsx                 # Entry point with navigation
-├── app.json               # Expo configuration
-├── src/
-│   ├── types/             # TypeScript interfaces
-│   ├── services/
-│   │   ├── api.ts         # REST API client
-│   │   ├── auth.ts        # OAuth authentication
-│   │   ├── storage.ts     # Secure token storage
-│   │   └── sync.ts        # Offline sync service
-│   ├── hooks/
-│   │   ├── useAuth.ts
-│   │   ├── useParticipants.ts
-│   │   └── useScanner.ts
-│   ├── context/
-│   │   └── AppContext.tsx # Global state management
-│   ├── screens/
-│   │   ├── LoginScreen.tsx
-│   │   ├── EventListScreen.tsx
-│   │   ├── ScannerScreen.tsx
-│   │   ├── CheckedInScreen.tsx
-│   │   ├── SearchScreen.tsx
-│   │   └── ParticipantDetailScreen.tsx
-│   ├── components/
-│   │   ├── ParticipantRow.tsx
-│   │   ├── AlertBadge.tsx
-│   │   ├── StatusBadge.tsx
-│   │   └── EmergencyContactCard.tsx
-│   └── theme/
-│       └── colors.ts      # Hack Club brand colors
+```bash
+# iOS
+npx expo run:ios
+
+# Android
+npx expo run:android
 ```
 
-## API Endpoints
+### Scripts
 
-The app communicates with the Attend backend at `https://attend.hackclub.com`:
+```bash
+npm test           # jest
+npm run lint       # eslint
+npm run typecheck  # tsc --noEmit
+```
 
-- `POST /api/v1/session` - Exchange OAuth code for token
-- `GET /api/v1/events` - List accessible events
-- `GET /api/v1/events/:id/participants` - Get event participants
-- `GET /api/v1/events/:id/participants/search` - Search participants
-- `POST /api/v1/events/:id/scans` - Record a check-in scan
+## Project structure
 
-## QR Code Format
+```
+src/
+  screens/     one file per screen (scanner, kiosk, airport mode, tickets, ...)
+  services/    api client, auth, offline sync, NFC, notifications, storage
+  hooks/       useScanner, useParticipants, useNFC, useAuth, ...
+  components/  shared UI
+modules/
+  activity-controller/  native Swift module for starting/updating Live Activities
+  wallet/               native Swift module for adding Apple Wallet passes
+targets/
+  widget/      WidgetKit extension rendering the Live Activity
+```
 
-Participant QR codes follow the format: `attend:P:{uuid}`
+The backend is a Rails app that serves the API this app talks to, handles OAuth, and issues Wallet passes.
 
-Example: `attend:P:550e8400-e29b-41d4-a716-446655440000`
+## Releases
 
-## Configuration
+Builds and submissions go through [EAS](https://expo.dev/eas) — see [eas.json](eas.json) for the profiles. JS-only changes ship over the air:
 
-OAuth is configured in `app.json` with the scheme `attendscanner` for the callback URL:
-`attendscanner://oauth/callback`
+```bash
+bin/ota "what changed"
+```
 
-## Theme
-
-Uses Hack Club brand colors:
-- Red: `#EC3750`
-- Orange: `#FF8C37`
-- Yellow: `#F1C40F`
-- Green: `#33D6A6`
-- Blue: `#338EDA`
-
-## License
-
-Proprietary - Hack Club
+The `bin/ota` script temporarily stashes local `.env` files so development values never leak into a production bundle.
