@@ -92,3 +92,7 @@ bin/ota "what changed"
 ```
 
 The `bin/ota` script temporarily stashes local `.env` files so development values never leak into a production bundle.
+
+## License
+
+[GPL-3.0](LICENSE)
