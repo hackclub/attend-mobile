@@ -41,3 +41,7 @@ coverage/
 # EAS credentials - never commit
 credentials.json
 credentials/
+
+# Signing keys - never commit
+*.jks
+*.keystore
