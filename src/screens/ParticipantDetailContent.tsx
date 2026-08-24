@@ -11,6 +11,8 @@ import {
   RefreshControl,
   TextInput,
   Image,
+  ActionSheetIOS,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { AlertBadge } from '../components/AlertBadge';
@@ -19,6 +21,7 @@ import { EmergencyContactCard } from '../components/EmergencyContactCard';
 import { useApp } from '../context/AppContext';
 import { useNFC } from '../hooks/useNFC';
 import { api } from '../services/api';
+import { buildPhoneActions } from '../services/contactLinks';
 import { colors } from '../theme/colors';
 import type { Participant, ParticipantNote, Travel, Guardian, Consent, Accommodation, AccessibilityDetail, PersonalDetails } from '../types';
 
@@ -126,11 +129,45 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
     }
   }, [state.currentEvent, currentParticipant.participant_event_id, updateParticipant, loadNotes]);
 
-  const handleCall = (phone: string) => {
-    const phoneNumber = phone.replace(/[^0-9+]/g, '');
-    Linking.openURL(`tel:${phoneNumber}`).catch(() => {
-      Alert.alert('Error', 'Unable to make phone call');
+  const openContactURL = (url: string, appName: string) => {
+    Linking.openURL(url).catch(() => {
+      Alert.alert(`${appName} unavailable`, `Unable to open ${appName} for this number.`);
     });
+  };
+
+  const handleCall = (phone: string) => {
+    const actions = buildPhoneActions(phone);
+
+    if (actions.length === 0) {
+      Alert.alert('Invalid phone number', 'This record does not contain a callable phone number.');
+      return;
+    }
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: 'Call with',
+          message: phone,
+          options: [...actions.map(action => action.label), 'Cancel'],
+          cancelButtonIndex: actions.length,
+        },
+        buttonIndex => {
+          const action = actions[buttonIndex];
+          if (action) openContactURL(action.url, action.label);
+        }
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Call with',
+      phone,
+      actions.map(action => ({
+        text: action.label,
+        onPress: () => openContactURL(action.url, action.label),
+      })),
+      { cancelable: true }
+    );
   };
 
   const handleEmail = (email: string) => {
@@ -325,12 +362,12 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
       )}
 
       <Section title="Contact Information">
-        <InfoRow label="Email" value={currentParticipant.email} onPress={() => handleEmail(currentParticipant.email)} />
+        <InfoRow label="Email" value={currentParticipant.email} onPress={() => handleEmail(currentParticipant.email)} selectable accessibilityHint="Opens the default email app" />
         {currentParticipant.phone && (
-          <InfoRow label="Phone" value={currentParticipant.phone} onPress={() => handleCall(currentParticipant.phone!)} />
+          <InfoRow label="Phone" value={currentParticipant.phone} onPress={() => handleCall(currentParticipant.phone!)} selectable accessibilityHint="Shows calling options" />
         )}
         {currentParticipant.personal?.secondary_email && (
-          <InfoRow label="Secondary Email" value={currentParticipant.personal.secondary_email} onPress={() => handleEmail(currentParticipant.personal!.secondary_email!)} />
+          <InfoRow label="Secondary Email" value={currentParticipant.personal.secondary_email} onPress={() => handleEmail(currentParticipant.personal!.secondary_email!)} selectable accessibilityHint="Opens the default email app" />
         )}
       </Section>
 
@@ -457,6 +494,8 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
               label="Phone"
               value={currentParticipant.parent_guardian_phone}
               onPress={() => handleCall(currentParticipant.parent_guardian_phone!)}
+              selectable
+              accessibilityHint="Shows calling options"
             />
           )}
           {currentParticipant.parent_guardian_email && (
@@ -464,6 +503,8 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
               label="Email"
               value={currentParticipant.parent_guardian_email}
               onPress={() => handleEmail(currentParticipant.parent_guardian_email!)}
+              selectable
+              accessibilityHint="Opens the default email app"
             />
           )}
         </Section>
@@ -472,7 +513,12 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
       {!currentParticipant.guardians?.length && currentParticipant.emergency_contacts && currentParticipant.emergency_contacts.length > 0 && (
         <Section title="Emergency Contacts">
           {currentParticipant.emergency_contacts.map((contact, index) => (
-            <EmergencyContactCard key={contact.id || `contact-${index}`} contact={contact} />
+            <EmergencyContactCard
+              key={contact.id || `contact-${index}`}
+              contact={contact}
+              onCall={handleCall}
+              onEmail={handleEmail}
+            />
           ))}
         </Section>
       )}
@@ -524,7 +570,14 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
               <View key={note.id} style={[styles.noteCard, note.sensitivity === 'restricted' && styles.noteCardRestricted]}>
                 <View style={styles.noteHeader}>
                   <View style={styles.noteAuthorRow}>
-                    <Text style={styles.noteAuthor}>{note.author?.name || note.author?.email || 'Unknown'}</Text>
+                    <Text
+                      style={styles.noteAuthor}
+                      selectable={Boolean(!note.author?.name && note.author?.email)}
+                      onPress={!note.author?.name && note.author?.email ? () => handleEmail(note.author.email) : undefined}
+                      accessibilityRole={!note.author?.name && note.author?.email ? 'link' : undefined}
+                    >
+                      {note.author?.name || note.author?.email || 'Unknown'}
+                    </Text>
                     {note.sensitivity === 'restricted' && (
                       <View style={styles.restrictedBadge}>
                         <Ionicons name="lock-closed" size={10} color={colors.white} />
@@ -731,10 +784,26 @@ function GuardiansSection({ guardians, onCall, onEmail }: { guardians: Guardian[
           </View>
           {g.relationship && <Text style={styles.guardianMeta}>{g.relationship}</Text>}
           {g.email && (
-            <TouchableOpacity onPress={() => onEmail(g.email!)}><Text style={styles.guardianLink}>{g.email}</Text></TouchableOpacity>
+            <Text
+              style={styles.guardianLink}
+              selectable
+              onPress={() => onEmail(g.email!)}
+              accessibilityRole="link"
+              accessibilityHint="Opens the default email app"
+            >
+              {g.email}
+            </Text>
           )}
           {g.phone && (
-            <TouchableOpacity onPress={() => onCall(g.phone!)}><Text style={styles.guardianLink}>{g.phone}</Text></TouchableOpacity>
+            <Text
+              style={styles.guardianLink}
+              selectable
+              onPress={() => onCall(g.phone!)}
+              accessibilityRole="link"
+              accessibilityHint="Shows calling options"
+            >
+              {g.phone}
+            </Text>
           )}
           {(g.media_permission != null || g.photo_permission != null || g.travel_permission != null || g.emergency_medical_consent != null || g.otc_medication_consent != null) && (
             <View style={styles.permRow}>
@@ -752,10 +821,26 @@ function GuardiansSection({ guardians, onCall, onEmail }: { guardians: Guardian[
                 <View key={ec.id || ec.name} style={styles.guardianContact}>
                   <Text style={styles.guardianContactName}>{ec.name}{ec.relationship ? ` · ${ec.relationship}` : ''}</Text>
                   {ec.phone && (
-                    <TouchableOpacity onPress={() => onCall(ec.phone)}><Text style={styles.guardianLink}>{ec.phone}</Text></TouchableOpacity>
+                    <Text
+                      style={styles.guardianLink}
+                      selectable
+                      onPress={() => onCall(ec.phone)}
+                      accessibilityRole="link"
+                      accessibilityHint="Shows calling options"
+                    >
+                      {ec.phone}
+                    </Text>
                   )}
                   {ec.email && (
-                    <TouchableOpacity onPress={() => onEmail(ec.email!)}><Text style={styles.guardianLink}>{ec.email}</Text></TouchableOpacity>
+                    <Text
+                      style={styles.guardianLink}
+                      selectable
+                      onPress={() => onEmail(ec.email!)}
+                      accessibilityRole="link"
+                      accessibilityHint="Opens the default email app"
+                    >
+                      {ec.email}
+                    </Text>
                   )}
                 </View>
               ))}
@@ -956,27 +1041,25 @@ interface InfoRowProps {
   value: string;
   onPress?: () => void;
   highlight?: boolean;
+  selectable?: boolean;
+  accessibilityHint?: string;
 }
 
-function InfoRow({ label, value, onPress, highlight }: InfoRowProps) {
-  const content = (
+function InfoRow({ label, value, onPress, highlight, selectable, accessibilityHint }: InfoRowProps) {
+  return (
     <View style={[styles.infoRow, highlight && styles.infoRowHighlight]}>
       <Text style={styles.infoLabel}>{label}</Text>
-      <Text style={[styles.infoValue, onPress && styles.infoValueLink]}>
+      <Text
+        style={[styles.infoValue, onPress && styles.infoValueLink]}
+        selectable={selectable}
+        onPress={onPress}
+        accessibilityRole={onPress ? 'link' : undefined}
+        accessibilityHint={accessibilityHint}
+      >
         {value}
       </Text>
     </View>
   );
-
-  if (onPress) {
-    return (
-      <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
-        {content}
-      </TouchableOpacity>
-    );
-  }
-
-  return content;
 }
 
 const styles = StyleSheet.create({
