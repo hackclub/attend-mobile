@@ -1,6 +1,6 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
-import { Pressable, Text } from 'react-native';
+import { Text } from 'react-native';
 import type { Participant } from '../../types';
 import type { ScannerResult, ScannerOutcome } from '../../services/scannerCore';
 
@@ -12,6 +12,14 @@ jest.mock('react-native', () => ({
   Text: 'Text',
   Pressable: 'Pressable',
   StyleSheet: { create: (styles: unknown) => styles, hairlineWidth: 1 },
+  Animated: {
+    View: 'AnimatedView',
+    Value: class {
+      setValue = jest.fn();
+    },
+    timing: () => ({ start: (cb?: () => void) => cb?.() }),
+    spring: () => ({ start: (cb?: () => void) => cb?.() }),
+  },
   PanResponder: {
     create: jest.fn((handlers: { onPanResponderRelease: (...args: unknown[]) => void }) => ({
       panHandlers: { onResponderRelease: handlers.onPanResponderRelease },
@@ -124,10 +132,21 @@ describe('ScannerResultCard', () => {
       .find(node => node.props.children === 'Alex Rivera');
 
     expect(name?.props.numberOfLines).toBeUndefined();
-    const card = tree.root.findAllByType(Pressable)
-      .find(node => node.props.onResponderRelease);
+    const card = tree.root.findAll(node => !!node.props.onResponderRelease)[0];
     card?.props.onResponderRelease({}, { dy: 80, vy: 0.8 });
     expect(onClear).toHaveBeenCalledTimes(1);
+  });
+
+  it('only navigates to the record via the details button, not the card body', async () => {
+    const onDetails = jest.fn();
+    const tree = await renderCard(result('scanned'), { onDetails });
+
+    const swipeSurfaces = tree.root.findAll(node => !!node.props.onResponderRelease);
+    swipeSurfaces.forEach(surface => expect(surface.props.onPress).toBeUndefined());
+
+    const detailsButton = tree.root.findByProps({ accessibilityLabel: 'View Alex Rivera details' });
+    detailsButton.props.onPress();
+    expect(onDetails).toHaveBeenCalledTimes(1);
   });
 
   it('surfaces minimum safety alerts without hiding identity', async () => {
@@ -144,6 +163,32 @@ describe('ScannerResultCard', () => {
     expect(json).toContain('Medication refrigeration');
     expect(json).toContain('High support');
     expect(json).toContain('Alex Rivera');
+  });
+
+  it('renders a compact card when no attendee is identified', async () => {
+    const tree = await renderCard(result('not_scanned', {
+      participant: undefined,
+      message: 'Unrecognised QR code',
+    }));
+    const json = JSON.stringify(tree.toJSON());
+
+    expect(json).toContain('Unrecognised QR code');
+    expect(json).not.toContain('Attendee not identified');
+    expect(json).not.toContain('Ready for next attendee');
+    expect(json).not.toContain('Main entrance');
+  });
+
+  it('compact card clears on a downward swipe from the handle', async () => {
+    const onClear = jest.fn();
+    const tree = await renderCard(
+      result('not_scanned', { participant: undefined, message: 'Unrecognised QR code' }),
+      { onClear }
+    );
+    const swipeTargets = tree.root.findAll(node => !!node.props.onResponderRelease);
+
+    expect(swipeTargets.length).toBeGreaterThan(0);
+    swipeTargets[0].props.onResponderRelease({}, { dy: 80, vy: 0.8 });
+    expect(onClear).toHaveBeenCalledTimes(1);
   });
 
   it('offers retry only for retryable failures', async () => {

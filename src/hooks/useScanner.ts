@@ -266,7 +266,7 @@ export function useScanner(options: {
 
     const parsed = parseQRCode(data);
     if (!parsed) {
-      const result = failedResult(new Error('Unrecognized Attend QR code.'), {
+      const result = failedResult(new Error('Unrecognised QR code'), {
         attemptId: createAttemptId(),
         rawData: data,
         source,

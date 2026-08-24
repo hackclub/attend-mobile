@@ -303,33 +303,40 @@ export function ScannerScreen() {
               </View>
             ) : null}
           </View>
-          {!lastScan ? (
-            <Text style={styles.scanHint}>Hold the code inside the frame</Text>
-          ) : null}
+          {/* Always rendered so the frame doesn't re-centre when a result card appears */}
+          <Text
+            style={[styles.scanHint, lastScan ? styles.scanHintHidden : null]}
+            accessibilityElementsHidden={!!lastScan}
+            importantForAccessibility={lastScan ? 'no-hide-descendants' : 'auto'}
+          >
+            Hold the code inside the frame
+          </Text>
         </View>
 
         <View style={styles.bottomDock}>
           {lastScan ? (
-            <ScrollView
-              style={[
-                styles.resultCardScroll,
-                { maxHeight: Math.max(200, Math.min(height * 0.5, 480)) },
-              ]}
-              contentContainerStyle={styles.resultCardWrap}
-              bounces={false}
-              nestedScrollEnabled
-              showsVerticalScrollIndicator={false}
-            >
-              <ScannerResultCard
-                result={lastScan}
-                onDetails={viewDetails}
-                onClear={clearLastScan}
-                onRetry={() => {
-                  recordScannerActivity();
-                  void retryLastScan();
-                }}
-              />
-            </ScrollView>
+            <View style={styles.resultCardOverlay} pointerEvents="box-none">
+              <ScrollView
+                style={[
+                  styles.resultCardScroll,
+                  { maxHeight: Math.max(200, Math.min(height * 0.5, 480)) },
+                ]}
+                contentContainerStyle={styles.resultCardWrap}
+                bounces={false}
+                nestedScrollEnabled
+                showsVerticalScrollIndicator={false}
+              >
+                <ScannerResultCard
+                  result={lastScan}
+                  onDetails={viewDetails}
+                  onClear={clearLastScan}
+                  onRetry={() => {
+                    recordScannerActivity();
+                    void retryLastScan();
+                  }}
+                />
+              </ScrollView>
+            </View>
           ) : null}
 
           <View style={styles.scanTools}>
@@ -751,7 +758,10 @@ const styles = StyleSheet.create({
   bottomRight: { bottom: 0, right: 0, borderBottomWidth: 4, borderRightWidth: 4, borderBottomRightRadius: 15 },
   processingIndicator: { position: 'absolute', left: '50%', top: '50%', width: 48, height: 48, marginLeft: -24, marginTop: -24, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15,23,42,0.78)' },
   scanHint: { color: colors.white, fontSize: 14, fontWeight: '700', textShadowColor: 'rgba(0,0,0,0.65)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 5 },
+  scanHintHidden: { opacity: 0 },
   bottomDock: { paddingHorizontal: 14, paddingBottom: 8, gap: 10 },
+  // Anchored above the dock, outside layout flow, so the scan frame never shifts
+  resultCardOverlay: { position: 'absolute', bottom: '100%', left: 14, right: 14, marginBottom: 10 },
   resultCardScroll: { width: '100%', maxWidth: 620, alignSelf: 'center' },
   resultCardWrap: { width: '100%' },
   scanTools: { minHeight: 54, maxWidth: 620, width: '100%', alignSelf: 'center', flexDirection: 'row', alignItems: 'stretch', gap: 8 },

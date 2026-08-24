@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo } from 'react';
-import { AccessibilityInfo, PanResponder, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import { AccessibilityInfo, Animated, PanResponder, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ParticipantAvatar } from './ParticipantAvatar';
 import type { ScannerOutcome, ScannerResult } from '../services/scannerCore';
@@ -59,15 +59,63 @@ export function ScannerResultCard({
   const name = participant?.display_name || participant?.full_name || 'Attendee not identified';
   const firstScan = formattedFirstScan(result.firstScannedAt);
   const isFinal = result.outcome !== 'confirming';
-  const panResponder = useMemo(() => PanResponder.create({
+  const translateY = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    translateY.setValue(0);
+  }, [result.attemptId, translateY]);
+
+  const settleBack = useCallback(() => {
+    Animated.spring(translateY, {
+      toValue: 0,
+      bounciness: 4,
+      useNativeDriver: true,
+    }).start();
+  }, [translateY]);
+
+  const dismiss = useCallback(() => {
+    Animated.timing(translateY, {
+      toValue: 320,
+      duration: 150,
+      useNativeDriver: true,
+    }).start(() => {
+      translateY.setValue(0);
+      onClear();
+    });
+  }, [onClear, translateY]);
+
+  const releaseOrSettle = useCallback((dy: number, vy: number) => {
+    if (dy > 64 || vy > 0.7) {
+      dismiss();
+    } else {
+      settleBack();
+    }
+  }, [dismiss, settleBack]);
+
+  // Claims the gesture on touch-start so the surrounding ScrollView can't
+  // steal the vertical drag, and refuses to hand it back mid-swipe.
+  const handlePanResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderMove: (_, gesture) => {
+      translateY.setValue(Math.max(0, gesture.dy));
+    },
+    onPanResponderRelease: (_, gesture) => releaseOrSettle(gesture.dy, gesture.vy),
+    onPanResponderTerminate: settleBack,
+    onPanResponderTerminationRequest: () => false,
+  }), [releaseOrSettle, settleBack, translateY]);
+
+  const cardPanResponder = useMemo(() => PanResponder.create({
     onMoveShouldSetPanResponder: (_, gesture) => (
       gesture.dy > 12 && Math.abs(gesture.dy) > Math.abs(gesture.dx)
     ),
-    onPanResponderRelease: (_, gesture) => {
-      if (gesture.dy > 64 || gesture.vy > 0.7) onClear();
+    onPanResponderMove: (_, gesture) => {
+      translateY.setValue(Math.max(0, gesture.dy));
     },
-    onPanResponderTerminationRequest: () => true,
-  }), [onClear]);
+    onPanResponderRelease: (_, gesture) => releaseOrSettle(gesture.dy, gesture.vy),
+    onPanResponderTerminate: settleBack,
+    onPanResponderTerminationRequest: () => false,
+  }), [releaseOrSettle, settleBack, translateY]);
   const alerts = participant ? [
     participant.has_anaphylaxis_risk
       ? { key: 'anaphylaxis', icon: 'medical', label: 'Anaphylaxis risk', color: colors.red }
@@ -88,22 +136,63 @@ export function ScannerResultCard({
   useEffect(() => {
     if (!isFinal) return;
     const context = result.scanContext?.name;
-    const message = [config.label, name, context, result.message]
+    const message = [config.label, participant ? name : null, context, result.message]
       .filter(Boolean)
       .join('. ');
     if (Platform.OS === 'ios') {
       AccessibilityInfo.announceForAccessibility(message);
     }
-  }, [config.label, isFinal, name, result.attemptId, result.message, result.scanContext?.name]);
+  }, [config.label, isFinal, name, participant, result.attemptId, result.message, result.scanContext?.name]);
+
+  const handleZone = (
+    <View
+      style={styles.handleZone}
+      accessibilityElementsHidden
+      importantForAccessibility="no"
+      {...handlePanResponder.panHandlers}
+    >
+      <View style={styles.dragHandle} />
+    </View>
+  );
+
+  if (!participant) {
+    return (
+      <Animated.View style={{ transform: [{ translateY }] }}>
+        <View style={[styles.card, styles.cardCompact]} {...cardPanResponder.panHandlers}>
+          {handleZone}
+          <View style={styles.compactRow}>
+            <Ionicons
+              name={config.icon}
+              size={22}
+              color={config.color}
+            />
+            <Text style={styles.compactMessage} accessibilityLiveRegion={isFinal ? 'assertive' : 'polite'}>
+              {result.message || config.label}
+            </Text>
+            {result.retryable ? (
+              <Pressable
+                style={({ pressed }) => [styles.actionButton, pressed && styles.actionPressed]}
+                onPress={onRetry}
+                accessibilityRole="button"
+                accessibilityLabel="Retry scan"
+              >
+                <Ionicons name="refresh" size={18} color={colors.white} />
+                <Text style={styles.actionText}>Retry</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
+      </Animated.View>
+    );
+  }
 
   return (
-    <Pressable
+    <Animated.View style={{ transform: [{ translateY }] }}>
+    <View
       style={styles.card}
-      onPress={participant ? onDetails : undefined}
-      accessible={false}
-      {...panResponder.panHandlers}
+      {...cardPanResponder.panHandlers}
     >
-      <View style={styles.dragHandle} accessibilityElementsHidden importantForAccessibility="no" />
+      {handleZone}
       <View style={styles.identityRow}>
         <ParticipantAvatar participant={participant} />
 
@@ -168,10 +257,7 @@ export function ScannerResultCard({
           {result.outcome === 'not_scanned' && result.retryable ? (
             <Pressable
               style={({ pressed }) => [styles.actionButton, pressed && styles.actionPressed]}
-              onPress={event => {
-                event.stopPropagation();
-                onRetry();
-              }}
+              onPress={onRetry}
               accessibilityRole="button"
               accessibilityLabel="Retry scan"
             >
@@ -182,10 +268,7 @@ export function ScannerResultCard({
           {participant ? (
             <Pressable
               style={({ pressed }) => [styles.actionButton, pressed && styles.actionPressed]}
-              onPress={event => {
-                event.stopPropagation();
-                onDetails();
-              }}
+              onPress={onDetails}
               accessibilityRole="button"
               accessibilityLabel={`View ${name} details`}
             >
@@ -195,7 +278,8 @@ export function ScannerResultCard({
           ) : null}
         </View>
       </View>
-    </Pressable>
+    </View>
+    </Animated.View>
   );
 }
 
@@ -213,14 +297,34 @@ const styles = StyleSheet.create({
     elevation: 12,
     gap: 14,
   },
+  handleZone: {
+    alignSelf: 'stretch',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    marginTop: -14,
+    marginBottom: -18,
+  },
   dragHandle: {
     width: 38,
     height: 4,
-    alignSelf: 'center',
     borderRadius: 2,
     backgroundColor: colors.gray[500],
-    marginTop: -7,
-    marginBottom: -5,
+  },
+  cardCompact: {
+    paddingVertical: 14,
+    gap: 12,
+  },
+  compactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  compactMessage: {
+    flex: 1,
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '700',
   },
   identityRow: {
     flexDirection: 'row',
