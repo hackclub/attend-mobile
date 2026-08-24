@@ -609,7 +609,7 @@ export interface ScannerResult {
 
 - [ ] **Step 4: Refactor `useScanner` around one serialized request**
 
-Remove local `scans_by_context` short-circuiting, offline pending-scan creation, the two-second cooldown, and outcome haptics from the hook. Resolve cached identity through `ParticipantIndex`, set `confirming`, call Rails with a stable attempt id, merge the response through `confirmParticipant`, and set the final result. Keep one `isProcessing` lock only for the authoritative request. `retryLastScan` reuses raw data and context with a new intentional attempt id.
+Remove local `scans_by_context` short-circuiting, offline pending-scan creation, the two-second cooldown, and outcome haptics from the hook. Resolve cached identity through `ParticipantIndex`, set `confirming`, call Rails with a stable attempt id, merge the response through `confirmParticipant`, and set the final result. Keep one `isProcessing` lock only for the authoritative request. `retryLastScan` reuses the raw data, context, timestamp, and client attempt id so an ambiguous transport failure remains idempotent.
 
 - [ ] **Step 5: Run tests and typecheck**
 

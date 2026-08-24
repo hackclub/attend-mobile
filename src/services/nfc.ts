@@ -140,8 +140,10 @@ class NFCService {
       });
 
       const uriRecord = Ndef.uriRecord(data.badgeUrl);
-      const externalRecord = Ndef.externalTypeRecord(
+      const externalRecord = Ndef.record(
+        Ndef.TNF_EXTERNAL_TYPE,
         'hackclub.com:attend',
+        [],
         this.stringToBytes(data.attendToken)
       );
 

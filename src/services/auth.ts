@@ -60,7 +60,9 @@ export const authService = {
 
       console.log('=== OAuth Result ===');
       console.log('Result type:', result.type);
-      console.log('Result params:', JSON.stringify(result.params, null, 2));
+      if ('params' in result) {
+        console.log('Result params:', JSON.stringify(result.params, null, 2));
+      }
       console.log('====================');
 
       if (result.type === 'success' && result.params.code) {

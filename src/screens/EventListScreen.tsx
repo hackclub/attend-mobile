@@ -61,6 +61,7 @@ export function EventListScreen() {
   };
 
   const loadEvents = useCallback(async () => {
+    const cacheGeneration = syncService.getCacheGeneration();
     try {
       const cached = await syncService.getCachedEvents();
       if (cached.length > 0) {
@@ -69,7 +70,7 @@ export function EventListScreen() {
 
       const fresh = await api.getEvents();
       setEvents(fresh);
-      await syncService.cacheEvents(fresh);
+      await syncService.cacheEvents(fresh, cacheGeneration);
     } catch (error) {
       const cached = await syncService.getCachedEvents();
       if (cached.length > 0) {

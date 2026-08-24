@@ -68,6 +68,7 @@ export interface EmergencyContact {
   email?: string;
   relationship?: string;
   priority?: number;
+  is_primary?: boolean;
 }
 
 export interface Address {
@@ -257,11 +258,11 @@ export interface Participant {
   email: string;
   phone?: string;
   pronouns?: string;
-  headshot_url?: string;
+  headshot_url?: string | null;
   
   // Status
   status: string;
-  checked_in_at?: string;
+  checked_in_at?: string | null;
   
   // Medical
   has_anaphylaxis_risk: boolean;
@@ -322,7 +323,7 @@ export interface ScanContext {
   name: string;
   checks_in: boolean;
   is_airport: boolean;
-  position: number;
+  position?: number;
   // iso8601 with the event's utc offset, e.g. "2026-07-15T18:00:00-04:00"
   starts_at?: string | null;
   ends_at?: string | null;
@@ -358,9 +359,40 @@ export interface RemoteScan {
   id: string;
   participant_id?: string;
   participant_event_id?: string;
-  scan_context_id?: string;
-  scanned_at?: string;
+  scanned_at: string;
+  scanned_by?: string;
+  client_scan_id?: string | null;
+  source?: ScanSource;
+  scan_context?: ScanContext | null;
   created_at: string;
+}
+
+export type ScanSource = 'qr' | 'nfc' | 'manual';
+
+export type ScanOutcome = 'scanned' | 'already_scanned';
+
+export interface CreateScanOptions {
+  scanContextId?: string;
+  clientScanId: string;
+  source: ScanSource;
+  scannedAt: string;
+  signal?: AbortSignal;
+}
+
+export interface CreateScanResponse {
+  success: true;
+  outcome?: ScanOutcome;
+  first_scan_in_context: boolean;
+  first_scanned_at?: string;
+  deduplicated?: boolean;
+  scan: RemoteScan;
+  scan_context?: ScanContext;
+  participant: Participant;
+}
+
+export interface ParticipantsSyncPage {
+  participants: Participant[];
+  synced_at: string;
 }
 
 export interface ScansSyncPage {
@@ -370,13 +402,6 @@ export interface ScansSyncPage {
   // verbatim, never round-trip it through Date.
   synced_at: string;
   has_more: boolean;
-}
-
-export interface PendingScan {
-  localId: string;
-  participantId: string;
-  eventId: string;
-  scannedAt: string;
 }
 
 export interface ApiResponse<T> {
@@ -418,8 +443,13 @@ export type RootStackParamList = {
   ParticipantMain: undefined;
   ParticipantDetail: { participant: Participant };
   TicketDetail: { ticket: Ticket };
-  KioskSetup: undefined;
-  Kiosk: { pin: string; biometricUnlock: boolean };
+  KioskSetup: { scanContextId?: string; scanContextName?: string };
+  Kiosk: {
+    pin: string;
+    biometricUnlock: boolean;
+    scanContextId?: string;
+    scanContextName?: string;
+  };
 };
 
 export type MainTabParamList = {
@@ -525,5 +555,3 @@ export interface AirportModeData {
   terminals: string[];
   journeys: Journey[];
 }
-
-

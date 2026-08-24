@@ -1,27 +1,39 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import * as Haptics from 'expo-haptics';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { api, ApiError } from '../services/api';
-import { syncService } from '../services/sync';
+import { api } from '../services/api';
 import { nfcService } from '../services/nfc';
-import type { Participant, QRCodeData, ScanContext } from '../types';
+import { ParticipantIndex } from '../services/participantIndex';
+import {
+  SameCodeGate,
+  confirmingResult,
+  createAttemptId,
+  failedResult,
+  parseQRCode,
+  resultFromResponse,
+  type ScannerResult,
+} from '../services/scannerCore';
+import { syncService } from '../services/sync';
+import type { ScanContext, ScanSource } from '../types';
 
-interface ScanResult {
-  success: boolean;
-  participant?: Participant;
-  error?: string;
-  alreadyCheckedIn?: boolean;
-  firstScanInContext?: boolean;
+interface ScanRequest {
+  kind: 'participant' | 'badge';
+  identifier: string;
+  rawData: string;
+  source: ScanSource;
   scanContext?: ScanContext;
+  attemptId?: string;
+  startedAt?: string;
 }
 
-// starts_at/ends_at are serialized with the event's utc offset, so the first
-// 10 chars are the event-local calendar date — comparable to the device's
-// local date since scanners are physically at the event
-function isOnCurrentDay(context: ScanContext): boolean {
+function isOnContextDay(context: ScanContext): boolean {
   if (!context.starts_at) return true;
-  const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const offset = context.starts_at.match(/(Z|([+-])(\d{2}):(\d{2}))$/);
+  if (!offset) return true;
+  const offsetMinutes = offset[1] === 'Z'
+    ? 0
+    : (offset[2] === '-' ? -1 : 1) * (Number(offset[3]) * 60 + Number(offset[4]));
+  const nowAtContext = new Date(Date.now() + offsetMinutes * 60_000);
+  const today = nowAtContext.toISOString().slice(0, 10);
   return context.starts_at.slice(0, 10) === today;
 }
 
@@ -31,384 +43,363 @@ function isInCurrentTimeWindow(context: ScanContext): boolean {
   return now >= Date.parse(context.starts_at) && now <= Date.parse(context.ends_at);
 }
 
-export function useScanner() {
-  const { state, updateParticipant } = useApp();
+function activeContexts(contexts: ScanContext[]): ScanContext[] {
+  const activeNow = contexts.filter(isInCurrentTimeWindow);
+  if (activeNow.length > 0) return activeNow;
+  const today = contexts.filter(isOnContextDay);
+  return today.length > 0 ? today : contexts;
+}
+
+function defaultContext(contexts: ScanContext[]): ScanContext | undefined {
+  return contexts.find(isInCurrentTimeWindow)
+    ?? contexts.find(context => context.checks_in)
+    ?? contexts[0];
+}
+
+export function useScanner(options: {
+  lockedContextId?: string;
+  selectDefaultContext?: boolean;
+} = {}) {
+  const { lockedContextId, selectDefaultContext = true } = options;
+  const { state, confirmParticipant } = useApp();
   const [isProcessing, setIsProcessing] = useState(false);
-  const [lastScan, setLastScan] = useState<ScanResult | null>(null);
+  const [lastScan, setLastScan] = useState<ScannerResult | null>(null);
   const [scanContexts, setScanContexts] = useState<ScanContext[]>([]);
+  const [contextsEventId, setContextsEventId] = useState<string | null>(null);
   const [selectedContextId, setSelectedContextId] = useState<string | null>(null);
   const [isLoadingContexts, setIsLoadingContexts] = useState(false);
-  const lastScannedId = useRef<string | null>(null);
-  const scanCooldownRef = useRef<boolean>(false);
+  const processingRef = useRef(false);
+  const codeGateRef = useRef(new SameCodeGate(3000));
+  const lastRequestRef = useRef<ScanRequest | null>(null);
+  const requestAbortRef = useRef<AbortController | null>(null);
+  const nfcReadRef = useRef<symbol | null>(null);
+  const currentEventId = state.currentEvent?.id ?? null;
+  const currentEventIdRef = useRef<string | null>(currentEventId);
+  currentEventIdRef.current = currentEventId;
+  const participantIndex = useMemo(
+    () => new ParticipantIndex(state.participants),
+    [state.participants]
+  );
 
-  // Load scan contexts when event changes
-  useEffect(() => {
-    async function loadContexts() {
-      if (!state.currentEvent) {
-        setScanContexts([]);
-        setSelectedContextId(null);
-        return;
+  const applyContexts = useCallback((
+    eventId: string,
+    allContexts: ScanContext[],
+    selectDefaultIfEmpty: boolean
+  ) => {
+    const contexts = activeContexts(allContexts);
+    setScanContexts(contexts);
+    setContextsEventId(eventId);
+    setSelectedContextId(current => {
+      if (lockedContextId) {
+        return contexts.some(context => context.id === lockedContextId)
+          ? lockedContextId
+          : null;
       }
+      if (current && contexts.some(context => context.id === current)) return current;
+      if (current !== null || !selectDefaultIfEmpty || !selectDefaultContext) return null;
+      return defaultContext(contexts)?.id ?? null;
+    });
+  }, [lockedContextId, selectDefaultContext]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const eventId = state.currentEvent?.id;
+
+    codeGateRef.current.reset();
+    lastRequestRef.current = null;
+    requestAbortRef.current?.abort();
+    requestAbortRef.current = null;
+    nfcReadRef.current = null;
+    processingRef.current = false;
+    setIsProcessing(false);
+    setLastScan(null);
+    setScanContexts([]);
+    setContextsEventId(null);
+    setSelectedContextId(null);
+    setIsLoadingContexts(false);
+
+    if (!eventId) {
+      setScanContexts([]);
+      setContextsEventId(null);
+      setSelectedContextId(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+    const activeEventId = eventId;
+    const cacheGeneration = syncService.getCacheGeneration();
+
+    async function loadContexts() {
       setIsLoadingContexts(true);
-      try {
-        const allContexts = await api.getScanContexts(state.currentEvent.id);
-        // Fall back to all contexts when none are scheduled for today
-        const todayContexts = allContexts.filter(isOnCurrentDay);
-        const contexts = todayContexts.length > 0 ? todayContexts : allContexts;
-        setScanContexts(contexts);
-        // Prefer the context whose time window contains now, then the first
-        // check-in context, then the first context
-        const defaultContext =
-          contexts.find(isInCurrentTimeWindow) ||
-          contexts.find(c => c.checks_in) ||
-          contexts[0];
-        setSelectedContextId(defaultContext?.id || null);
-      } catch (error) {
-        console.error('Failed to load scan contexts:', error);
-        setScanContexts([]);
-      } finally {
+      const cached = await syncService.getCachedScanContexts(activeEventId);
+      if (!cancelled && cached.length > 0) {
+        applyContexts(activeEventId, cached, true);
         setIsLoadingContexts(false);
       }
-    }
 
-    loadContexts();
-  }, [state.currentEvent?.id]);
-
-  const parseQRCode = useCallback((data: string): QRCodeData | null => {
-    // Handle attend://checkin/{participant_id} URLs
-    const checkinUrlMatch = data.match(/^attend:\/\/checkin\/([0-9a-f-]+)$/i);
-    if (checkinUrlMatch) {
-      return { type: 'participant', id: checkinUrlMatch[1] };
-    }
-
-    // Legacy format: attend:P:{id}
-    if (data.startsWith('attend:P:')) {
-      const id = data.replace('attend:P:', '');
-      if (id && id.length > 0) {
-        return { type: 'participant', id };
-      }
-    }
-    
-    // Fallback: raw UUID
-    const uuidMatch = data.match(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    );
-    if (uuidMatch) {
-      return { type: 'participant', id: data };
-    }
-
-    return null;
-  }, []);
-
-  const parseNFCData = useCallback((payload: string, type: 'uri' | 'text' | 'external' | 'unknown'): QRCodeData | null => {
-    // External type with attend token (UUID)
-    if (type === 'external') {
-      const uuidMatch = payload.match(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-      );
-      if (uuidMatch) {
-        return { type: 'participant', id: payload };
-      }
-    }
-
-    // URI type - handle attend:// URLs only (badge.hackclub.com URLs use Slack IDs, not participant IDs)
-    if (type === 'uri') {
-      // Handle attend://checkin/{id} URLs
-      const checkinMatch = payload.match(/attend:\/\/checkin\/([0-9a-f-]+)/i);
-      if (checkinMatch) {
-        return { type: 'participant', id: checkinMatch[1] };
-      }
-    }
-
-    // Try parsing as regular QR code data
-    return parseQRCode(payload);
-  }, [parseQRCode]);
-
-  const processCheckIn = useCallback(async (participantId: string): Promise<ScanResult> => {
-    const currentEvent = state.currentEvent;
-    if (!currentEvent) {
-      return { success: false, error: 'No event selected' };
-    }
-
-    // Check if we need a context but don't have one selected
-    if (scanContexts.length > 1 && !selectedContextId) {
-      return { success: false, error: 'Please select a scan context' };
-    }
-
-    const contextId = scanContexts.length === 1 ? scanContexts[0].id : selectedContextId;
-    const selectedContext = scanContexts.find(c => c.id === contextId);
-
-    const cachedParticipant = state.participants.find(
-      p => p.participant_event_id === participantId || p.participant_id === participantId
-    );
-    
-    // Check if already scanned in THIS context
-    const existingScanInContext = cachedParticipant?.scans_by_context?.find(
-      s => s.scan_context_id === contextId
-    );
-    
-    if (existingScanInContext) {
-      return {
-        success: false,
-        participant: cachedParticipant,
-        alreadyCheckedIn: true,
-        scanContext: selectedContext,
-        error: `Already scanned at ${existingScanInContext.scan_context_name}`,
-      };
-    }
-
-    try {
-      const response = await api.createScan(currentEvent.id, participantId, contextId || undefined);
-      
-      const updatedParticipant = response.participant || cachedParticipant;
-      
-      if (updatedParticipant) {
-        updateParticipant(updatedParticipant);
-      }
-      
-      return { 
-        success: true, 
-        participant: updatedParticipant,
-        firstScanInContext: response.first_scan_in_context,
-        scanContext: selectedContext,
-      };
-    } catch (error) {
-      if (error instanceof ApiError && error.isNetworkError) {
-        await syncService.addPendingScan({
-          localId: `${Date.now()}-${participantId}`,
-          participantId,
-          eventId: currentEvent.id,
-          scannedAt: new Date().toISOString(),
-        });
-
-        const updatedParticipant = cachedParticipant
-          ? { ...cachedParticipant, checked_in_at: new Date().toISOString() }
-          : undefined;
-        
-        if (updatedParticipant) {
-          updateParticipant(updatedParticipant);
+      try {
+        const fresh = await api.getScanContexts(activeEventId);
+        if (cancelled) return;
+        applyContexts(activeEventId, fresh, cached.length === 0);
+        void syncService.cacheScanContexts(activeEventId, fresh, cacheGeneration);
+      } catch (error) {
+        if (!cancelled && cached.length === 0) {
+          console.error('Failed to load scan contexts:', error);
+          setScanContexts([]);
         }
-        
-        return {
-          success: true,
-          participant: updatedParticipant,
-          scanContext: selectedContext,
-          error: 'Saved offline - will sync later',
-        };
+      } finally {
+        if (!cancelled) setIsLoadingContexts(false);
       }
-
-      return {
-        success: false,
-        participant: cachedParticipant,
-        scanContext: selectedContext,
-        error: error instanceof Error ? error.message : 'Check-in failed',
-      };
     }
-  }, [state.currentEvent, state.participants, updateParticipant, scanContexts, selectedContextId]);
 
-  const processNfcCheckIn = useCallback(async (badgeToken: string): Promise<ScanResult> => {
+    void loadContexts();
+    return () => {
+      cancelled = true;
+    };
+  }, [applyContexts, state.currentEvent?.id]);
+
+  const runRequest = useCallback(async (
+    request: ScanRequest
+  ): Promise<ScannerResult | null> => {
     const currentEvent = state.currentEvent;
-    if (!currentEvent) {
-      return { success: false, error: 'No event selected' };
-    }
+    if (!currentEvent || processingRef.current) return null;
+    const eventId = currentEvent.id;
+    if (currentEventIdRef.current !== eventId) return null;
 
-    if (scanContexts.length > 1 && !selectedContextId) {
-      return { success: false, error: 'Please select a scan context' };
-    }
-
-    const contextId = scanContexts.length === 1 ? scanContexts[0].id : selectedContextId;
-    const selectedContext = scanContexts.find(c => c.id === contextId);
-
-    // Try to find cached participant by nfc_badge_token
-    const cachedParticipant = state.participants.find(
-      p => p.nfc_badge_token === badgeToken
-    );
-    
-    // Check if already scanned in THIS context
-    const existingScanInContext = cachedParticipant?.scans_by_context?.find(
-      s => s.scan_context_id === contextId
-    );
-    
-    if (existingScanInContext) {
-      return {
-        success: false,
-        participant: cachedParticipant,
-        alreadyCheckedIn: true,
-        scanContext: selectedContext,
-        error: `Already scanned at ${existingScanInContext.scan_context_name}`,
-      };
-    }
-
-    try {
-      const response = await api.createNfcScan(currentEvent.id, badgeToken, contextId || undefined);
-      
-      const updatedParticipant = response.participant || cachedParticipant;
-      
-      if (updatedParticipant) {
-        updateParticipant(updatedParticipant);
-      }
-      
-      return { 
-        success: true, 
-        participant: updatedParticipant,
-        firstScanInContext: response.first_scan_in_context,
-        scanContext: selectedContext,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        participant: cachedParticipant,
-        scanContext: selectedContext,
-        error: error instanceof Error ? error.message : 'Check-in failed',
-      };
-    }
-  }, [state.currentEvent, state.participants, updateParticipant, scanContexts, selectedContextId]);
-
-  const handleScan = useCallback(async (data: string): Promise<ScanResult | null> => {
-    if (scanCooldownRef.current || isProcessing) {
-      return null;
-    }
-
-    const qrData = parseQRCode(data);
-    if (!qrData) {
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      return { success: false, error: 'Invalid QR code format' };
-    }
-
-    if (qrData.id === lastScannedId.current) {
-      return null;
-    }
-
-    scanCooldownRef.current = true;
-    setTimeout(() => {
-      scanCooldownRef.current = false;
-    }, 2000);
-
-    setIsProcessing(true);
-    lastScannedId.current = qrData.id;
-
-    try {
-      const result = await processCheckIn(qrData.id);
+    const scanContext = request.scanContext;
+    if (scanContexts.length > 0 && !scanContext) {
+      const result = failedResult(new Error('Select a scan context first.'), {
+        attemptId: createAttemptId(),
+        rawData: request.rawData,
+        source: request.source,
+      });
       setLastScan(result);
-
-      if (result.success) {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      } else if (result.alreadyCheckedIn) {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      } else {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      }
-
       return result;
-    } finally {
-      setIsProcessing(false);
     }
-  }, [isProcessing, parseQRCode, processCheckIn]);
 
-  const clearLastScan = useCallback(() => {
-    setLastScan(null);
-    lastScannedId.current = null;
-  }, []);
+    const cachedParticipant = request.kind === 'badge'
+      ? participantIndex.findByNfcToken(request.identifier)
+      : participantIndex.find(request.identifier);
+    const attemptId = request.attemptId ?? createAttemptId();
+    const startedAt = request.startedAt ?? new Date().toISOString();
+    const stableRequest = { ...request, attemptId, startedAt };
+    const confirming = confirmingResult({
+      attemptId,
+      rawData: request.rawData,
+      source: request.source,
+      participant: cachedParticipant,
+      scanContext,
+    });
 
-  const selectContext = useCallback((contextId: string) => {
-    setSelectedContextId(contextId);
-  }, []);
-
-  const handleNFCScan = useCallback(async (): Promise<ScanResult | null> => {
-    if (isProcessing) return null;
-
+    processingRef.current = true;
     setIsProcessing(true);
+    const requestController = new AbortController();
+    requestAbortRef.current = requestController;
+    lastRequestRef.current = stableRequest;
+    setLastScan(confirming);
+
     try {
-      const nfcResult = await nfcService.readTag();
-      
-      if (!nfcResult.success) {
-        if (nfcResult.error === 'Cancelled') {
-          return null;
-        }
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        const result = { success: false, error: nfcResult.error || 'NFC read failed' };
-        setLastScan(result);
-        return result;
-      }
-
-      if (!nfcResult.payload || !nfcResult.type) {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        const result = { success: false, error: 'No data on NFC tag' };
-        setLastScan(result);
-        return result;
-      }
-
-      // For external type (hackclub.com:attend), the payload is the badge token
-      if (nfcResult.type === 'external') {
-        const badgeToken = nfcResult.payload;
-        
-        if (badgeToken === lastScannedId.current) {
-          return null;
-        }
-
-        lastScannedId.current = badgeToken;
-        const result = await processNfcCheckIn(badgeToken);
-        setLastScan(result);
-
-        if (result.success) {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        } else if (result.alreadyCheckedIn) {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        } else {
-          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        }
-
-        return result;
-      }
-
-      // For other types, try to parse as QR code data (fallback)
-      const parsedData = parseNFCData(nfcResult.payload, nfcResult.type);
-      if (!parsedData) {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        const result = { success: false, error: 'Unrecognized NFC badge format' };
-        setLastScan(result);
-        return result;
-      }
-
-      if (parsedData.id === lastScannedId.current) {
+      const options = {
+        scanContextId: scanContext?.id,
+        clientScanId: attemptId,
+        source: request.source,
+        scannedAt: startedAt,
+        signal: requestController.signal,
+      };
+      const response = request.kind === 'badge'
+        ? await api.createNfcScan(eventId, request.identifier, options)
+        : await api.createScan(eventId, request.identifier, options);
+      if (requestController.signal.aborted || currentEventIdRef.current !== eventId) {
         return null;
       }
+      const result = resultFromResponse({
+        attemptId,
+        rawData: request.rawData,
+        source: request.source,
+        response,
+        cachedParticipant,
+        scanContext,
+      });
 
-      lastScannedId.current = parsedData.id;
-      const result = await processCheckIn(parsedData.id);
       setLastScan(result);
-
-      if (result.success) {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      } else if (result.alreadyCheckedIn) {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      } else {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      }
-
+      void confirmParticipant(eventId, response.participant).catch(error => {
+        console.warn('[Scanner] Failed to persist confirmed participant:', error);
+      });
       return result;
     } catch (error) {
-      console.error('[Scanner] NFC scan error:', error);
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      const result = { success: false, error: 'NFC scan failed' };
+      if (requestController.signal.aborted || currentEventIdRef.current !== eventId) {
+        return null;
+      }
+      const result = failedResult(error, {
+        attemptId,
+        rawData: request.rawData,
+        source: request.source,
+        participant: cachedParticipant,
+        scanContext,
+      });
       setLastScan(result);
       return result;
     } finally {
-      setIsProcessing(false);
+      if (requestAbortRef.current === requestController) {
+        requestAbortRef.current = null;
+        processingRef.current = false;
+        setIsProcessing(false);
+      }
     }
-  }, [isProcessing, parseNFCData, processCheckIn, processNfcCheckIn]);
+  }, [confirmParticipant, participantIndex, scanContexts.length, state.currentEvent]);
+
+  const selectedContext = useMemo(() => {
+    if (contextsEventId !== currentEventId) return undefined;
+    return scanContexts.find(context => context.id === selectedContextId);
+  }, [contextsEventId, currentEventId, scanContexts, selectedContextId]);
+  const contextsReady = !!currentEventId && contextsEventId === currentEventId;
+
+  const handleScan = useCallback(async (
+    data: string,
+    source: ScanSource = 'qr'
+  ): Promise<ScannerResult | null> => {
+    if (
+      processingRef.current ||
+      !contextsReady ||
+      !codeGateRef.current.accept(data)
+    ) return null;
+
+    const parsed = parseQRCode(data);
+    if (!parsed) {
+      const result = failedResult(new Error('Unrecognized Attend QR code.'), {
+        attemptId: createAttemptId(),
+        rawData: data,
+        source,
+      });
+      setLastScan(result);
+      return result;
+    }
+
+    return runRequest({
+      kind: 'participant',
+      identifier: parsed.id,
+      rawData: data,
+      source,
+      scanContext: selectedContext,
+    });
+  }, [contextsReady, runRequest, selectedContext]);
+
+  const handleNFCScan = useCallback(async (): Promise<ScannerResult | null> => {
+    if (processingRef.current || !contextsReady) return null;
+
+    const eventIdAtStart = currentEventIdRef.current;
+    const nfcRead = Symbol('nfc-read');
+    nfcReadRef.current = nfcRead;
+    processingRef.current = true;
+    setIsProcessing(true);
+    let nfcResult;
+    try {
+      nfcResult = await nfcService.readTag();
+    } catch (error) {
+      if (currentEventIdRef.current !== eventIdAtStart) return null;
+      const result = failedResult(error, {
+        attemptId: createAttemptId(),
+        rawData: '',
+        source: 'nfc',
+      });
+      setLastScan(result);
+      return result;
+    } finally {
+      if (nfcReadRef.current === nfcRead) {
+        nfcReadRef.current = null;
+        processingRef.current = false;
+        setIsProcessing(false);
+      }
+    }
+
+    if (currentEventIdRef.current !== eventIdAtStart) return null;
+
+    if (!nfcResult.success) {
+      if (nfcResult.error === 'Cancelled') return null;
+      const result = failedResult(new Error(nfcResult.error || 'NFC read failed.'), {
+        attemptId: createAttemptId(),
+        rawData: nfcResult.payload ?? '',
+        source: 'nfc',
+      });
+      setLastScan(result);
+      return result;
+    }
+
+    if (!nfcResult.payload || !nfcResult.type) {
+      const result = failedResult(new Error('No Attend data found on this NFC tag.'), {
+        attemptId: createAttemptId(),
+        rawData: '',
+        source: 'nfc',
+      });
+      setLastScan(result);
+      return result;
+    }
+
+    if (!codeGateRef.current.accept(`nfc:${nfcResult.payload}`)) return null;
+
+    if (nfcResult.type === 'external') {
+      return runRequest({
+        kind: 'badge',
+        identifier: nfcResult.payload,
+        rawData: nfcResult.payload,
+        source: 'nfc',
+        scanContext: selectedContext,
+      });
+    }
+
+    const parsed = parseQRCode(nfcResult.payload);
+    if (!parsed) {
+      const result = failedResult(new Error('Unrecognized Attend NFC data.'), {
+        attemptId: createAttemptId(),
+        rawData: nfcResult.payload,
+        source: 'nfc',
+      });
+      setLastScan(result);
+      return result;
+    }
+
+    return runRequest({
+      kind: 'participant',
+      identifier: parsed.id,
+      rawData: nfcResult.payload,
+      source: 'nfc',
+      scanContext: selectedContext,
+    });
+  }, [contextsReady, runRequest, selectedContext]);
+
+  const retryLastScan = useCallback((): Promise<ScannerResult | null> => {
+    const request = lastRequestRef.current;
+    if (!request) return Promise.resolve(null);
+    return runRequest(request);
+  }, [runRequest]);
+
+  const hideLastScan = useCallback(() => {
+    setLastScan(null);
+  }, []);
+
+  const clearLastScan = useCallback(() => {
+    hideLastScan();
+    codeGateRef.current.reset();
+  }, [hideLastScan]);
+
+  const selectContext = useCallback((contextId: string) => {
+    if (lockedContextId) return;
+    setSelectedContextId(contextId);
+  }, [lockedContextId]);
 
   return {
     handleScan,
     handleNFCScan,
+    retryLastScan,
     isProcessing,
     lastScan,
     clearLastScan,
+    hideLastScan,
     hasEvent: !!state.currentEvent,
     scanContexts,
     selectedContextId,
     selectContext,
     isLoadingContexts,
+    contextsReady,
   };
 }

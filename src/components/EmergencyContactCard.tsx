@@ -15,7 +15,7 @@ export function EmergencyContactCard({ contact, onCall, onEmail }: EmergencyCont
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.name}>{contact.name}</Text>
-        {contact.isPrimary && (
+        {contact.is_primary && (
           <View style={styles.primaryBadge}>
             <Text style={styles.primaryText}>Primary</Text>
           </View>

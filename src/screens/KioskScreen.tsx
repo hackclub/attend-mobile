@@ -9,6 +9,8 @@ import {
   Modal,
   Pressable,
   BackHandler,
+  AccessibilityInfo,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
@@ -18,8 +20,12 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as Haptics from 'expo-haptics';
+import { ParticipantAvatar } from '../components/ParticipantAvatar';
+import { useScanFeedback } from '../hooks/useScanFeedback';
 import { useScanner } from '../hooks/useScanner';
+import { useScannerPowerMode } from '../hooks/useScannerPowerMode';
 import { useApp } from '../context/AppContext';
+import type { ScannerResult } from '../services/scannerCore';
 import { colors } from '../theme/colors';
 import type { RootStackParamList } from '../types';
 
@@ -28,33 +34,40 @@ type KioskRoute = RouteProp<RootStackParamList, 'Kiosk'>;
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const SCAN_SIZE = Math.min(SCREEN_W, SCREEN_H) * 0.55;
-const RESULT_AUTO_DISMISS_MS = 2500;
 const PIN_LENGTH = 4;
 const MAX_PIN_ATTEMPTS = 3;
 const LOCKOUT_MS = 30_000;
+const RESULT_PRIVACY_TIMEOUT_MS = 2_500;
 
 export function KioskScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<KioskRoute>();
-  const { pin: kioskPin, biometricUnlock } = route.params;
+  const {
+    pin: kioskPin,
+    biometricUnlock,
+    scanContextId,
+  } = route.params;
   const { state } = useApp();
   const {
     handleScan,
     isProcessing,
     lastScan,
-    clearLastScan,
+    hideLastScan,
     scanContexts,
     selectedContextId,
-  } = useScanner();
+    contextsReady,
+  } = useScanner({ lockedContextId: scanContextId, selectDefaultContext: false });
+  const { play, isReady: isFeedbackReady } = useScanFeedback();
 
   const [permission, requestPermission] = useCameraPermissions();
+  const { recordScannerActivity } = useScannerPowerMode(!!permission?.granted);
   const [facing, setFacing] = useState<'front' | 'back'>('front');
-  const [showResult, setShowResult] = useState(false);
   const [escapeOpen, setEscapeOpen] = useState(false);
-  const lastScannedRef = useRef<string | null>(null);
-  const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastFeedbackAttemptRef = useRef<string | null>(null);
 
   const selectedContext = scanContexts.find(c => c.id === selectedContextId);
+  const contextValid = contextsReady
+    && (scanContexts.length === 0 || !!selectedContext);
 
   // Disable back gesture / hardware back while in kiosk.
   useFocusEffect(
@@ -64,26 +77,32 @@ export function KioskScreen() {
     }, [])
   );
 
-  // Show result then auto-dismiss & resume scanning.
   useEffect(() => {
-    if (!lastScan) return;
-    setShowResult(true);
-    if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
-    dismissTimerRef.current = setTimeout(() => {
-      setShowResult(false);
-      clearLastScan();
-      lastScannedRef.current = null;
-    }, RESULT_AUTO_DISMISS_MS);
-    return () => {
-      if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
-    };
-  }, [lastScan, clearLastScan]);
+    if (!lastScan || lastScan.outcome === 'confirming') return;
+    if (lastFeedbackAttemptRef.current === lastScan.attemptId) return;
+    lastFeedbackAttemptRef.current = lastScan.attemptId;
+    play(lastScan.outcome);
+    const label = {
+      scanned: 'Scanned',
+      already_scanned: 'Already Scanned',
+      not_scanned: 'Not Scanned',
+    }[lastScan.outcome];
+    const name = lastScan.participant?.display_name || lastScan.participant?.full_name;
+    AccessibilityInfo.announceForAccessibility([label, name, lastScan.message]
+      .filter(Boolean)
+      .join('. '));
+  }, [lastScan, play]);
+
+  useEffect(() => {
+    if (!lastScan || lastScan.outcome === 'confirming') return;
+    const timer = setTimeout(hideLastScan, RESULT_PRIVACY_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [hideLastScan, lastScan]);
 
   const onBarcode = async (r: BarcodeScanningResult) => {
-    if (isProcessing || showResult) return;
-    if (lastScannedRef.current === r.data) return;
-    lastScannedRef.current = r.data;
-    await handleScan(r.data);
+    recordScannerActivity();
+    if (isProcessing) return;
+    await handleScan(r.data, 'qr');
   };
 
   const onUnlocked = () => {
@@ -108,12 +127,12 @@ export function KioskScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} onTouchStart={recordScannerActivity}>
       <CameraView
         style={StyleSheet.absoluteFillObject}
         facing={facing}
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-        onBarcodeScanned={onBarcode}
+        onBarcodeScanned={contextValid && !escapeOpen ? onBarcode : undefined}
       />
 
       {/* Dim overlay to make UI readable */}
@@ -138,16 +157,28 @@ export function KioskScreen() {
             {state.currentEvent?.name}
           </Text>
           {selectedContext && (
-            <Text style={styles.contextLabel}>
-              {selectedContext.is_airport ? '✈️ ' : ''}
-              {selectedContext.name}
-            </Text>
+            <View style={styles.contextRow}>
+              <Ionicons
+                name={selectedContext.is_airport ? 'airplane' : 'scan'}
+                size={15}
+                color="rgba(255,255,255,0.6)"
+              />
+              <Text style={styles.contextLabel}>{selectedContext.name}</Text>
+            </View>
           )}
         </View>
 
         {/* Big prompt */}
         <View style={styles.promptWrap}>
-          <Text style={styles.bigPrompt}>Scan your QR code to check in</Text>
+          <Text style={styles.bigPrompt}>
+            {!contextsReady
+              ? 'Loading scan context'
+              : !contextValid
+                ? 'Scan context unavailable'
+                : !isFeedbackReady
+                  ? 'Preparing scanner'
+                  : 'Scan your QR code'}
+          </Text>
         </View>
 
         {/* Scan area */}
@@ -173,19 +204,7 @@ export function KioskScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Success / result popup */}
-        {showResult && lastScan && (
-          <KioskResult
-            success={lastScan.success}
-            alreadyCheckedIn={!!lastScan.alreadyCheckedIn}
-            name={
-              lastScan.participant?.display_name ||
-              lastScan.participant?.full_name ||
-              ''
-            }
-            error={lastScan.error}
-          />
-        )}
+        {lastScan ? <KioskResult result={lastScan} /> : null}
       </SafeAreaView>
 
       {/* Escape modal */}
@@ -200,37 +219,38 @@ export function KioskScreen() {
   );
 }
 
-interface ResultProps {
-  success: boolean;
-  alreadyCheckedIn: boolean;
-  name: string;
-  error?: string;
-}
-
-function KioskResult({ success, alreadyCheckedIn, name, error }: ResultProps) {
-  const tint = success
-    ? colors.green
-    : alreadyCheckedIn
-    ? colors.orange
-    : colors.red;
-  const icon = success
-    ? 'checkmark-circle'
-    : alreadyCheckedIn
-    ? 'information-circle'
-    : 'close-circle';
-  const label = success
-    ? 'Checked in'
-    : alreadyCheckedIn
-    ? 'Already checked in'
-    : error || 'Try again';
+function KioskResult({ result }: { result: ScannerResult }) {
+  const status = {
+    confirming: { tint: colors.blue, icon: 'sync' as const, label: 'Confirming' },
+    scanned: { tint: colors.green, icon: 'checkmark-circle' as const, label: 'Scanned' },
+    already_scanned: { tint: colors.orange, icon: 'time' as const, label: 'Already Scanned' },
+    not_scanned: { tint: colors.redOnDark, icon: 'close-circle' as const, label: 'Not Scanned' },
+  }[result.outcome];
+  const name = result.participant?.display_name || result.participant?.full_name || '';
 
   return (
-    <View style={styles.resultBackdrop} pointerEvents="none">
-      <View style={[styles.resultCard, { borderColor: tint }]}>
-        <Ionicons name={icon as any} size={64} color={tint} />
-        {name ? <Text style={styles.resultName}>{name}</Text> : null}
-        <Text style={[styles.resultLabel, { color: tint }]}>{label}</Text>
+    <View style={styles.resultBackdrop} pointerEvents="box-none">
+      <ScrollView
+        style={styles.resultScroll}
+        contentContainerStyle={styles.resultScrollContent}
+        bounces={false}
+        showsVerticalScrollIndicator={false}
+      >
+      <View style={[styles.resultCard, { borderColor: status.tint }]}>
+        <ParticipantAvatar participant={result.participant} size={76} />
+        <View style={styles.resultCopy}>
+          <View style={styles.resultStatusRow}>
+            <Ionicons name={status.icon} size={22} color={status.tint} />
+            <Text style={[styles.resultLabel, { color: status.tint }]}>{status.label}</Text>
+          </View>
+          {name ? <Text style={styles.resultName}>{name}</Text> : null}
+          {result.message ? <Text style={styles.resultMessage}>{result.message}</Text> : null}
+          <Text style={styles.resultReady}>
+            {result.outcome === 'confirming' ? 'Hold steady' : 'Ready for next attendee'}
+          </Text>
+        </View>
       </View>
+      </ScrollView>
     </View>
   );
 }
@@ -410,8 +430,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 8,
     left: 8,
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 50,
@@ -426,8 +446,8 @@ const styles = StyleSheet.create({
   contextLabel: {
     fontSize: 14,
     color: 'rgba(255,255,255,0.6)',
-    marginTop: 4,
   },
+  contextRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 },
 
   promptWrap: { paddingHorizontal: 24, marginTop: 32, alignItems: 'center' },
   bigPrompt: {
@@ -464,32 +484,40 @@ const styles = StyleSheet.create({
   resultBackdrop: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 24,
+    paddingBottom: 88,
   },
   resultCard: {
-    backgroundColor: colors.white,
-    paddingVertical: 40,
-    paddingHorizontal: 48,
-    borderRadius: 28,
+    width: '100%',
+    maxWidth: 640,
+    minHeight: 116,
+    backgroundColor: 'rgba(15,23,42,0.97)',
+    padding: 18,
+    borderRadius: 22,
+    flexDirection: 'row',
     alignItems: 'center',
-    minWidth: 340,
-    maxWidth: '80%',
-    borderWidth: 3,
+    gap: 18,
+    borderWidth: 2,
     shadowColor: '#000',
     shadowOpacity: 0.25,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 12 },
     elevation: 12,
   },
+  resultScroll: { width: '100%', maxWidth: 640, maxHeight: '55%' },
+  resultScrollContent: { flexGrow: 1, justifyContent: 'flex-end' },
   resultName: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: colors.text.primary,
-    marginTop: 16,
-    textAlign: 'center',
+    fontSize: 24,
+    lineHeight: 29,
+    fontWeight: '800',
+    color: colors.white,
   },
-  resultLabel: { fontSize: 22, fontWeight: '600', marginTop: 8, textAlign: 'center' },
+  resultCopy: { flex: 1, gap: 3 },
+  resultStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  resultLabel: { fontSize: 17, fontWeight: '800' },
+  resultMessage: { color: colors.gray[200], fontSize: 14, lineHeight: 19 },
+  resultReady: { color: colors.gray[400], fontSize: 13, fontWeight: '600', marginTop: 3 },
 
   modalBackdrop: {
     flex: 1,
