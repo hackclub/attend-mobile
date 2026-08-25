@@ -86,6 +86,11 @@ export function ScannerScreen() {
   const [contextDropdownOpen, setContextDropdownOpen] = useState(false);
   const [isFocused, setIsFocused] = useState(true);
   const lastFeedbackAttemptRef = useRef<string | null>(null);
+  const scanAreaRef = useRef<View>(null);
+  // Window-space rect of the scan frame, so the scrim cutout can track it.
+  const [scanFrameRect, setScanFrameRect] = useState<{
+    x: number; y: number; width: number; height: number;
+  } | null>(null);
 
   const scanAreaSize = Math.min(width * 0.66, height * 0.39, isPad ? 420 : 300);
   const selectedContext = contextsReady
@@ -112,6 +117,18 @@ export function ScannerScreen() {
       return () => setIsFocused(false);
     }, [])
   );
+
+  const measureScanArea = useCallback(() => {
+    scanAreaRef.current?.measureInWindow((x, y, w, h) => {
+      if (w > 0 && h > 0) {
+        setScanFrameRect(prev =>
+          prev && prev.x === x && prev.y === y && prev.width === w && prev.height === h
+            ? prev
+            : { x, y, width: w, height: h }
+        );
+      }
+    });
+  }, []);
 
   useEffect(() => {
     if (!lastScan || lastScan.outcome === 'confirming') return;
@@ -215,9 +232,16 @@ export function ScannerScreen() {
       ) : null}
 
       <View style={styles.cameraScrim} pointerEvents="none">
-        <View style={styles.topScrim} />
-        <View style={styles.middleScrim} />
-        <View style={styles.bottomScrim} />
+        {scanFrameRect ? (
+          <>
+            <View style={[styles.scrim, { top: 0, left: 0, right: 0, height: scanFrameRect.y }]} />
+            <View style={[styles.scrim, { top: scanFrameRect.y, left: 0, width: scanFrameRect.x, height: scanFrameRect.height }]} />
+            <View style={[styles.scrim, { top: scanFrameRect.y, left: scanFrameRect.x + scanFrameRect.width, right: 0, height: scanFrameRect.height }]} />
+            <View style={[styles.scrim, { top: scanFrameRect.y + scanFrameRect.height, left: 0, right: 0, bottom: 0 }]} />
+          </>
+        ) : (
+          <View style={[styles.scrim, StyleSheet.absoluteFillObject]} />
+        )}
       </View>
 
       <SafeAreaView style={styles.overlay} edges={['top', 'bottom']}>
@@ -299,8 +323,10 @@ export function ScannerScreen() {
           }}
         />
 
-        <View style={styles.scanStage}>
+        <View style={styles.scanStage} onLayout={measureScanArea}>
           <View
+            ref={scanAreaRef}
+            onLayout={measureScanArea}
             style={[styles.scanArea, { width: scanAreaSize, height: scanAreaSize }]}
             accessibilityLabel="QR code scanning area"
           >
@@ -686,9 +712,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.gray[900] },
   overlay: { flex: 1 },
   cameraScrim: { ...StyleSheet.absoluteFillObject },
-  topScrim: { height: '28%', backgroundColor: 'rgba(15,23,42,0.58)' },
-  middleScrim: { flex: 1, backgroundColor: 'rgba(15,23,42,0.08)' },
-  bottomScrim: { height: '38%', backgroundColor: 'rgba(15,23,42,0.62)' },
+  scrim: { position: 'absolute', backgroundColor: 'rgba(15,23,42,0.52)' },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 14 },
   messageTitle: { color: colors.white, fontSize: 23, lineHeight: 29, fontWeight: '800', textAlign: 'center' },
   messageText: { color: colors.gray[300], fontSize: 16, lineHeight: 23, textAlign: 'center', maxWidth: 360 },
