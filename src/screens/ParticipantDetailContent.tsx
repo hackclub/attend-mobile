@@ -455,18 +455,6 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
         {currentParticipant.safeguarding_detail?.other_instructions && (
           <InfoRow label="Other Instructions" value={currentParticipant.safeguarding_detail.other_instructions} />
         )}
-        {currentParticipant.safeguarding_detail && (
-          <>
-            <View style={styles.safeguardingRow}>
-              <Text style={styles.safeguardingLabel}>Curfew Acknowledged</Text>
-              <Text style={styles.safeguardingValue}>{currentParticipant.safeguarding_detail.curfew_acknowledged ? 'Yes' : 'No'}</Text>
-            </View>
-            <View style={styles.safeguardingRow}>
-              <Text style={styles.safeguardingLabel}>Overnight Rules Acknowledged</Text>
-              <Text style={styles.safeguardingValue}>{currentParticipant.safeguarding_detail.overnight_rules_acknowledged ? 'Yes' : 'No'}</Text>
-            </View>
-          </>
-        )}
       </Section>
 
       <Section title="Waiver Status">

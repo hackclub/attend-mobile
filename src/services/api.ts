@@ -1,6 +1,6 @@
 import { secureStorage } from './storage';
 import type {
-  AirportModeData,
+  TravelCalendarData,
   ApiResponse,
   CreateScanOptions,
   CreateScanResponse,
@@ -114,12 +114,16 @@ class ApiClient {
     });
   }
 
-  // Dev-only: exchange a user_id for a token (the Rails /session endpoint
-  // accepts user_id in development). Used by the LoginScreen dev shortcut.
-  async devSession(userId: string): Promise<{ token: string; user: User }> {
+  // Dev-only: exchange a user_id or email for a token (the Rails /session
+  // endpoint accepts either in development). Used by the LoginScreen dev
+  // shortcuts. Emails are stable across dev databases; UUIDs are not.
+  async devSession(identifier: { userId: string } | { email: string }): Promise<{ token: string; user: User }> {
+    const body = 'userId' in identifier
+      ? { user_id: identifier.userId }
+      : { dev_email: identifier.email };
     return this.request<{ token: string; user: User }>('/api/v1/session', {
       method: 'POST',
-      body: JSON.stringify({ user_id: userId }),
+      body: JSON.stringify(body),
     });
   }
 
@@ -276,11 +280,8 @@ class ApiClient {
     }
   }
 
-  async getAirportMode(eventId: string, tab: 'inbound' | 'outbound' = 'inbound'): Promise<AirportModeData> {
-    const response = await this.request<AirportModeData>(
-      `/api/v1/events/${eventId}/airport_mode?tab=${tab}`
-    );
-    return response;
+  async getTravelCalendar(eventId: string): Promise<TravelCalendarData> {
+    return this.request<TravelCalendarData>(`/api/v1/events/${eventId}/travel`);
   }
 
   async registerPushToken(token: string): Promise<void> {
