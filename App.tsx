@@ -7,6 +7,7 @@ import type { AppleIcon } from 'react-native-bottom-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Linking from 'expo-linking';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { notificationService } from './src/services/notifications';
 import { AppProvider, useApp } from './src/context/AppContext';
 import { LoginScreen } from './src/screens/LoginScreen';
@@ -45,6 +46,14 @@ Sentry.init({
   // uncomment the line below to enable Spotlight (https://spotlightjs.com)
   // spotlight: __DEV__,
 });
+
+// Portrait is requested at runtime instead of android:screenOrientation in
+// the manifest: Play flags the manifest attribute, and Android 16+ ignores
+// this request on large screens (foldables/tablets rotate freely) while
+// phones still hold portrait. iOS keeps its Info.plist orientation masks.
+if (Platform.OS === 'android') {
+  ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+}
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createNativeBottomTabNavigator<MainTabParamList>();

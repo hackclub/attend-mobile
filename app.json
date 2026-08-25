@@ -4,7 +4,6 @@
     "slug": "attend-scanner",
     "owner": "hack-club",
     "version": "1.0.0",
-    "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "attend",
     "userInterfaceStyle": "light",
@@ -109,7 +108,8 @@
           "includeNdefEntitlement": false
         }
       ],
-      "expo-audio"
+      "expo-audio",
+      "./plugins/withScannerOrientationFix"
     ],
     "extra": {
       "eas": {
