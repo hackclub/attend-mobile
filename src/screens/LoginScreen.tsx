@@ -19,19 +19,20 @@ const HERO = require('../../assets/login-hero.jpg');
 // Number of bands used to fake a bottom-up dark gradient over the hero photo.
 const GRADIENT_STOPS = 18;
 
-// Dev-only: a non-admin participant with a confirmed ticket, for testing the
-// participant-only experience without an admin OAuth login.
-const DEV_PARTICIPANT_USER_ID = '749e91d8-4f07-4de8-b959-09573239b0a7';
+// Dev-only sign-in shortcuts, matched to the backend's seeded users by email
+// (emails are stable across dev databases; UUIDs are not).
+const DEV_PARTICIPANT_EMAIL = 'participant-demo@hackclub.com';
+const DEV_ORGANIZER_EMAIL = 'admin@hackclub.com';
 
 export function LoginScreen() {
   const { login, devLogin } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleDevParticipant = async () => {
+  const handleDevLogin = async (email: string) => {
     setIsLoading(true);
     try {
-      const ok = await devLogin(DEV_PARTICIPANT_USER_ID);
-      if (!ok) Alert.alert('Dev login failed', 'Could not sign in as the demo participant.');
+      const ok = await devLogin({ email });
+      if (!ok) Alert.alert('Dev login failed', `Could not sign in as ${email}.`);
     } finally {
       setIsLoading(false);
     }
@@ -95,14 +96,24 @@ export function LoginScreen() {
           </TouchableOpacity>
 
           {__DEV__ && (
-            <TouchableOpacity
-              style={styles.devButton}
-              onPress={handleDevParticipant}
-              disabled={isLoading}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.devButtonText}>Dev: sign in as participant</Text>
-            </TouchableOpacity>
+            <View style={styles.devRow}>
+              <TouchableOpacity
+                style={[styles.devButton, styles.devButtonHalf]}
+                onPress={() => handleDevLogin(DEV_PARTICIPANT_EMAIL)}
+                disabled={isLoading}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.devButtonText}>Dev: participant</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.devButton, styles.devButtonHalf]}
+                onPress={() => handleDevLogin(DEV_ORGANIZER_EMAIL)}
+                disabled={isLoading}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.devButtonText}>Dev: organizer</Text>
+              </TouchableOpacity>
+            </View>
           )}
 
           <Text style={styles.footer}>For attendees and event staff.</Text>
@@ -161,15 +172,19 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.7 },
   buttonText: { fontSize: 17, fontWeight: '700', color: colors.red },
-  devButton: {
+  devRow: {
     marginTop: 14,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  devButton: {
     paddingVertical: 13,
     borderRadius: 14,
-    width: '100%',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.35)',
   },
+  devButtonHalf: { flex: 1 },
   devButtonText: { color: colors.white, fontSize: 14, fontWeight: '600' },
   footer: {
     marginTop: 20,

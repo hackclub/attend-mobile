@@ -114,7 +114,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
 interface AppContextValue {
   state: AppState;
   login: () => Promise<boolean>;
-  devLogin: (userId: string) => Promise<boolean>;
+  devLogin: (identifier: { userId: string } | { email: string }) => Promise<boolean>;
   logout: () => Promise<void>;
   selectEvent: (event: Event) => Promise<void>;
   refreshParticipants: () => Promise<void>;
@@ -219,8 +219,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return false;
   }, []);
 
-  const devLogin = useCallback(async (userId: string): Promise<boolean> => {
-    const result = await authService.devLogin(userId);
+  const devLogin = useCallback(async (identifier: { userId: string } | { email: string }): Promise<boolean> => {
+    const result = await authService.devLogin(identifier);
     if (result.success && result.user) {
       const token = await authService.getToken();
       dispatch({ type: 'SET_AUTH', payload: { user: result.user, token: token! } });

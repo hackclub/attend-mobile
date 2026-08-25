@@ -105,11 +105,11 @@ export const authService = {
     }
   },
 
-  // Dev-only sign-in that bypasses OAuth by exchanging a known user_id for a
-  // token. Only wired up behind __DEV__ in the UI.
-  async devLogin(userId: string): Promise<AuthResult> {
+  // Dev-only sign-in that bypasses OAuth by exchanging a known user_id or
+  // email for a token. Only wired up behind __DEV__ in the UI.
+  async devLogin(identifier: { userId: string } | { email: string }): Promise<AuthResult> {
     try {
-      const { token, user } = await api.devSession(userId);
+      const { token, user } = await api.devSession(identifier);
       await secureStorage.setToken(token);
       await secureStorage.setUser(user);
       return { success: true, user };
