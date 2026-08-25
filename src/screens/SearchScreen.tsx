@@ -24,6 +24,7 @@ import { FilterSheet } from '../components/FilterSheet';
 import { ParticipantDetailContent } from './ParticipantDetailContent';
 import { api } from '../services/api';
 import { colors } from '../theme/colors';
+import { ScreenHeader, SearchField, ui } from '../components/ui';
 import {
   applyFilters,
   applySort,
@@ -183,31 +184,14 @@ export function SearchScreen() {
 
   const sidebar = (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Participants</Text>
-        <Text style={styles.headerSubtitle}>{currentEvent.name}</Text>
-      </View>
+      <ScreenHeader title="Participants" subtitle={currentEvent.name} />
 
-      <View style={styles.searchContainer}>
-        <View style={styles.searchInputContainer}>
-          <Ionicons name="search" size={18} color={colors.text.muted} style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by name or email..."
-            placeholderTextColor={colors.text.muted}
-            value={inputValue}
-            onChangeText={handleSearch}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-          />
-          {inputValue.length > 0 && (
-            <TouchableOpacity onPress={handleClear} style={styles.clearButton}>
-              <Ionicons name="close-circle" size={18} color={colors.text.muted} />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
+      <SearchField
+        value={inputValue}
+        onChangeText={handleSearch}
+        onClear={handleClear}
+        placeholder="Search by name or email"
+      />
 
       <View style={styles.filtersContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersScroll}>
@@ -388,28 +372,18 @@ interface ViewChipProps {
 function ViewChip({ label, count, isActive, isSaved, onPress }: ViewChipProps) {
   return (
     <TouchableOpacity
-      style={[
-        styles.filterChip,
-        isActive && { backgroundColor: colors.red + '15', borderColor: colors.red },
-      ]}
+      style={[ui.chip, isActive && ui.chipActive]}
       onPress={onPress}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityState={{ selected: isActive }}
     >
       {isSaved && (
-        <Ionicons name="bookmark" size={12} color={isActive ? colors.red : colors.text.muted} />
+        <Ionicons name="bookmark" size={12} color={isActive ? colors.white : colors.gray[400]} />
       )}
-      <Text
-        style={[
-          styles.filterChipText,
-          isActive && { color: colors.red },
-        ]}
-      >
-        {label}
-      </Text>
-      <View style={[styles.filterChipCount, isActive && { backgroundColor: colors.red }]}>
-        <Text style={[styles.filterChipCountText, isActive && { color: colors.white }]}>
-          {count}
-        </Text>
+      <Text style={[ui.chipText, isActive && ui.chipTextActive]}>{label}</Text>
+      <View style={[ui.chipBadge, isActive && ui.chipBadgeActive]}>
+        <Text style={[ui.chipBadgeText, isActive && ui.chipBadgeTextActive]}>{count}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -420,52 +394,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    backgroundColor: colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray[200],
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text.primary,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    marginTop: 2,
-  },
-  searchContainer: {
-    padding: 16,
-    paddingBottom: 12,
-    backgroundColor: colors.white,
-  },
-  searchInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: colors.text.primary,
-  },
-  clearButton: {
-    padding: 8,
-  },
   filtersContainer: {
-    backgroundColor: colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray[200],
-    paddingBottom: 12,
+    paddingTop: 8,
+    paddingBottom: 4,
   },
   filtersScroll: {
     paddingHorizontal: 16,
@@ -474,43 +405,14 @@ const styles = StyleSheet.create({
   filterSpacer: {
     height: 8,
   },
-  filterChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.gray[300],
-    backgroundColor: colors.white,
-    gap: 6,
-  },
-  filterChipText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.text.secondary,
-  },
-  filterChipCount: {
-    backgroundColor: colors.gray[200],
-    borderRadius: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    minWidth: 24,
-    alignItems: 'center',
-  },
-  filterChipCountText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.text.secondary,
-  },
   toolButton: {
+    minHeight: 36,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.gray[300],
     backgroundColor: colors.white,
   },
@@ -520,25 +422,27 @@ const styles = StyleSheet.create({
   },
   toolButtonText: {
     fontSize: 13,
-    fontWeight: '600',
-    color: colors.text.secondary,
+    fontWeight: '700',
+    color: colors.gray[600],
   },
   toolButtonTextActive: {
     color: colors.red,
   },
   ruleChip: {
+    minHeight: 36,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    borderRadius: 8,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.red + '55',
     backgroundColor: colors.red + '10',
     maxWidth: 240,
   },
   ruleChipText: {
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
     color: colors.red,
   },
   loadingContainer: {

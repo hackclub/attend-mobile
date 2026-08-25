@@ -7,7 +7,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "attend",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "runtimeVersion": {
       "policy": "appVersion"
     },
@@ -26,11 +26,13 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.hackclub.attend",
       "entitlements": {
-        "com.apple.security.application-groups": ["group.com.hackclub.attend"]
+        "com.apple.security.application-groups": [
+          "group.com.hackclub.attend"
+        ]
       },
       "infoPlist": {
-        "NFCReaderUsageDescription": "Attend uses NFC to scan and write badges for event check-in.",
-        "NSCameraUsageDescription": "Attend needs camera access to scan QR codes for event check-in.",
+        "NFCReaderUsageDescription": "Attend uses NFC to scan and write attendee badges.",
+        "NSCameraUsageDescription": "Attend needs camera access to scan attendee QR codes.",
         "NSFaceIDUsageDescription": "Attend uses Face ID to protect sensitive participant information.",
         "ITSAppUsesNonExemptEncryption": false,
         "NSSupportsLiveActivities": true,
@@ -58,7 +60,8 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#EC3750"
+        "backgroundColor": "#EC3750",
+        "monochromeImage": "./assets/adaptive-icon.png"
       },
       "package": "com.hackclub.attend",
       "permissions": [
@@ -102,10 +105,11 @@
       [
         "react-native-nfc-manager",
         {
-          "nfcPermission": "Attend uses NFC to scan and write badges for event check-in.",
+          "nfcPermission": "Attend uses NFC to scan and write attendee badges.",
           "includeNdefEntitlement": false
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "extra": {
       "eas": {

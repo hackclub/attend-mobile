@@ -70,3 +70,120 @@ describe('api.getScans', () => {
     expect(result.has_more).toBe(true);
   });
 });
+
+describe('api.createScan', () => {
+  it('sends the stable attempt id, source, context, and timestamp', async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        outcome: 'scanned',
+        first_scan_in_context: true,
+        first_scanned_at: '2026-08-24T09:41:00Z',
+        deduplicated: false,
+        scan: {
+          id: 'scan-1',
+          participant_event_id: 'participant-1',
+          scanned_at: '2026-08-24T09:41:00Z',
+          created_at: '2026-08-24T09:41:00Z',
+        },
+        scan_context: {
+          id: 'context-1',
+          name: 'Exit',
+          checks_in: false,
+          is_airport: false,
+          position: 1,
+        },
+        participant: {
+          participant_id: 'person-1',
+          participant_event_id: 'participant-1',
+          display_name: 'Test Attendee',
+          full_name: 'Test Attendee',
+          email: 'attendee@example.com',
+          status: 'complete',
+          has_anaphylaxis_risk: false,
+          requires_refrigeration: false,
+          cross_contamination_risk: false,
+          freedom_waiver_granted: false,
+          high_support_flag: false,
+          can_leave_unaccompanied: false,
+          waiver_signed: true,
+        },
+      })
+    );
+
+    const response = await api.createScan('event-1', 'participant-1', {
+      scanContextId: 'context-1',
+      clientScanId: 'attempt-1',
+      source: 'qr',
+      scannedAt: '2026-08-24T09:41:00Z',
+    });
+
+    expect(response.outcome).toBe('scanned');
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body as string)).toEqual({
+      participant_id: 'participant-1',
+      scan_context_id: 'context-1',
+      client_scan_id: 'attempt-1',
+      source: 'qr',
+      scanned_at: '2026-08-24T09:41:00Z',
+    });
+  });
+
+  it('times out as an unconfirmed network failure', async () => {
+    jest.useFakeTimers();
+    mockFetch.mockImplementationOnce((_url, options) => new Promise((_resolve, reject) => {
+      options?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+    }));
+
+    const request = api.createScan('event-1', 'participant-1', {
+      scanContextId: 'context-1',
+      clientScanId: 'attempt-timeout',
+      source: 'qr',
+      scannedAt: '2026-08-24T09:41:00Z',
+    });
+    const expectation = expect(request).rejects.toMatchObject({
+      status: 0,
+      message: 'Request timed out. No scan was confirmed.',
+    });
+
+    await jest.advanceTimersByTimeAsync(8_000);
+    await expectation;
+    jest.useRealTimers();
+  });
+
+  it('aborts an in-flight scan when its event is retired', async () => {
+    mockFetch.mockImplementationOnce((_url, options) => new Promise((_resolve, reject) => {
+      if (options?.signal?.aborted) {
+        reject(new Error('aborted'));
+        return;
+      }
+      options?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+    }));
+    const controller = new AbortController();
+    const request = api.createScan('event-1', 'participant-1', {
+      scanContextId: 'context-1',
+      clientScanId: 'attempt-aborted',
+      source: 'qr',
+      scannedAt: '2026-08-24T09:41:00Z',
+      signal: controller.signal,
+    });
+
+    controller.abort();
+
+    await expect(request).rejects.toThrow('aborted');
+  });
+});
+
+describe('api.getParticipants', () => {
+  it('sends the delta cursor and returns the server sync cursor', async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({ participants: [], synced_at: '2026-08-24T09:45:00Z' })
+    );
+
+    const page = await api.getParticipants('event-1', '2026-08-24T09:40:00Z');
+
+    expect(mockFetch.mock.calls[0][0]).toContain(
+      `updated_since=${encodeURIComponent('2026-08-24T09:40:00Z')}`
+    );
+    expect(page).toEqual({ participants: [], synced_at: '2026-08-24T09:45:00Z' });
+  });
+});

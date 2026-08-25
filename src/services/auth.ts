@@ -60,7 +60,9 @@ export const authService = {
 
       console.log('=== OAuth Result ===');
       console.log('Result type:', result.type);
-      console.log('Result params:', JSON.stringify(result.params, null, 2));
+      if ('params' in result) {
+        console.log('Result params:', JSON.stringify(result.params, null, 2));
+      }
       console.log('====================');
 
       if (result.type === 'success' && result.params.code) {
@@ -103,11 +105,11 @@ export const authService = {
     }
   },
 
-  // Dev-only sign-in that bypasses OAuth by exchanging a known user_id for a
-  // token. Only wired up behind __DEV__ in the UI.
-  async devLogin(userId: string): Promise<AuthResult> {
+  // Dev-only sign-in that bypasses OAuth by exchanging a known user_id or
+  // email for a token. Only wired up behind __DEV__ in the UI.
+  async devLogin(identifier: { userId: string } | { email: string }): Promise<AuthResult> {
     try {
-      const { token, user } = await api.devSession(userId);
+      const { token, user } = await api.devSession(identifier);
       await secureStorage.setToken(token);
       await secureStorage.setUser(user);
       return { success: true, user };

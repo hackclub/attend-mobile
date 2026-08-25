@@ -12,8 +12,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RouteProp } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { colors } from '../theme/colors';
 import { useApp } from '../context/AppContext';
@@ -21,11 +22,13 @@ import { useBiometric } from '../hooks/useBiometric';
 import type { RootStackParamList } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'KioskSetup'>;
+type KioskSetupRoute = RouteProp<RootStackParamList, 'KioskSetup'>;
 
 const PIN_LENGTH = 4;
 
 export function KioskSetupScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const route = useRoute<KioskSetupRoute>();
   const { state } = useApp();
   const { isAvailable: biometricAvailable, biometricType } = useBiometric();
 
@@ -77,6 +80,8 @@ export function KioskSetupScreen() {
     navigation.replace('Kiosk', {
       pin: entered,
       biometricUnlock: biometricAvailable && useBiometricUnlock,
+      scanContextId: route.params.scanContextId,
+      scanContextName: route.params.scanContextName,
     });
   };
 
@@ -120,9 +125,15 @@ export function KioskSetupScreen() {
           </View>
           <Text style={styles.heroTitle}>Set a {PIN_LENGTH}-digit PIN</Text>
           <Text style={styles.heroSubtitle}>
-            Attendees can self-scan to check in. Staff will need this PIN
+            Attendees can scan themselves. Staff will need this PIN
             {biometricAvailable ? ` or ${biometricType}` : ''} to exit kiosk mode.
           </Text>
+          <View style={styles.contextPill}>
+            <Ionicons name="scan" size={16} color={colors.text.secondary} />
+            <Text style={styles.contextPillText}>
+              {route.params.scanContextName || 'No scan context'}
+            </Text>
+          </View>
         </View>
 
         <View style={styles.pinSection}>
@@ -234,6 +245,17 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     paddingHorizontal: 16,
   },
+  contextPill: {
+    minHeight: 40,
+    marginTop: 16,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    backgroundColor: colors.gray[100],
+  },
+  contextPillText: { color: colors.text.secondary, fontSize: 14, fontWeight: '700' },
   pinSection: { alignItems: 'center', marginBottom: 32 },
   stepLabel: {
     fontSize: 13,

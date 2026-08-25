@@ -68,6 +68,7 @@ export interface EmergencyContact {
   email?: string;
   relationship?: string;
   priority?: number;
+  is_primary?: boolean;
 }
 
 export interface Address {
@@ -148,8 +149,6 @@ export interface SafeguardingDetail {
   high_support_notes?: string;
   authorized_pickup_adults?: string;
   other_instructions?: string;
-  curfew_acknowledged?: boolean;
-  overnight_rules_acknowledged?: boolean;
 }
 
 export interface Consent {
@@ -257,11 +256,11 @@ export interface Participant {
   email: string;
   phone?: string;
   pronouns?: string;
-  headshot_url?: string;
+  headshot_url?: string | null;
   
   // Status
   status: string;
-  checked_in_at?: string;
+  checked_in_at?: string | null;
   
   // Medical
   has_anaphylaxis_risk: boolean;
@@ -322,7 +321,7 @@ export interface ScanContext {
   name: string;
   checks_in: boolean;
   is_airport: boolean;
-  position: number;
+  position?: number;
   // iso8601 with the event's utc offset, e.g. "2026-07-15T18:00:00-04:00"
   starts_at?: string | null;
   ends_at?: string | null;
@@ -358,9 +357,40 @@ export interface RemoteScan {
   id: string;
   participant_id?: string;
   participant_event_id?: string;
-  scan_context_id?: string;
-  scanned_at?: string;
+  scanned_at: string;
+  scanned_by?: string;
+  client_scan_id?: string | null;
+  source?: ScanSource;
+  scan_context?: ScanContext | null;
   created_at: string;
+}
+
+export type ScanSource = 'qr' | 'nfc' | 'manual';
+
+export type ScanOutcome = 'scanned' | 'already_scanned';
+
+export interface CreateScanOptions {
+  scanContextId?: string;
+  clientScanId: string;
+  source: ScanSource;
+  scannedAt: string;
+  signal?: AbortSignal;
+}
+
+export interface CreateScanResponse {
+  success: true;
+  outcome?: ScanOutcome;
+  first_scan_in_context: boolean;
+  first_scanned_at?: string;
+  deduplicated?: boolean;
+  scan: RemoteScan;
+  scan_context?: ScanContext;
+  participant: Participant;
+}
+
+export interface ParticipantsSyncPage {
+  participants: Participant[];
+  synced_at: string;
 }
 
 export interface ScansSyncPage {
@@ -370,13 +400,6 @@ export interface ScansSyncPage {
   // verbatim, never round-trip it through Date.
   synced_at: string;
   has_more: boolean;
-}
-
-export interface PendingScan {
-  localId: string;
-  participantId: string;
-  eventId: string;
-  scannedAt: string;
 }
 
 export interface ApiResponse<T> {
@@ -418,15 +441,20 @@ export type RootStackParamList = {
   ParticipantMain: undefined;
   ParticipantDetail: { participant: Participant };
   TicketDetail: { ticket: Ticket };
-  KioskSetup: undefined;
-  Kiosk: { pin: string; biometricUnlock: boolean };
+  KioskSetup: { scanContextId?: string; scanContextName?: string };
+  Kiosk: {
+    pin: string;
+    biometricUnlock: boolean;
+    scanContextId?: string;
+    scanContextName?: string;
+  };
 };
 
 export type MainTabParamList = {
   Events: undefined;
   Scanner: undefined;
   Search: undefined;
-  AirportMode: undefined;
+  Travel: undefined;
 };
 
 export type ParticipantTabParamList = {
@@ -438,92 +466,57 @@ export type QRCodeData = {
   id: string;
 };
 
-export type JourneyStatus =
-  | 'scheduled'
-  | 'in_flight'
-  | 'landed'
-  | 'picked_up'
-  | 'cancelled'
-  | 'diverted';
+// Travel calendar (the successor to "airport mode"): the API returns every
+// participant journey for an event, grouped client-side by agenda date.
+export type TravelDirection = 'inbound' | 'outbound';
+export type TravelMode = 'plane' | 'train' | 'car' | 'bus' | 'other';
+export type TravelPickupState =
+  | 'awaiting_pickup'
+  | 'collected'
+  | 'checked_in'
+  | 'pickup_not_needed';
 
-export type StatusColor = 'gray' | 'blue' | 'amber' | 'green' | 'red' | 'orange';
-
-export type AirportTab = 'inbound' | 'outbound';
-
-export interface FlightLeg {
+export interface TravelCalendarGroup {
   id: string;
-  flightCode: string;
-  origin: string;
-  destination: string;
-  departureTime?: string;
-  arrivalTime?: string;
-  status: JourneyStatus | string;
-  statusLabel?: string;
-  statusColor?: StatusColor;
-  departureTerminal?: string;
-  departureGate?: string;
-  arrivalTerminal?: string;
-  arrivalGate?: string;
-  delayMinutes?: number;
-  isDelayed?: boolean;
+  name: string;
+  color?: string | null;
 }
 
-export interface Journey {
+export interface TravelCalendarEntry {
   id: string;
   participantId: string;
   participantEventId: string;
   participantName: string;
-  participantFullName: string;
-  participantHasHeadshot: boolean;
-  participantHeadshotUrl?: string | null;
-  direction: AirportTab;
-  status: JourneyStatus;
-  statusLabel: string;
-  statusColor: StatusColor;
-  isDelayed: boolean;
-  delayMinutes: number;
+  participantPreferredName?: string | null;
+  direction: TravelDirection;
+  mode: TravelMode;
+  // ISO timestamp already expressed in the event's timezone offset.
+  primaryTimeAt?: string | null;
+  // YYYY-MM-DD in the event's timezone; null means unscheduled.
+  agendaDate?: string | null;
+  route?: string | null;
+  reference?: string | null;
+  details?: string | null;
+  pickupState?: TravelPickupState | null;
   isUnaccompaniedMinor: boolean;
-  arrivingNow: boolean;
-  isAlert: boolean;
-  scannedIn: boolean;
-  scannedAt?: string | null;
-  legCount: number;
-  primaryAirport?: string | null;
-  primaryTerminal?: string | null;
-  primaryGate?: string | null;
-  primaryTimezone?: string | null;
-  primaryTimeIso?: string | null;
-  primaryScheduledIso?: string | null;
-  progress?: number | null;
-  lastTrackedAt?: string | null;
-  legs: FlightLeg[];
+  groups: TravelCalendarGroup[];
 }
 
-export interface AirportCounts {
+export interface TravelCalendarCounts {
   total: number;
-  alerts: number;
-  cancelled: number;
-  diverted: number;
-  delayed: number;
-  landed_waiting: number;
-  picked_up: number;
-  in_flight: number;
+  inbound: number;
+  outbound: number;
   scheduled: number;
-  arriving_now: number;
-  ums: number;
+  unscheduled: number;
+  awaitingPickup: number;
+  collected: number;
+  checkedIn: number;
+  pickupNotNeeded: number;
 }
 
-export interface AirportModeData {
-  tab: AirportTab;
-  last_refreshed_at?: string | null;
-  event_timezone?: string;
-  counts: {
-    inbound: Partial<AirportCounts>;
-    outbound: Partial<AirportCounts>;
-  };
-  airports: string[];
-  terminals: string[];
-  journeys: Journey[];
+export interface TravelCalendarData {
+  eventTimezone?: string | null;
+  dates: string[];
+  entries: TravelCalendarEntry[];
+  counts: TravelCalendarCounts;
 }
-
-

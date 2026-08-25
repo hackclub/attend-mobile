@@ -3,11 +3,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'user_data';
+let cachedToken: string | null | undefined;
 
 export const secureStorage = {
   async setToken(token: string): Promise<void> {
     try {
       await SecureStore.setItemAsync(TOKEN_KEY, token);
+      cachedToken = token;
     } catch (error) {
       console.error('SecureStore setToken failed:', error);
       throw error;
@@ -15,8 +17,10 @@ export const secureStorage = {
   },
 
   async getToken(): Promise<string | null> {
+    if (cachedToken !== undefined) return cachedToken;
     try {
-      return await SecureStore.getItemAsync(TOKEN_KEY);
+      cachedToken = await SecureStore.getItemAsync(TOKEN_KEY);
+      return cachedToken;
     } catch (error) {
       console.error('SecureStore getToken failed:', error);
       return null;
@@ -26,6 +30,7 @@ export const secureStorage = {
   async removeToken(): Promise<void> {
     try {
       await SecureStore.deleteItemAsync(TOKEN_KEY);
+      cachedToken = null;
     } catch (error) {
       console.error('SecureStore removeToken failed:', error);
     }
@@ -67,6 +72,7 @@ export const secureStorage = {
     try {
       await SecureStore.deleteItemAsync(TOKEN_KEY);
       await SecureStore.deleteItemAsync(USER_KEY);
+      cachedToken = null;
     } catch (error) {
       console.error('SecureStore clear failed:', error);
     }
@@ -122,6 +128,9 @@ export const STORAGE_KEYS = {
   // Raw ISO8601 string from the server (may include fractional seconds) —
   // stored and re-sent verbatim, never parsed into a Date.
   SCAN_SYNC_CURSOR: (eventId: string) => `scan_sync_cursor_${eventId}`,
+  PARTICIPANT_SYNC_CURSOR: (eventId: string) => `participant_sync_cursor_${eventId}`,
+  SCAN_CONTEXTS: (eventId: string) => `scan_contexts_${eventId}`,
+  POWER_MODE_ENABLED: 'scanner_power_mode_enabled',
   PENDING_SCANS: 'pending_scans',
   LAST_SYNC: 'last_sync',
   EVENTS: 'cached_events',

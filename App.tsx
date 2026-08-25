@@ -2,8 +2,8 @@ import React, { useRef, useEffect } from 'react';
 import { ActivityIndicator, View, StyleSheet, Platform } from 'react-native';
 import { NavigationContainer, DefaultTheme, NavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Ionicons } from '@expo/vector-icons';
+import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
+import type { AppleIcon } from 'react-native-bottom-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Linking from 'expo-linking';
@@ -15,7 +15,7 @@ import { ScannerScreen } from './src/screens/ScannerScreen';
 
 import { SearchScreen } from './src/screens/SearchScreen';
 import { ParticipantDetailScreen } from './src/screens/ParticipantDetailScreen';
-import { AirportModeScreen } from './src/screens/AirportModeScreen';
+import { TravelCalendarScreen } from './src/screens/TravelCalendarScreen';
 import { KioskSetupScreen } from './src/screens/KioskSetupScreen';
 import { KioskScreen } from './src/screens/KioskScreen';
 import { MyTicketsScreen } from './src/screens/MyTicketsScreen';
@@ -47,7 +47,7 @@ Sentry.init({
 });
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-const Tab = createBottomTabNavigator<MainTabParamList>();
+const Tab = createNativeBottomTabNavigator<MainTabParamList>();
 
 const LiquidGlassTheme = {
   ...DefaultTheme,
@@ -60,20 +60,37 @@ const LiquidGlassTheme = {
   },
 };
 
+// iOS renders SF Symbols in the native (liquid glass) tab bar; Android's
+// Material bottom bar can't use SF Symbols, so it gets bundled SVG sources,
+// tinted by the bar's active/inactive colors.
+const tabIcon = (sfSymbol: AppleIcon['sfSymbol'], androidSource: number) => () =>
+  Platform.OS === 'ios' ? ({ sfSymbol } satisfies AppleIcon) : androidSource;
+
+// Android-only bar styling: the Material bar follows the system theme by
+// default, which turns black in dark mode while our screens stay paper-light.
+const androidTabBarProps = Platform.OS === 'android'
+  ? {
+      // The native barTintColor is read from tabBarStyle.backgroundColor;
+      // without it the bar paints the theme's colorPrimary (near-black).
+      tabBarStyle: { backgroundColor: colors.white },
+      tabBarInactiveTintColor: colors.gray[500],
+      activeIndicatorColor: `${colors.red}1F`,
+      rippleColor: `${colors.red}22`,
+    }
+  : {};
+
 function MainTabs() {
   return (
     <Tab.Navigator
-      screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: colors.red,
-      }}
+      tabBarActiveTintColor={colors.red}
+      {...androidTabBarProps}
     >
       <Tab.Screen
         name="Events"
         component={EventListScreen}
         options={{
           tabBarLabel: 'Events',
-          tabBarIcon: ({ color, size }) => <Ionicons name="calendar-outline" size={size} color={color} />,
+          tabBarIcon: tabIcon('calendar', require('./assets/tabs/calendar.svg')),
         }}
       />
       <Tab.Screen
@@ -81,7 +98,7 @@ function MainTabs() {
         component={ScannerScreen}
         options={{
           tabBarLabel: 'Scan',
-          tabBarIcon: ({ color, size }) => <Ionicons name="qr-code-outline" size={size} color={color} />,
+          tabBarIcon: tabIcon('qrcode.viewfinder', require('./assets/tabs/scan.svg')),
         }}
       />
       <Tab.Screen
@@ -89,15 +106,15 @@ function MainTabs() {
         component={SearchScreen}
         options={{
           tabBarLabel: 'Search',
-          tabBarIcon: ({ color, size }) => <Ionicons name="search-outline" size={size} color={color} />,
+          tabBarIcon: tabIcon('magnifyingglass', require('./assets/tabs/search.svg')),
         }}
       />
       <Tab.Screen
-        name="AirportMode"
-        component={AirportModeScreen}
+        name="Travel"
+        component={TravelCalendarScreen}
         options={{
-          tabBarLabel: 'Flights',
-          tabBarIcon: ({ color, size }) => <Ionicons name="airplane-outline" size={size} color={color} />,
+          tabBarLabel: 'Travel',
+          tabBarIcon: tabIcon('airplane', require('./assets/tabs/travel.svg')),
         }}
       />
     </Tab.Navigator>
@@ -179,7 +196,7 @@ const linking = {
           Scanner: 'scanner',
           Events: 'events',
           Search: 'search',
-          AirportMode: 'airport',
+          Travel: 'travel',
         },
       },
       ParticipantMain: 'my-tickets',
@@ -192,22 +209,23 @@ export default Sentry.wrap(function App() {
   const navigationRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
 
   useEffect(() => {
-    const handleDeepLink = (event: { url: string }) => {
-      const url = event.url;
-      if (url.includes('scanner') && navigationRef.current) {
+    // Only genuine attend:// deep links count. A loose substring check also
+    // matched the Expo dev client's launch URL, which contains the app slug
+    // ("attend-scanner") and fired before the navigator mounted.
+    const isScannerLink = (url: string) =>
+      /^attend:\/\/(--\/)?scanner/.test(url);
+
+    const openScanner = (url?: string | null) => {
+      if (url && isScannerLink(url) && navigationRef.current?.isReady()) {
         // Navigate to scanner tab when tapping Live Activity
         navigationRef.current.navigate('Main', { screen: 'Scanner' } as any);
       }
     };
 
-    const subscription = Linking.addEventListener('url', handleDeepLink);
+    const subscription = Linking.addEventListener('url', (event) => openScanner(event.url));
 
     // Handle initial URL (app opened from Live Activity)
-    Linking.getInitialURL().then((url) => {
-      if (url?.includes('scanner') && navigationRef.current) {
-        navigationRef.current.navigate('Main', { screen: 'Scanner' } as any);
-      }
-    });
+    Linking.getInitialURL().then(openScanner);
 
     // Tapping an organizer-message push opens the participant's tickets.
     const notifSub = notificationService.addNotificationResponseListener((response) => {

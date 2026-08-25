@@ -1,44 +1,21 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking, Alert } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import type { EmergencyContact } from '../types';
 
 interface EmergencyContactCardProps {
   contact: EmergencyContact;
+  onCall: (phone: string) => void;
+  onEmail: (email: string) => void;
 }
 
-export function EmergencyContactCard({ contact }: EmergencyContactCardProps) {
-  const handleCall = () => {
-    const phoneNumber = contact.phone.replace(/[^0-9+]/g, '');
-    const url = `dialpad://${phoneNumber}`;
-    
-    Linking.canOpenURL(url)
-      .then((supported) => {
-        if (supported) {
-          return Linking.openURL(url);
-        } else {
-          Alert.alert('Error', 'Phone calls are not supported on this device');
-        }
-      })
-      .catch(() => {
-        Alert.alert('Error', 'Unable to make phone call');
-      });
-  };
-
-  const handleEmail = () => {
-    if (!contact.email) return;
-    
-    const url = `mailto:${contact.email}`;
-    Linking.openURL(url).catch(() => {
-      Alert.alert('Error', 'Unable to open email client');
-    });
-  };
-
+export function EmergencyContactCard({ contact, onCall, onEmail }: EmergencyContactCardProps) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.name}>{contact.name}</Text>
-        {contact.isPrimary && (
+        {contact.is_primary && (
           <View style={styles.primaryBadge}>
             <Text style={styles.primaryText}>Primary</Text>
           </View>
@@ -48,14 +25,32 @@ export function EmergencyContactCard({ contact }: EmergencyContactCardProps) {
       <Text style={styles.relationship}>{contact.relationship}</Text>
 
       <View style={styles.actions}>
-        <TouchableOpacity style={styles.callButton} onPress={handleCall}>
-          <Text style={styles.callButtonText}>📞 {contact.phone}</Text>
-        </TouchableOpacity>
+        <View style={styles.callButton}>
+          <Ionicons name="call" size={16} color={colors.white} />
+          <Text
+            style={styles.callButtonText}
+            selectable
+            onPress={() => onCall(contact.phone)}
+            accessibilityRole="link"
+            accessibilityHint="Shows calling options"
+          >
+            {contact.phone}
+          </Text>
+        </View>
 
         {contact.email && (
-          <TouchableOpacity style={styles.emailButton} onPress={handleEmail}>
-            <Text style={styles.emailButtonText}>✉️ Email</Text>
-          </TouchableOpacity>
+          <View style={styles.emailButton}>
+            <Ionicons name="mail" size={16} color={colors.white} />
+            <Text
+              style={styles.emailButtonText}
+              selectable
+              onPress={() => onEmail(contact.email!)}
+              accessibilityRole="link"
+              accessibilityHint="Opens the default email app"
+            >
+              {contact.email}
+            </Text>
+          </View>
         )}
       </View>
     </View>
@@ -99,32 +94,38 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   actions: {
-    flexDirection: 'row',
     gap: 8,
   },
   callButton: {
-    flex: 1,
+    flexDirection: 'row',
     backgroundColor: colors.green,
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 8,
+    justifyContent: 'center',
     alignItems: 'center',
+    gap: 6,
   },
   callButtonText: {
     color: colors.white,
     fontSize: 14,
     fontWeight: '600',
+    flexShrink: 1,
   },
   emailButton: {
+    flexDirection: 'row',
     backgroundColor: colors.blue,
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 8,
+    justifyContent: 'center',
     alignItems: 'center',
+    gap: 6,
   },
   emailButtonText: {
     color: colors.white,
     fontSize: 14,
     fontWeight: '600',
+    flexShrink: 1,
   },
 });

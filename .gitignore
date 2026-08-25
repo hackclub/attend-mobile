@@ -36,6 +36,9 @@ yarn-error.log*
 # Testing
 coverage/
 
+# Local design exploration
+.superpowers/
+
 .env.local
 
 # EAS credentials - never commit

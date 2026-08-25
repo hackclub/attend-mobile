@@ -1,8 +1,10 @@
-import React, { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { authService } from '../services/auth';
 import { syncService, SyncStatus } from '../services/sync';
 import { notificationService } from '../services/notifications';
 import { liveActivityService } from '../services/liveActivity';
+import { mergeParticipant, type ParticipantUpdate } from '../services/participantIndex';
+import { clearHeadshotCache, prefetchHeadshots } from '../services/headshotCache';
 import type { User, Event, Participant, AuthState, SyncState } from '../types';
 
 interface AppState {
@@ -20,7 +22,7 @@ type AppAction =
   | { type: 'SET_EVENTS'; payload: Event[] }
   | { type: 'SET_CURRENT_EVENT'; payload: Event | null }
   | { type: 'SET_PARTICIPANTS'; payload: Participant[] }
-  | { type: 'UPDATE_PARTICIPANT'; payload: Participant }
+  | { type: 'UPDATE_PARTICIPANT'; payload: ParticipantUpdate }
   | { type: 'SET_SYNC_STATUS'; payload: SyncStatus };
 
 const initialState: AppState = {
@@ -78,10 +80,20 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'SET_PARTICIPANTS':
       return { ...state, participants: action.payload };
     case 'UPDATE_PARTICIPANT':
+      if (!state.participants.some(
+        participant => participant.participant_event_id === action.payload.participant_event_id
+      )) {
+        return {
+          ...state,
+          participants: [...state.participants, mergeParticipant(undefined, action.payload)],
+        };
+      }
       return {
         ...state,
         participants: state.participants.map(p =>
-          (p.participant_event_id === action.payload.participant_event_id) ? action.payload : p
+          p.participant_event_id === action.payload.participant_event_id
+            ? mergeParticipant(p, action.payload)
+            : p
         ),
       };
     case 'SET_SYNC_STATUS':
@@ -102,11 +114,12 @@ function appReducer(state: AppState, action: AppAction): AppState {
 interface AppContextValue {
   state: AppState;
   login: () => Promise<boolean>;
-  devLogin: (userId: string) => Promise<boolean>;
+  devLogin: (identifier: { userId: string } | { email: string }) => Promise<boolean>;
   logout: () => Promise<void>;
   selectEvent: (event: Event) => Promise<void>;
   refreshParticipants: () => Promise<void>;
-  updateParticipant: (participant: Participant) => void;
+  updateParticipant: (participant: ParticipantUpdate) => void;
+  confirmParticipant: (eventId: string, participant: ParticipantUpdate) => Promise<Participant>;
   syncNow: () => Promise<void>;
   startLiveActivity: () => Promise<void>;
   stopLiveActivity: () => Promise<void>;
@@ -116,6 +129,9 @@ const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
+  const currentEventIdRef = useRef<string | null>(null);
+  const eventSelectionGenerationRef = useRef(0);
+  currentEventIdRef.current = state.currentEvent?.id ?? null;
 
   useEffect(() => {
     const restoreAuth = async () => {
@@ -128,9 +144,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
           try {
             const cachedEvent = await syncService.getCurrentEvent();
             if (cachedEvent) {
+              const generation = ++eventSelectionGenerationRef.current;
               dispatch({ type: 'SET_CURRENT_EVENT', payload: cachedEvent });
               const participants = await syncService.getCachedParticipants(cachedEvent.id);
-              dispatch({ type: 'SET_PARTICIPANTS', payload: participants });
+              if (eventSelectionGenerationRef.current === generation) {
+                dispatch({ type: 'SET_PARTICIPANTS', payload: participants });
+              }
+              void syncService.refreshParticipants(cachedEvent.id)
+                .then(fresh => {
+                  if (
+                    eventSelectionGenerationRef.current === generation
+                    && currentEventIdRef.current === cachedEvent.id
+                  ) {
+                    dispatch({ type: 'SET_PARTICIPANTS', payload: fresh });
+                  }
+                })
+                .catch(() => {});
             }
             
             const events = await syncService.getCachedEvents();
@@ -159,6 +188,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [state.auth.isAuthenticated]);
 
   useEffect(() => {
+    if (state.participants.length > 0) {
+      void prefetchHeadshots(state.participants).catch(error => {
+        console.warn('[Images] Headshot prefetch failed:', error);
+      });
+    }
+  }, [state.participants]);
+
+  useEffect(() => {
     const unsubscribe = syncService.subscribe((status) => {
       dispatch({ type: 'SET_SYNC_STATUS', payload: status });
     });
@@ -182,8 +219,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return false;
   }, []);
 
-  const devLogin = useCallback(async (userId: string): Promise<boolean> => {
-    const result = await authService.devLogin(userId);
+  const devLogin = useCallback(async (identifier: { userId: string } | { email: string }): Promise<boolean> => {
+    const result = await authService.devLogin(identifier);
     if (result.success && result.user) {
       const token = await authService.getToken();
       dispatch({ type: 'SET_AUTH', payload: { user: result.user, token: token! } });
@@ -193,23 +230,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async (): Promise<void> => {
-    await authService.logout();
-    await syncService.clear();
+    eventSelectionGenerationRef.current += 1;
     dispatch({ type: 'CLEAR_AUTH' });
+    const results = await Promise.allSettled([
+      authService.logout(),
+      syncService.clear(),
+      clearHeadshotCache(),
+    ]);
+    results.forEach(result => {
+      if (result.status === 'rejected') {
+        console.warn('[Logout] Cleanup failed:', result.reason);
+      }
+    });
   }, []);
 
   const selectEvent = useCallback(async (event: Event): Promise<void> => {
+    const generation = ++eventSelectionGenerationRef.current;
     dispatch({ type: 'SET_CURRENT_EVENT', payload: event });
-    await syncService.setCurrentEvent(event);
-    
-    const cached = await syncService.getCachedParticipants(event.id);
+    const [cached] = await Promise.all([
+      syncService.getCachedParticipants(event.id),
+      syncService.setCurrentEvent(event),
+    ]);
+    if (eventSelectionGenerationRef.current !== generation) return;
     dispatch({ type: 'SET_PARTICIPANTS', payload: cached });
 
-    try {
-      const fresh = await syncService.refreshParticipants(event.id);
-      dispatch({ type: 'SET_PARTICIPANTS', payload: fresh });
-    } catch {
-    }
+    void syncService.refreshParticipants(event.id)
+      .then(fresh => {
+        if (
+          eventSelectionGenerationRef.current === generation
+          && currentEventIdRef.current === event.id
+        ) {
+          dispatch({ type: 'SET_PARTICIPANTS', payload: fresh });
+        }
+      })
+      .catch(() => {});
 
     // Register for push notifications
     notificationService.registerTokenWithServer().catch(() => {
@@ -219,19 +273,56 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const refreshParticipants = useCallback(async (): Promise<void> => {
     if (!state.currentEvent) return;
-    const participants = await syncService.refreshParticipants(state.currentEvent.id);
-    dispatch({ type: 'SET_PARTICIPANTS', payload: participants });
+    const eventId = state.currentEvent.id;
+    const generation = eventSelectionGenerationRef.current;
+    const participants = await syncService.refreshParticipants(eventId);
+    if (
+      eventSelectionGenerationRef.current === generation
+      && currentEventIdRef.current === eventId
+    ) {
+      dispatch({ type: 'SET_PARTICIPANTS', payload: participants });
+    }
   }, [state.currentEvent]);
 
-  const updateParticipant = useCallback((participant: Participant): void => {
+  const updateParticipant = useCallback((participant: ParticipantUpdate): void => {
     dispatch({ type: 'UPDATE_PARTICIPANT', payload: participant });
   }, []);
 
+  const confirmParticipant = useCallback(async (
+    eventId: string,
+    participant: ParticipantUpdate
+  ): Promise<Participant> => {
+    if (currentEventIdRef.current === eventId) {
+      const current = state.participants.find(
+        item => item.participant_event_id === participant.participant_event_id
+      );
+      const immediate = mergeParticipant(current, participant);
+      dispatch({ type: 'UPDATE_PARTICIPANT', payload: immediate });
+    }
+
+    const persisted = await syncService.cacheConfirmedParticipant(
+      eventId,
+      participant
+    );
+    return persisted;
+  }, [state.participants]);
+
   const syncNow = useCallback(async (): Promise<void> => {
     if (!state.currentEvent) return;
-    await syncService.syncAll(state.currentEvent.id);
-    const participants = await syncService.getCachedParticipants(state.currentEvent.id);
-    dispatch({ type: 'SET_PARTICIPANTS', payload: participants });
+    const eventId = state.currentEvent.id;
+    const generation = eventSelectionGenerationRef.current;
+    await syncService.syncAll(eventId);
+    if (
+      eventSelectionGenerationRef.current !== generation
+      || currentEventIdRef.current !== eventId
+    ) return;
+    const participants = await syncService.getCachedParticipants(eventId);
+    if (
+      eventSelectionGenerationRef.current === generation
+      && currentEventIdRef.current === eventId
+    ) {
+      dispatch({ type: 'SET_PARTICIPANTS', payload: participants });
+    }
   }, [state.currentEvent]);
 
   const startLiveActivity = useCallback(async (): Promise<void> => {
@@ -267,6 +358,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     selectEvent,
     refreshParticipants,
     updateParticipant,
+    confirmParticipant,
     syncNow,
     startLiveActivity,
     stopLiveActivity,
