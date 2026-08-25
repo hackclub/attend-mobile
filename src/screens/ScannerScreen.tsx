@@ -14,6 +14,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -30,7 +31,15 @@ import { colors } from '../theme/colors';
 import type { Participant, RootStackParamList, ScanContext } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
-type ManualEntryMode = 'none' | 'id' | 'search';
+type ManualEntryMode = 'none' | 'search';
+
+// A query that reads as an attendee/participant-event ID rather than a name or
+// email: one unbroken run of hex/dash characters (UUIDs) or 8+ alphanumerics.
+function looksLikeAttendeeId(query: string): boolean {
+  const trimmed = query.trim();
+  if (trimmed.includes('@') || /\s/.test(trimmed)) return false;
+  return /^[0-9a-fA-F-]{16,}$/.test(trimmed) || /^[A-Za-z0-9_-]{8,}$/.test(trimmed);
+}
 
 function ContextIcon({ context, color = colors.white }: { context: ScanContext; color?: string }) {
   return (
@@ -63,6 +72,8 @@ export function ScannerScreen() {
   const { isSupported: nfcSupported, isReading: nfcReading } = useNFC();
   const { isPad } = useResponsiveLayout();
   const { width, height } = useWindowDimensions();
+  // The native tab bar floats over content, so the bottom dock must clear it.
+  const tabBarHeight = useBottomTabBarHeight();
   const { play, isReady: isFeedbackReady } = useScanFeedback();
   const [permission, requestPermission] = useCameraPermissions();
   const {
@@ -71,7 +82,6 @@ export function ScannerScreen() {
     recordScannerActivity,
   } = useScannerPowerMode(hasEvent && !!permission?.granted);
   const [manualEntryMode, setManualEntryMode] = useState<ManualEntryMode>('none');
-  const [manualId, setManualId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [contextDropdownOpen, setContextDropdownOpen] = useState(false);
   const [isFocused, setIsFocused] = useState(true);
@@ -116,15 +126,17 @@ export function ScannerScreen() {
     await handleScan(result.data, 'qr');
   }, [handleScan, isProcessing, recordScannerActivity]);
 
-  const handleManualIdScan = useCallback(async () => {
-    const identifier = manualId.trim();
-    if (!identifier || isProcessing) return;
+  // Typed/pasted attendee IDs go through the search sheet's input.
+  const handleDirectIdScan = useCallback(async (identifier: string) => {
+    const trimmed = identifier.trim();
+    if (!trimmed || isProcessing) return;
     recordScannerActivity();
-    await handleScan(identifier, 'manual');
-    setManualId('');
+    await handleScan(trimmed, 'manual');
+    setSearchQuery('');
+    clearSearch();
     setManualEntryMode('none');
     Keyboard.dismiss();
-  }, [handleScan, isProcessing, manualId, recordScannerActivity]);
+  }, [clearSearch, handleScan, isProcessing, recordScannerActivity]);
 
   const handleSearchChange = useCallback((text: string) => {
     recordScannerActivity();
@@ -150,7 +162,6 @@ export function ScannerScreen() {
   const closeManualEntry = useCallback(() => {
     recordScannerActivity();
     setManualEntryMode('none');
-    setManualId('');
     setSearchQuery('');
     clearSearch();
     Keyboard.dismiss();
@@ -303,19 +314,17 @@ export function ScannerScreen() {
               </View>
             ) : null}
           </View>
-          {/* Always rendered so the frame doesn't re-centre when a result card appears */}
-          <Text
-            style={[styles.scanHint, lastScan ? styles.scanHintHidden : null]}
-            accessibilityElementsHidden={!!lastScan}
-            importantForAccessibility={lastScan ? 'no-hide-descendants' : 'auto'}
-          >
-            Hold the code inside the frame
-          </Text>
         </View>
 
-        <View style={styles.bottomDock}>
+        <View style={[styles.bottomDock, { paddingBottom: 8 + tabBarHeight }]}>
           {lastScan ? (
-            <View style={styles.resultCardOverlay} pointerEvents="box-none">
+            <View
+              // Anchor above the scan tools row: tools (54) + dock padding
+              // (8 + tab bar) + 10 gap. A percentage bottom misresolves once
+              // the dock has dynamic padding, so compute it explicitly.
+              style={[styles.resultCardOverlay, { bottom: 54 + 8 + tabBarHeight + 10 }]}
+              pointerEvents="box-none"
+            >
               <ScrollView
                 style={[
                   styles.resultCardScroll,
@@ -357,39 +366,22 @@ export function ScannerScreen() {
               disabled={!contextsReady}
               onPress={() => openManualEntry('search')}
             />
-            <ToolButton
-              icon="keypad-outline"
-              label="Enter ID"
-              disabled={!contextsReady}
-              onPress={() => openManualEntry('id')}
-            />
           </View>
         </View>
-
-        {manualEntryMode === 'id' ? (
-          <ManualIdSheet
-            value={manualId}
-            isProcessing={isProcessing}
-            onChange={text => {
-              recordScannerActivity();
-              setManualId(text);
-            }}
-            onSubmit={handleManualIdScan}
-            onClose={closeManualEntry}
-          />
-        ) : null}
 
         {manualEntryMode === 'search' ? (
           <SearchSheet
             query={searchQuery}
             results={searchResults || []}
             isSearching={isSearching}
+            isProcessing={isProcessing}
             onChange={handleSearchChange}
             onClear={() => {
               setSearchQuery('');
               clearSearch();
             }}
             onSelect={handleSearchScan}
+            onSubmitId={handleDirectIdScan}
             onClose={closeManualEntry}
           />
         ) : null}
@@ -571,75 +563,28 @@ function SheetHeader({ title, onClose }: { title: string; onClose: () => void })
   );
 }
 
-function ManualIdSheet({
-  value,
-  isProcessing,
-  onChange,
-  onSubmit,
-  onClose,
-}: {
-  value: string;
-  isProcessing: boolean;
-  onChange: (value: string) => void;
-  onSubmit: () => void;
-  onClose: () => void;
-}) {
-  return (
-    <KeyboardAvoidingView
-      style={styles.sheetBackdrop}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} accessibilityRole="none" />
-      <View style={styles.sheet}>
-        <SheetHeader title="Enter attendee ID" onClose={onClose} />
-        <Text style={styles.sheetDescription}>Paste an attendee or participant event ID.</Text>
-        <TextInput
-          style={styles.textInput}
-          placeholder="Attendee ID"
-          placeholderTextColor={colors.gray[400]}
-          value={value}
-          onChangeText={onChange}
-          onSubmitEditing={onSubmit}
-          autoCapitalize="none"
-          autoCorrect={false}
-          returnKeyType="go"
-          autoFocus
-        />
-        <Pressable
-          style={({ pressed }) => [
-            styles.submitButton,
-            (!value.trim() || isProcessing) && styles.submitButtonDisabled,
-            pressed && value.trim() && !isProcessing && styles.pressed,
-          ]}
-          onPress={onSubmit}
-          disabled={!value.trim() || isProcessing}
-          accessibilityRole="button"
-        >
-          {isProcessing ? <ActivityIndicator color={colors.white} size="small" /> : null}
-          <Text style={styles.submitButtonText}>{isProcessing ? 'Confirming' : 'Scan'}</Text>
-        </Pressable>
-      </View>
-    </KeyboardAvoidingView>
-  );
-}
-
 function SearchSheet({
   query,
   results,
   isSearching,
+  isProcessing,
   onChange,
   onClear,
   onSelect,
+  onSubmitId,
   onClose,
 }: {
   query: string;
   results: Participant[];
   isSearching: boolean;
+  isProcessing: boolean;
   onChange: (value: string) => void;
   onClear: () => void;
   onSelect: (participant: Participant) => void;
+  onSubmitId: (identifier: string) => void;
   onClose: () => void;
 }) {
+  const idCandidate = looksLikeAttendeeId(query) ? query.trim() : null;
   return (
     <KeyboardAvoidingView
       style={styles.searchSheetBackdrop}
@@ -651,12 +596,16 @@ function SearchSheet({
           <Ionicons name="search" size={19} color={colors.gray[400]} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Name or email"
+            placeholder="Name, email, or attendee ID"
             placeholderTextColor={colors.gray[400]}
             value={query}
             onChangeText={onChange}
+            onSubmitEditing={() => {
+              if (idCandidate && !isProcessing) onSubmitId(idCandidate);
+            }}
             autoCapitalize="none"
             autoCorrect={false}
+            returnKeyType={idCandidate ? 'go' : 'search'}
             autoFocus
           />
           {isSearching ? <ActivityIndicator color={colors.white} size="small" /> : null}
@@ -677,6 +626,28 @@ function SearchSheet({
           keyExtractor={(item, index) => item.participant_event_id || item.participant_id || `attendee-${index}`}
           keyboardShouldPersistTaps="handled"
           style={styles.searchResults}
+          ListHeaderComponent={idCandidate ? (
+            <Pressable
+              style={({ pressed }) => [styles.searchResult, pressed && styles.searchResultPressed]}
+              onPress={() => onSubmitId(idCandidate)}
+              disabled={isProcessing}
+            >
+              <View style={styles.searchResultText}>
+                <Text style={styles.searchResultName} numberOfLines={1}>Scan as attendee ID</Text>
+                <Text style={styles.searchResultEmail} numberOfLines={1}>{idCandidate}</Text>
+              </View>
+              <View style={styles.searchResultAction}>
+                {isProcessing ? (
+                  <ActivityIndicator color={colors.green} size="small" />
+                ) : (
+                  <>
+                    <Text style={styles.searchResultActionText}>Scan</Text>
+                    <Ionicons name="arrow-forward" size={18} color={colors.green} />
+                  </>
+                )}
+              </View>
+            </Pressable>
+          ) : null}
           renderItem={({ item }) => (
             <Pressable
               style={({ pressed }) => [styles.searchResult, pressed && styles.searchResultPressed]}
@@ -694,10 +665,10 @@ function SearchSheet({
               </View>
             </Pressable>
           )}
-          ListEmptyComponent={(
+          ListEmptyComponent={idCandidate ? null : (
             <Text style={styles.searchEmptyText}>
               {query.length === 0
-                ? 'Start typing to search'
+                ? 'Search by name or email, or paste an attendee ID'
                 : query.length < 2
                   ? 'Type at least 2 characters'
                   : isSearching
@@ -757,11 +728,9 @@ const styles = StyleSheet.create({
   bottomLeft: { bottom: 0, left: 0, borderBottomWidth: 4, borderLeftWidth: 4, borderBottomLeftRadius: 15 },
   bottomRight: { bottom: 0, right: 0, borderBottomWidth: 4, borderRightWidth: 4, borderBottomRightRadius: 15 },
   processingIndicator: { position: 'absolute', left: '50%', top: '50%', width: 48, height: 48, marginLeft: -24, marginTop: -24, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15,23,42,0.78)' },
-  scanHint: { color: colors.white, fontSize: 14, fontWeight: '700', textShadowColor: 'rgba(0,0,0,0.65)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 5 },
-  scanHintHidden: { opacity: 0 },
   bottomDock: { paddingHorizontal: 14, paddingBottom: 8, gap: 10 },
   // Anchored above the dock, outside layout flow, so the scan frame never shifts
-  resultCardOverlay: { position: 'absolute', bottom: '100%', left: 14, right: 14, marginBottom: 10 },
+  resultCardOverlay: { position: 'absolute', left: 14, right: 14 },
   resultCardScroll: { width: '100%', maxWidth: 620, alignSelf: 'center' },
   resultCardWrap: { width: '100%' },
   scanTools: { minHeight: 54, maxWidth: 620, width: '100%', alignSelf: 'center', flexDirection: 'row', alignItems: 'stretch', gap: 8 },
@@ -771,18 +740,12 @@ const styles = StyleSheet.create({
   controlDisabled: { opacity: 0.45 },
   toolButtonText: { color: colors.white, fontSize: 13, fontWeight: '700' },
   pressed: { opacity: 0.72 },
-  sheetBackdrop: { ...StyleSheet.absoluteFillObject, zIndex: 100, justifyContent: 'flex-end', backgroundColor: 'rgba(2,6,23,0.64)' },
   searchSheetBackdrop: { ...StyleSheet.absoluteFillObject, zIndex: 100, justifyContent: 'flex-end', backgroundColor: 'rgba(2,6,23,0.78)' },
   sheet: { width: '100%', maxWidth: 680, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 28, gap: 14, borderTopLeftRadius: 26, borderTopRightRadius: 26, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.gray[600], backgroundColor: colors.gray[900] },
   searchSheet: { height: '72%' },
   sheetHeader: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   sheetTitle: { color: colors.white, fontSize: 22, lineHeight: 28, fontWeight: '800', letterSpacing: -0.3 },
   sheetClose: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
-  sheetDescription: { color: colors.gray[300], fontSize: 14, lineHeight: 20 },
-  textInput: { minHeight: 52, paddingHorizontal: 15, borderRadius: 13, borderWidth: 1, borderColor: colors.gray[600], backgroundColor: colors.gray[800], color: colors.white, fontSize: 16 },
-  submitButton: { minHeight: 52, borderRadius: 13, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.red },
-  submitButtonDisabled: { opacity: 0.45 },
-  submitButtonText: { color: colors.white, fontSize: 16, fontWeight: '800' },
   searchInputRow: { minHeight: 52, paddingHorizontal: 14, borderRadius: 13, borderWidth: 1, borderColor: colors.gray[600], backgroundColor: colors.gray[800], flexDirection: 'row', alignItems: 'center', gap: 9 },
   searchInput: { minHeight: 50, flex: 1, color: colors.white, fontSize: 16 },
   searchClearButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', marginRight: -10 },
