@@ -8,6 +8,7 @@ import {
   RefreshControl,
   Alert,
   Switch,
+  TextInput,
   Platform,
   ImageBackground,
   Image,
@@ -23,6 +24,7 @@ import { syncService } from '../services/sync';
 import { liveActivityService } from '../services/liveActivity';
 import { VersionFooter } from '../components/VersionFooter';
 import { colors } from '../theme/colors';
+import { ScreenHeader, SearchField, cardSurface, ui } from '../components/ui';
 import type { Event, MainTabParamList } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<MainTabParamList, 'Events'>;
@@ -32,6 +34,7 @@ export function EventListScreen() {
   const { state, selectEvent, logout, startLiveActivity, stopLiveActivity } = useApp();
   const { isAvailable, isEnabled, biometricType, toggleEnabled } = useBiometric();
   const [events, setEvents] = useState<Event[]>(state.events);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [liveActivityRunning, setLiveActivityRunning] = useState(false);
@@ -104,18 +107,22 @@ export function EventListScreen() {
   };
 
   // Shown in the event's timezone so the date matches the event schedule.
+  // Friendly form ("Fri 28 Aug"), with the year only when it isn't this year.
   const formatDate = (dateString?: string, timezone?: string) => {
     if (!dateString) return '';
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
+    const sameYear = date.getFullYear() === new Date().getFullYear();
     try {
-      return new Date(dateString).toLocaleDateString(undefined, {
+      return new Intl.DateTimeFormat('en-GB', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        ...(sameYear ? {} : { year: 'numeric' }),
         timeZone: timezone || undefined,
-      });
+      }).format(date);
     } catch {
-      try {
-        return new Date(dateString).toLocaleDateString();
-      } catch {
-        return '';
-      }
+      return date.toLocaleDateString();
     }
   };
 
@@ -131,7 +138,17 @@ export function EventListScreen() {
     return endDay < startOfToday;
   };
 
-  const visibleEvents = events.filter((event) => !isFinished(event));
+  const trimmedQuery = searchQuery.trim().toLowerCase();
+  const matchesSearch = (event: Event) => {
+    if (!trimmedQuery) return true;
+    const haystack = [event.name, event.location_city, event.slug]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return trimmedQuery.split(/\s+/).every((term) => haystack.includes(term));
+  };
+
+  const visibleEvents = events.filter((event) => !isFinished(event) && matchesSearch(event));
 
   const renderEvent = ({ item }: { item: Event }) => {
     const isSelected = state.currentEvent?.id === item.id;
@@ -196,28 +213,26 @@ export function EventListScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>Events</Text>
-          <Text style={styles.headerSubtitle}>
-            {state.auth.user?.name || state.auth.user?.email}
-          </Text>
-        </View>
-        <View style={styles.headerActions}>
-          {state.auth.user?.is_participant && (
-            <TouchableOpacity
-              onPress={() => navigation.getParent()?.navigate('ParticipantMain' as never)}
-              style={styles.ticketsButton}
-            >
-              <Ionicons name="ticket-outline" size={16} color={colors.blue} />
-              <Text style={styles.ticketsText}>My Tickets</Text>
+      <ScreenHeader
+        title="Events"
+        subtitle={state.auth.user?.name || state.auth.user?.email}
+        right={
+          <View style={styles.headerActions}>
+            {state.auth.user?.is_participant && (
+              <TouchableOpacity
+                onPress={() => navigation.getParent()?.navigate('ParticipantMain' as never)}
+                style={ui.headerAction}
+              >
+                <Ionicons name="ticket-outline" size={15} color={colors.gray[700]} />
+                <Text style={ui.headerActionText}>Tickets</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={handleLogout} style={ui.headerAction}>
+              <Text style={[ui.headerActionText, ui.headerActionTextDestructive]}>Sign Out</Text>
             </TouchableOpacity>
-          )}
-          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-            <Text style={styles.logoutText}>Sign Out</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+          </View>
+        }
+      />
 
       {state.sync.pendingScans > 0 && (
         <View style={styles.syncBanner}>
@@ -283,11 +298,19 @@ export function EventListScreen() {
         </View>
       )}
 
+      <SearchField
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        placeholder="Search events"
+      />
+
       <FlatList
         data={visibleEvents}
         renderItem={renderEvent}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
@@ -300,6 +323,8 @@ export function EventListScreen() {
           <View style={styles.emptyContainer}>
             {isLoading ? (
               <Text style={styles.emptyText}>Loading events...</Text>
+            ) : trimmedQuery ? (
+              <Text style={styles.emptyText}>No events match “{searchQuery.trim()}”</Text>
             ) : (
               <Text style={styles.emptyText}>No events available</Text>
             )}
@@ -315,58 +340,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    backgroundColor: colors.glass.medium,
-    borderBottomWidth: 0,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text.primary,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    marginTop: 2,
-  },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  ticketsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: colors.glass.light,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.glass.border,
-  },
-  ticketsText: {
-    fontSize: 14,
-    color: colors.blue,
-    fontWeight: '500',
-  },
-  logoutButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: colors.glass.light,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.glass.border,
-  },
-  logoutText: {
-    fontSize: 14,
-    color: colors.red,
-    fontWeight: '500',
   },
   syncBanner: {
     backgroundColor: colors.orange,
@@ -380,12 +357,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   securitySection: {
-    backgroundColor: colors.white,
+    ...cardSurface,
     marginHorizontal: 16,
-    marginTop: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
+    marginTop: 12,
   },
   securityRow: {
     flexDirection: 'row',
@@ -414,25 +388,19 @@ const styles = StyleSheet.create({
   },
   list: {
     padding: 16,
+    paddingTop: 12,
     paddingBottom: 100,
   },
   eventCardWrapper: {
-    borderRadius: 16,
+    ...cardSurface,
     marginBottom: 12,
     overflow: 'hidden',
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: colors.glass.border,
   },
   eventCard: {
     padding: 16,
   },
   eventCardPlain: {
-    backgroundColor: colors.glass.dark,
+    backgroundColor: colors.white,
   },
   eventCardImage: {
     borderRadius: 16,
@@ -530,12 +498,10 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   liveActivitySection: {
-    backgroundColor: colors.white,
+    ...cardSurface,
     marginHorizontal: 16,
     marginTop: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
+    marginBottom: 12,
   },
   liveActivityButton: {
     paddingVertical: 8,
