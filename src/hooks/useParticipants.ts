@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
+import { canViewParticipantRecords } from '../services/eventAccess';
 import type { Participant } from '../types';
 
 export function useParticipants() {
@@ -55,6 +56,15 @@ export function useParticipants() {
     }
 
     if (!currentEvent) return;
+
+    // A role without participant records has nothing to search: no request,
+    // and no local fallback either, because the roster is empty by design.
+    if (!canViewParticipantRecords(currentEvent)) {
+      searchAbortRef.current = null;
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
 
     const controller = new AbortController();
     searchAbortRef.current = controller;

@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
+import { useEventAccess } from '../hooks/useEventAccess';
 import { useParticipants } from '../hooks/useParticipants';
 import { useParticipantViews } from '../hooks/useParticipantViews';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
@@ -43,6 +44,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 export function SearchScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { useSplitView } = useResponsiveLayout();
+  const { canViewParticipantRecords, roleLabel } = useEventAccess();
   const {
     search,
     clearSearch,
@@ -174,6 +176,29 @@ export function SearchScreen() {
           <Text style={styles.emptyTitle}>No Event Selected</Text>
           <Text style={styles.emptyText}>
             Please select an event from the Events tab.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // The tab is hidden for these roles, but a deep link (attend://search) or a
+  // stale navigation state can still land here. Explain it rather than showing
+  // an empty roster that pull-to-refresh will never fill.
+  if (!canViewParticipantRecords) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <ScreenHeader title="Participants" subtitle={currentEvent.name} />
+        <View style={styles.centered}>
+          <Ionicons name="lock-closed-outline" size={42} color={colors.gray[400]} />
+          <Text style={styles.emptyTitle}>Participant records unavailable</Text>
+          <Text style={styles.emptyText}>
+            {roleLabel
+              ? `Your role on this event (${roleLabel}) doesn't include participant records.`
+              : "Your role on this event doesn't include participant records."}
+          </Text>
+          <Text style={styles.emptyText}>
+            You can still scan attendees in and use the travel calendar.
           </Text>
         </View>
       </SafeAreaView>
@@ -454,6 +479,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 32,
+    gap: 10,
   },
   emptyContainer: {
     flex: 1,
@@ -478,5 +504,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.text.secondary,
     textAlign: 'center',
+    maxWidth: 300,
+    lineHeight: 20,
   },
 });

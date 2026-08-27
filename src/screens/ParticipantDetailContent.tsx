@@ -19,6 +19,7 @@ import { AlertBadge } from '../components/AlertBadge';
 import { StatusBadge } from '../components/StatusBadge';
 import { EmergencyContactCard } from '../components/EmergencyContactCard';
 import { useApp } from '../context/AppContext';
+import { useEventAccess } from '../hooks/useEventAccess';
 import { useNFC } from '../hooks/useNFC';
 import { api } from '../services/api';
 import { buildPhoneActions } from '../services/contactLinks';
@@ -33,6 +34,7 @@ interface ParticipantDetailContentProps {
 
 export function ParticipantDetailContent({ participant, topInset = 100, bottomInset = 32 }: ParticipantDetailContentProps) {
   const { state, updateParticipant } = useApp();
+  const { canViewParticipantRecords, canViewParticipantPii, roleLabel } = useEventAccess();
   const { isSupported: nfcSupported, writeTag } = useNFC();
   const [isUndoing, setIsUndoing] = useState(false);
   const [isWritingBadge, setIsWritingBadge] = useState(false);
@@ -77,6 +79,9 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
 
   useEffect(() => {
     if (!state.currentEvent) return;
+    // Reached from a scan on a role the participants API refuses: the scan
+    // response is the only record there is, so don't ask again for a 403.
+    if (!canViewParticipantRecords) return;
     let cancelled = false;
     (async () => {
       try {
@@ -91,7 +96,7 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.currentEvent?.id, currentParticipant.participant_event_id]);
+  }, [canViewParticipantRecords, state.currentEvent?.id, currentParticipant.participant_event_id]);
 
   const handleSubmitNote = async () => {
     if (!newNoteText.trim() || !state.currentEvent || isSubmittingNote) return;
@@ -114,6 +119,17 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
 
   const handleRefresh = useCallback(async () => {
     if (!state.currentEvent) return;
+    // Pull-to-refresh must not turn into a 403 loop for a role without
+    // participant records; notes still refresh on their own.
+    if (!canViewParticipantRecords) {
+      setIsRefreshing(true);
+      try {
+        await loadNotes();
+      } finally {
+        setIsRefreshing(false);
+      }
+      return;
+    }
     setIsRefreshing(true);
     try {
       const [updated] = await Promise.all([
@@ -127,7 +143,7 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
     } finally {
       setIsRefreshing(false);
     }
-  }, [state.currentEvent, currentParticipant.participant_event_id, updateParticipant, loadNotes]);
+  }, [canViewParticipantRecords, state.currentEvent, currentParticipant.participant_event_id, updateParticipant, loadNotes]);
 
   const openContactURL = (url: string, appName: string) => {
     Linking.openURL(url).catch(() => {
@@ -372,7 +388,11 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
       </Section>
 
       {currentParticipant.personal && (
-        <PersonalSection personal={currentParticipant.personal} />
+        <PersonalSection
+          personal={currentParticipant.personal}
+          canViewPii={canViewParticipantPii}
+          roleLabel={roleLabel}
+        />
       )}
 
       {currentParticipant.accommodation && (
@@ -514,10 +534,18 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
       {(currentParticipant.travel_inbound || currentParticipant.travel_outbound) && (
         <>
           {currentParticipant.travel_inbound && (
-            <TravelSection title="Inbound Travel" travel={currentParticipant.travel_inbound} />
+            <TravelSection
+              title="Inbound Travel"
+              travel={currentParticipant.travel_inbound}
+              canViewPii={canViewParticipantPii}
+            />
           )}
           {currentParticipant.travel_outbound && (
-            <TravelSection title="Outbound Travel" travel={currentParticipant.travel_outbound} />
+            <TravelSection
+              title="Outbound Travel"
+              travel={currentParticipant.travel_outbound}
+              canViewPii={canViewParticipantPii}
+            />
           )}
         </>
       )}
@@ -629,7 +657,15 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
   );
 }
 
-function PersonalSection({ personal }: { personal: PersonalDetails }) {
+function PersonalSection({
+  personal,
+  canViewPii,
+  roleLabel,
+}: {
+  personal: PersonalDetails;
+  canViewPii: boolean;
+  roleLabel: string | null;
+}) {
   const fullLegalName = [personal.legal_first_name, personal.legal_last_name].filter(Boolean).join(' ');
   const addr = personal.address;
   const addressLines = [
@@ -637,20 +673,42 @@ function PersonalSection({ personal }: { personal: PersonalDetails }) {
     [addr?.city, addr?.state, addr?.postal_code].filter(Boolean).join(', '),
     addr?.country,
   ].filter(Boolean).join('\n');
+  // The birthday and the address are omitted from the payload for a role that
+  // can't see them, so age stands in for the birthday and the address row
+  // explains itself instead of leaving a gap someone reads as "none on file".
+  const hasContent = !!(
+    fullLegalName
+    || personal.preferred_name
+    || personal.date_of_birth
+    || personal.age != null
+    || personal.tshirt_size
+    || personal.engagement_preference
+    || personal.engagement_notes
+    || addressLines
+    || !canViewPii
+  );
+  if (!hasContent) return null;
+  const hiddenValue = roleLabel ? `Hidden for your role (${roleLabel})` : 'Hidden for your role';
   return (
     <Section title="Personal Details">
       {fullLegalName && <InfoRow label="Legal Name" value={fullLegalName} />}
       {personal.preferred_name && <InfoRow label="Preferred Name" value={personal.preferred_name} />}
-      {personal.date_of_birth && (
+      {personal.date_of_birth ? (
         <InfoRow
           label="Date of Birth"
           value={`${new Date(personal.date_of_birth).toLocaleDateString()}${personal.age != null ? ` (age ${personal.age})` : ''}`}
         />
-      )}
+      ) : personal.age != null ? (
+        <InfoRow label="Age" value={`${personal.age}`} />
+      ) : null}
       {personal.tshirt_size && <InfoRow label="T-Shirt Size" value={personal.tshirt_size} />}
       {personal.engagement_preference && <InfoRow label="Engagement" value={personal.engagement_preference.replace(/_/g, ' ')} />}
       {personal.engagement_notes && <InfoRow label="Engagement Notes" value={personal.engagement_notes} />}
-      {addressLines && <InfoRow label="Address" value={addressLines} />}
+      {addressLines
+        ? <InfoRow label="Address" value={addressLines} />
+        : !canViewPii
+          ? <InfoRow label="Address" value={hiddenValue} />
+          : null}
     </Section>
   );
 }
@@ -858,7 +916,15 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function TravelSection({ title, travel }: { title: string; travel: Travel }) {
+function TravelSection({
+  title,
+  travel,
+  canViewPii,
+}: {
+  title: string;
+  travel: Travel;
+  canViewPii: boolean;
+}) {
   const getModeLabel = (mode?: string) => {
     const modes: Record<string, string> = {
       plane: '✈️ Flight',
@@ -922,9 +988,13 @@ function TravelSection({ title, travel }: { title: string; travel: Travel }) {
 
         {travel.mode === 'car' && (
           <>
-            {travel.origin_address && (
+            {travel.origin_address ? (
               <View style={styles.infoRow}><Text style={styles.infoLabel}>From</Text><Text style={styles.infoValue}>{travel.origin_address}</Text></View>
-            )}
+            ) : !canViewPii ? (
+              // The pickup address for a car journey is the participant's
+              // doorstep, and it isn't in the payload for this role at all.
+              <View style={styles.infoRow}><Text style={styles.infoLabel}>From</Text><Text style={styles.infoValue}>Address hidden for your role</Text></View>
+            ) : null}
             {travel.expected_arrival_time && (
               <View style={styles.infoRow}><Text style={styles.infoLabel}>Expected Arrival</Text><Text style={styles.infoValue}>{formatDateTime(travel.expected_arrival_time)}</Text></View>
             )}

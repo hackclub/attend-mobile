@@ -10,6 +10,7 @@ import * as Linking from 'expo-linking';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { notificationService } from './src/services/notifications';
 import { AppProvider, useApp } from './src/context/AppContext';
+import { useEventAccess } from './src/hooks/useEventAccess';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { EventListScreen } from './src/screens/EventListScreen';
 import { ScannerScreen } from './src/screens/ScannerScreen';
@@ -89,6 +90,10 @@ const androidTabBarProps = Platform.OS === 'android'
   : {};
 
 function MainTabs() {
+  // A role without participant records gets no Search tab at all: the roster,
+  // the search box, and every participant link behind it would only 403.
+  const { canViewParticipantRecords } = useEventAccess();
+
   return (
     <Tab.Navigator
       tabBarActiveTintColor={colors.red}
@@ -110,14 +115,16 @@ function MainTabs() {
           tabBarIcon: tabIcon('qrcode.viewfinder', require('./assets/tabs/scan.svg')),
         }}
       />
-      <Tab.Screen
-        name="Search"
-        component={SearchScreen}
-        options={{
-          tabBarLabel: 'Search',
-          tabBarIcon: tabIcon('magnifyingglass', require('./assets/tabs/search.svg')),
-        }}
-      />
+      {canViewParticipantRecords ? (
+        <Tab.Screen
+          name="Search"
+          component={SearchScreen}
+          options={{
+            tabBarLabel: 'Search',
+            tabBarIcon: tabIcon('magnifyingglass', require('./assets/tabs/search.svg')),
+          }}
+        />
+      ) : null}
       <Tab.Screen
         name="Travel"
         component={TravelCalendarScreen}

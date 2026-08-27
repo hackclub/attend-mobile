@@ -1,6 +1,7 @@
 import NetInfo from '@react-native-community/netinfo';
 import { asyncStorage, STORAGE_KEYS } from './storage';
 import { api } from './api';
+import { forbiddenParticipants } from './eventAccess';
 import { mergeParticipant, mergeParticipants, type ParticipantUpdate } from './participantIndex';
 import type { Event, Participant, RemoteScan, ScanContext } from '../types';
 
@@ -85,7 +86,9 @@ class SyncService {
   }
 
   async getCachedEvents(): Promise<Event[]> {
-    return (await asyncStorage.get<Event[]>(STORAGE_KEYS.EVENTS)) ?? [];
+    const events = (await asyncStorage.get<Event[]>(STORAGE_KEYS.EVENTS)) ?? [];
+    forbiddenParticipants.applyEventRoles(events);
+    return events;
   }
 
   async cacheParticipants(eventId: string, participants: Participant[]): Promise<void> {
@@ -275,10 +278,23 @@ class SyncService {
     }
   }
 
+  /**
+   * @param options.probeForbidden Ask again even for an event already known to
+   *   refuse participants. Set only for an explicit, user-initiated refresh:
+   *   it's the escape hatch for a server that reports no role, where a granted
+   *   role would otherwise never be noticed.
+   */
   async refreshParticipants(
     eventId: string,
-    generation = this.cacheGeneration
+    generation = this.cacheGeneration,
+    options: { probeForbidden?: boolean } = {}
   ): Promise<Participant[]> {
+    // A role without participant access gets the same answer every time, so
+    // background sync must not keep asking. One user-initiated pull may.
+    if (forbiddenParticipants.has(eventId) && !options.probeForbidden) {
+      return this.getLatestCachedParticipants(eventId, generation);
+    }
+
     const netInfo = await NetInfo.fetch();
     if (!netInfo.isConnected) {
       return this.getLatestCachedParticipants(eventId, generation);
@@ -300,6 +316,7 @@ class SyncService {
 
   async clear(): Promise<void> {
     this.cacheGeneration += 1;
+    forbiddenParticipants.reset();
     await Promise.allSettled(this.participantCacheQueues.values());
     this.participantCacheQueues.clear();
     const clearOperation = this.cacheWriteQueue.catch(() => undefined).then(async () => {

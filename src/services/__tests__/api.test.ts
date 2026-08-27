@@ -5,6 +5,7 @@ jest.mock('expo-secure-store', () => ({
 }));
 
 import { api } from '../api';
+import { forbiddenParticipants } from '../eventAccess';
 
 const mockFetch = jest.fn();
 global.fetch = mockFetch as unknown as typeof fetch;
@@ -185,5 +186,108 @@ describe('api.getParticipants', () => {
       `updated_since=${encodeURIComponent('2026-08-24T09:40:00Z')}`
     );
     expect(page).toEqual({ participants: [], synced_at: '2026-08-24T09:45:00Z' });
+  });
+});
+
+function errorResponse(status: number, body: unknown) {
+  return {
+    ok: false,
+    status,
+    text: async () => JSON.stringify(body),
+  };
+}
+
+describe('api.getTravelCalendar', () => {
+  it('strips the address-hidden sentinel instead of passing it off as a route', async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({
+        dates: ['2026-07-15'],
+        entries: [
+          { id: 'a', mode: 'car', route: 'Address hidden' },
+          { id: 'b', mode: 'car', route: '  Address hidden  ' },
+        ],
+      })
+    );
+
+    const data = await api.getTravelCalendar('evt-1');
+
+    expect(data.entries.map(entry => entry.route)).toEqual([null, null]);
+    expect(data.entries.every(entry => entry.routeRedacted)).toBe(true);
+  });
+
+  it('leaves a real route alone', async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({
+        dates: [],
+        entries: [{ id: 'a', mode: 'plane', route: 'LHR → JFK' }],
+      })
+    );
+
+    const [entry] = (await api.getTravelCalendar('evt-1')).entries;
+
+    expect(entry.route).toBe('LHR → JFK');
+    expect(entry.routeRedacted).toBeUndefined();
+  });
+
+  it('tolerates a payload with no entries', async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ dates: [] }));
+
+    await expect(api.getTravelCalendar('evt-1')).resolves.toMatchObject({ entries: [] });
+  });
+});
+
+describe('participant access tracking', () => {
+  beforeEach(() => {
+    forbiddenParticipants.reset();
+  });
+
+  it('records the refusal when the participants API answers 403', async () => {
+    mockFetch.mockResolvedValueOnce(errorResponse(403, { error: 'Forbidden' }));
+
+    await expect(api.getParticipants('evt-1')).rejects.toThrow('Forbidden');
+    expect(forbiddenParticipants.has('evt-1')).toBe(true);
+  });
+
+  it('records it for search and for a single participant too', async () => {
+    mockFetch.mockResolvedValueOnce(errorResponse(403, { error: 'Forbidden' }));
+    await expect(api.searchParticipants('evt-1', 'ada')).rejects.toThrow();
+    expect(forbiddenParticipants.has('evt-1')).toBe(true);
+
+    forbiddenParticipants.reset();
+    mockFetch.mockResolvedValueOnce(errorResponse(403, { error: 'Forbidden' }));
+    await expect(api.getParticipant('evt-1', 'pe-1')).rejects.toThrow();
+    expect(forbiddenParticipants.has('evt-1')).toBe(true);
+  });
+
+  it('leaves the flag alone for failures that are not a refusal', async () => {
+    mockFetch.mockResolvedValueOnce(errorResponse(500, { error: 'Boom' }));
+
+    await expect(api.getParticipants('evt-1')).rejects.toThrow();
+    expect(forbiddenParticipants.has('evt-1')).toBe(false);
+  });
+
+  it('clears the flag once a request succeeds again', async () => {
+    forbiddenParticipants.mark('evt-1');
+    mockFetch.mockResolvedValueOnce(jsonResponse({ participants: [], synced_at: '' }));
+
+    await api.getParticipants('evt-1');
+
+    expect(forbiddenParticipants.has('evt-1')).toBe(false);
+  });
+
+  it('pre-marks events whose role the events payload reports as read-only', async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse({
+        events: [
+          { id: 'evt-ro', name: 'A', slug: 'a', role: 'read_only' },
+          { id: 'evt-limited', name: 'B', slug: 'b', role: 'limited' },
+        ],
+      })
+    );
+
+    await api.getEvents();
+
+    expect(forbiddenParticipants.has('evt-ro')).toBe(true);
+    expect(forbiddenParticipants.has('evt-limited')).toBe(false);
   });
 });

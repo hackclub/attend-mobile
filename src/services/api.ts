@@ -1,6 +1,8 @@
 import { secureStorage } from './storage';
+import { forbiddenParticipants } from './eventAccess';
 import type {
   TravelCalendarData,
+  TravelCalendarEntry,
   ApiResponse,
   CreateScanOptions,
   CreateScanResponse,
@@ -18,6 +20,23 @@ import type {
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL || (__DEV__ ? 'http://192.168.0.218:3000' : 'https://attend.hackclub.com');
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const SCAN_REQUEST_TIMEOUT_MS = 8_000;
+
+// What the travel calendar sends instead of a car journey's route for a role
+// that can't see addresses. A sentinel, not data.
+const HIDDEN_ADDRESS_SENTINEL = 'Address hidden';
+
+/**
+ * Strips the address-hidden sentinel out of a travel entry.
+ *
+ * A car journey's `route` is the participant's doorstep, so for a PII-restricted
+ * role the API replaces it with a fixed string. Turning it back into a null
+ * route plus a flag keeps it out of search haystacks, map links, and anything
+ * else that would treat it as a real address.
+ */
+export function normalizeTravelCalendarEntry(entry: TravelCalendarEntry): TravelCalendarEntry {
+  if (entry.route?.trim() !== HIDDEN_ADDRESS_SENTINEL) return entry;
+  return { ...entry, route: null, routeRedacted: true };
+}
 
 class ApiClient {
   private baseUrl: string;
@@ -102,6 +121,30 @@ class ApiClient {
     return JSON.parse(text) as T;
   }
 
+  /**
+   * Runs a participants request, recording whether this event's participant
+   * records are reachable at all.
+   *
+   * Every roster, search, and detail call goes through here so a single 403
+   * teaches the whole app to stop offering the roster, and a later success
+   * lets it back in without a sign-out.
+   */
+  private async trackParticipantAccess<T>(
+    eventId: string,
+    run: () => Promise<T>
+  ): Promise<T> {
+    try {
+      const result = await run();
+      forbiddenParticipants.clear(eventId);
+      return result;
+    } catch (error) {
+      if (error instanceof ApiError && error.isForbidden) {
+        forbiddenParticipants.mark(eventId);
+      }
+      throw error;
+    }
+  }
+
   async exchangeCodeForToken(code: string, redirectUri?: string, codeVerifier?: string): Promise<{ token: string; user: User }> {
     console.log('Exchanging code for token:', { code: code.substring(0, 10) + '...', redirectUri });
     return this.request<{ token: string; user: User }>('/api/v1/session', {
@@ -154,7 +197,11 @@ class ApiClient {
   async getEvents(): Promise<Event[]> {
     const response = await this.request<{ events: Event[] }>('/api/v1/events');
     console.log('Events response:', response);
-    return response.events || [];
+    const events = response.events || [];
+    // The payload carries each event's role, so roster access can be settled
+    // before any screen asks for participants.
+    forbiddenParticipants.applyEventRoles(events);
+    return events;
   }
 
   async getEvent(eventId: string): Promise<Event> {
@@ -164,8 +211,10 @@ class ApiClient {
 
   async getParticipants(eventId: string, updatedSince?: string): Promise<ParticipantsSyncPage> {
     const query = updatedSince ? `?updated_since=${encodeURIComponent(updatedSince)}` : '';
-    const response = await this.request<Partial<ParticipantsSyncPage>>(
-      `/api/v1/events/${eventId}/participants${query}`
+    const response = await this.trackParticipantAccess(eventId, () =>
+      this.request<Partial<ParticipantsSyncPage>>(
+        `/api/v1/events/${eventId}/participants${query}`
+      )
     );
     console.log('Participants response sample:', response.participants?.[0]);
     return {
@@ -180,16 +229,20 @@ class ApiClient {
     signal?: AbortSignal
   ): Promise<Participant[]> {
     const encodedQuery = encodeURIComponent(query);
-    const response = await this.request<{ results: Participant[] }>(
-      `/api/v1/events/${eventId}/participants/search?q=${encodedQuery}`,
-      { signal }
+    const response = await this.trackParticipantAccess(eventId, () =>
+      this.request<{ results: Participant[] }>(
+        `/api/v1/events/${eventId}/participants/search?q=${encodedQuery}`,
+        { signal }
+      )
     );
     return response.results || [];
   }
 
   async getParticipant(eventId: string, participantId: string): Promise<Participant> {
-    const response = await this.request<{ participant: Participant }>(
-      `/api/v1/events/${eventId}/participants/${participantId}`
+    const response = await this.trackParticipantAccess(eventId, () =>
+      this.request<{ participant: Participant }>(
+        `/api/v1/events/${eventId}/participants/${participantId}`
+      )
     );
     return response.participant;
   }
@@ -281,7 +334,11 @@ class ApiClient {
   }
 
   async getTravelCalendar(eventId: string): Promise<TravelCalendarData> {
-    return this.request<TravelCalendarData>(`/api/v1/events/${eventId}/travel`);
+    const data = await this.request<TravelCalendarData>(`/api/v1/events/${eventId}/travel`);
+    return {
+      ...data,
+      entries: (data.entries ?? []).map(normalizeTravelCalendarEntry),
+    };
   }
 
   async registerPushToken(token: string): Promise<void> {
@@ -329,6 +386,10 @@ export class ApiError extends Error {
 
   get isUnauthorized(): boolean {
     return this.status === 401;
+  }
+
+  get isForbidden(): boolean {
+    return this.status === 403;
   }
 
   get isNotFound(): boolean {

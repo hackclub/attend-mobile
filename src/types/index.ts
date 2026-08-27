@@ -45,6 +45,18 @@ export interface TicketMessage {
   delivered_at?: string | null;
 }
 
+// A user's standing on one event, as reported by GET /api/v1/events. Mirrors
+// EventRoleAssignment's enum plus the two standings that are inherited rather
+// than stored: a global admin, and a member of the event's series.
+export type EventRole =
+  | 'global_admin'
+  | 'series_member'
+  | 'event_admin'
+  | 'safeguarding_lead'
+  | 'ops'
+  | 'limited'
+  | 'read_only';
+
 export interface Event {
   id: string;
   name: string;
@@ -59,6 +71,13 @@ export interface Event {
   location_longitude?: number | null;
   logo_url?: string;
   banner_url?: string;
+  // The caller's standing on this event, and whether that standing includes
+  // participants' exact dates of birth and addresses. Both are absent on
+  // servers that predate the fields, and on any event cached by an older
+  // build, so "missing" means unknown — never treat it as a restriction.
+  // A role this build doesn't recognise must fall through to a safe default.
+  role?: EventRole | (string & {});
+  can_view_participant_pii?: boolean;
 }
 
 export interface EmergencyContact {
@@ -84,12 +103,15 @@ export interface PersonalDetails {
   legal_first_name?: string;
   legal_last_name?: string;
   preferred_name?: string;
+  // Omitted entirely (not sent as null) for a role that can't see PII, so
+  // render `age` on its own rather than deriving it from the birthday.
   date_of_birth?: string;
   age?: number | null;
   tshirt_size?: string;
   secondary_email?: string;
   engagement_preference?: string;
   engagement_notes?: string;
+  // Omitted entirely for a role that can't see PII.
   address?: Address;
 }
 
@@ -236,6 +258,8 @@ export interface Travel {
   expected_arrival_time?: string;
   bus_departure_location?: string;
   bus_arrival_location?: string;
+  // The participant's doorstep for a car journey. Omitted entirely for a role
+  // that can't see PII.
   origin_address?: string;
   other_details?: string;
   notes?: string;
@@ -495,6 +519,9 @@ export interface TravelCalendarEntry {
   // YYYY-MM-DD in the event's timezone; null means unscheduled.
   agendaDate?: string | null;
   route?: string | null;
+  // Set when the API replaced this entry's route with its address-hidden
+  // sentinel, so the row can explain the gap instead of showing a blank.
+  routeRedacted?: boolean;
   reference?: string | null;
   details?: string | null;
   pickupState?: TravelPickupState | null;

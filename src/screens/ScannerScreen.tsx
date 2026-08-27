@@ -21,6 +21,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { ScannerResultCard } from '../components/ScannerResultCard';
 import { useApp } from '../context/AppContext';
+import { useEventAccess } from '../hooks/useEventAccess';
 import { useParticipants } from '../hooks/useParticipants';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { useScanFeedback } from '../hooks/useScanFeedback';
@@ -69,6 +70,9 @@ export function ScannerScreen() {
     contextsReady,
   } = useScanner();
   const { search, clearSearch, searchResults, isSearching } = useParticipants();
+  // Scanning itself works for every staff role; searching the roster and
+  // opening a participant do not, so both entry points come and go with access.
+  const { canViewParticipantRecords } = useEventAccess();
   const { isSupported: nfcSupported, isReading: nfcReading } = useNFC();
   const { isPad } = useResponsiveLayout();
   const { width, height } = useWindowDimensions();
@@ -158,12 +162,15 @@ export function ScannerScreen() {
   const handleSearchChange = useCallback((text: string) => {
     recordScannerActivity();
     setSearchQuery(text);
+    // Without roster access there is nothing to look up as you type; the sheet
+    // becomes a plain attendee-ID field, and scanning by ID still works.
+    if (!canViewParticipantRecords) return;
     if (text.length >= 2) {
       void search(text);
     } else {
       clearSearch();
     }
-  }, [clearSearch, recordScannerActivity, search]);
+  }, [canViewParticipantRecords, clearSearch, recordScannerActivity, search]);
 
   const handleSearchScan = useCallback(async (participant: Participant) => {
     const identifier = participant.participant_event_id || participant.participant_id;
@@ -363,7 +370,7 @@ export function ScannerScreen() {
               >
                 <ScannerResultCard
                   result={lastScan}
-                  onDetails={viewDetails}
+                  onDetails={canViewParticipantRecords ? viewDetails : undefined}
                   onClear={clearLastScan}
                   onRetry={() => {
                     recordScannerActivity();
@@ -387,8 +394,8 @@ export function ScannerScreen() {
               />
             ) : null}
             <ToolButton
-              icon="search"
-              label="Search"
+              icon={canViewParticipantRecords ? 'search' : 'keypad-outline'}
+              label={canViewParticipantRecords ? 'Search' : 'Enter ID'}
               disabled={!contextsReady}
               onPress={() => openManualEntry('search')}
             />
@@ -397,6 +404,7 @@ export function ScannerScreen() {
 
         {manualEntryMode === 'search' ? (
           <SearchSheet
+            canSearchRoster={canViewParticipantRecords}
             query={searchQuery}
             results={searchResults || []}
             isSearching={isSearching}
@@ -590,6 +598,7 @@ function SheetHeader({ title, onClose }: { title: string; onClose: () => void })
 }
 
 function SearchSheet({
+  canSearchRoster,
   query,
   results,
   isSearching,
@@ -600,6 +609,7 @@ function SearchSheet({
   onSubmitId,
   onClose,
 }: {
+  canSearchRoster: boolean;
   query: string;
   results: Participant[];
   isSearching: boolean;
@@ -617,12 +627,19 @@ function SearchSheet({
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={[styles.sheet, styles.searchSheet]}>
-        <SheetHeader title="Find an attendee" onClose={onClose} />
+        <SheetHeader
+          title={canSearchRoster ? 'Find an attendee' : 'Enter an attendee ID'}
+          onClose={onClose}
+        />
         <View style={styles.searchInputRow}>
-          <Ionicons name="search" size={19} color={colors.gray[400]} />
+          <Ionicons
+            name={canSearchRoster ? 'search' : 'keypad-outline'}
+            size={19}
+            color={colors.gray[400]}
+          />
           <TextInput
             style={styles.searchInput}
-            placeholder="Name, email, or attendee ID"
+            placeholder={canSearchRoster ? 'Name, email, or attendee ID' : 'Attendee ID'}
             placeholderTextColor={colors.gray[400]}
             value={query}
             onChangeText={onChange}
@@ -648,7 +665,7 @@ function SearchSheet({
         </View>
 
         <FlatList
-          data={results}
+          data={canSearchRoster ? results : []}
           keyExtractor={(item, index) => item.participant_event_id || item.participant_id || `attendee-${index}`}
           keyboardShouldPersistTaps="handled"
           style={styles.searchResults}
@@ -693,13 +710,15 @@ function SearchSheet({
           )}
           ListEmptyComponent={idCandidate ? null : (
             <Text style={styles.searchEmptyText}>
-              {query.length === 0
-                ? 'Search by name or email, or paste an attendee ID'
-                : query.length < 2
-                  ? 'Type at least 2 characters'
-                  : isSearching
-                    ? 'Searching'
-                    : 'No attendees found'}
+              {!canSearchRoster
+                ? "Your role on this event doesn't include participant records, so scan or paste an attendee ID."
+                : query.length === 0
+                  ? 'Search by name or email, or paste an attendee ID'
+                  : query.length < 2
+                    ? 'Type at least 2 characters'
+                    : isSearching
+                      ? 'Searching'
+                      : 'No attendees found'}
             </Text>
           )}
         />
