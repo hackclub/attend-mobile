@@ -78,6 +78,12 @@ export interface Event {
   // A role this build doesn't recognise must fall through to a safe default.
   role?: EventRole | (string & {});
   can_view_participant_pii?: boolean;
+  // Explicit capability flags, same "missing means unknown" rule. When present
+  // they win over anything inferred from the role.
+  can_view_participants?: boolean;
+  can_view_sensitive_data?: boolean;
+  // Whether the event runs travel at all; no Travel tab when it's false.
+  travel_enabled?: boolean;
 }
 
 export interface EmergencyContact {
@@ -299,7 +305,8 @@ export interface Participant {
   cross_contamination_risk: boolean;
   
   // Safeguarding
-  freedom_waiver_granted: boolean;
+  // Only sent to roles that see sensitive data; absent isn't "not granted".
+  freedom_waiver_granted?: boolean;
   high_support_flag: boolean;
   can_leave_unaccompanied: boolean;
   

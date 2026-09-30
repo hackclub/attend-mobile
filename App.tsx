@@ -91,8 +91,9 @@ const androidTabBarProps = Platform.OS === 'android'
 
 function MainTabs() {
   // A role without participant records gets no Search tab at all: the roster,
-  // the search box, and every participant link behind it would only 403.
-  const { canViewParticipantRecords } = useEventAccess();
+  // the search box, and every participant link behind it would only 403. An
+  // event that doesn't run travel gets no Travel tab.
+  const { canViewParticipantRecords, showTravel } = useEventAccess();
 
   return (
     <Tab.Navigator
@@ -125,14 +126,16 @@ function MainTabs() {
           }}
         />
       ) : null}
-      <Tab.Screen
-        name="Travel"
-        component={TravelCalendarScreen}
-        options={{
-          tabBarLabel: 'Travel',
-          tabBarIcon: tabIcon('airplane', require('./assets/tabs/travel.svg')),
-        }}
-      />
+      {showTravel ? (
+        <Tab.Screen
+          name="Travel"
+          component={TravelCalendarScreen}
+          options={{
+            tabBarLabel: 'Travel',
+            tabBarIcon: tabIcon('airplane', require('./assets/tabs/travel.svg')),
+          }}
+        />
+      ) : null}
     </Tab.Navigator>
   );
 }

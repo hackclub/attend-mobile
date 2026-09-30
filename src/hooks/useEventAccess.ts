@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import {
   canViewParticipantPii,
   canViewParticipantRecords,
+  eventRunsTravel,
   forbiddenParticipants,
 } from '../services/eventAccess';
 import { eventRoleDetails } from '../services/eventRoles';
@@ -35,6 +36,8 @@ export function useEventAccess() {
       canViewParticipantRecords: canViewParticipantRecords(event),
       // Exact dates of birth and addresses, home and travel pickup alike.
       canViewParticipantPii: canViewParticipantPii(event),
+      // Whether the Travel tab has anything to show.
+      showTravel: eventRunsTravel(event),
     };
     // forbiddenVersion is the store's change signal, not a value we read.
     // eslint-disable-next-line react-hooks/exhaustive-deps

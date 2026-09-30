@@ -450,10 +450,13 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
       )}
 
       <Section title="Safeguarding">
-        <View style={styles.safeguardingRow}>
-          <Text style={styles.safeguardingLabel}>Freedom Waiver</Text>
-          <StatusBadge status={currentParticipant.freedom_waiver_granted ? 'signed' : 'unsigned'} />
-        </View>
+        {/* Only sent to roles that see sensitive data; absent isn't "unsigned". */}
+        {currentParticipant.freedom_waiver_granted !== undefined && (
+          <View style={styles.safeguardingRow}>
+            <Text style={styles.safeguardingLabel}>Freedom Waiver</Text>
+            <StatusBadge status={currentParticipant.freedom_waiver_granted ? 'signed' : 'unsigned'} />
+          </View>
+        )}
         <View style={styles.safeguardingRow}>
           <Text style={styles.safeguardingLabel}>High Support Needs</Text>
           <Text style={styles.safeguardingValue}>

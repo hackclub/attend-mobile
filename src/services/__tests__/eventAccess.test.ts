@@ -7,6 +7,7 @@ jest.mock('expo-secure-store', () => ({
 import {
   canViewParticipantPii,
   canViewParticipantRecords,
+  eventRunsTravel,
   forbiddenParticipants,
   roleAllowsParticipantRecords,
 } from '../eventAccess';
@@ -55,6 +56,23 @@ describe('roleAllowsParticipantRecords', () => {
   it('allows a role it does not recognise rather than locking the app down', () => {
     expect(roleAllowsParticipantRecords(event({ role: 'future_role' }))).toBe(true);
   });
+
+  it('lets the explicit flag win over the role in both directions', () => {
+    expect(roleAllowsParticipantRecords(event({ role: 'read_only', can_view_participants: true }))).toBe(true);
+    expect(roleAllowsParticipantRecords(event({ role: 'ops', can_view_participants: false }))).toBe(false);
+  });
+});
+
+describe('eventRunsTravel', () => {
+  it('hides travel only when the event says it has none', () => {
+    expect(eventRunsTravel(event({ travel_enabled: false }))).toBe(false);
+    expect(eventRunsTravel(event({ travel_enabled: true }))).toBe(true);
+  });
+
+  it('keeps travel for servers and cached events that predate the flag', () => {
+    expect(eventRunsTravel(event())).toBe(true);
+    expect(eventRunsTravel(null)).toBe(true);
+  });
 });
 
 describe('canViewParticipantRecords', () => {
@@ -77,6 +95,13 @@ describe('canViewParticipantRecords', () => {
 });
 
 describe('forbiddenParticipants.applyEventRoles', () => {
+  it('reconciles from the explicit flag when no role is sent', () => {
+    forbiddenParticipants.applyEventRoles([event({ can_view_participants: false })]);
+    expect(canViewParticipantRecords(event())).toBe(false);
+    forbiddenParticipants.applyEventRoles([event({ can_view_participants: true })]);
+    expect(canViewParticipantRecords(event())).toBe(true);
+  });
+
   it('pre-marks events whose role has no participant access', () => {
     forbiddenParticipants.applyEventRoles([
       event({ id: 'a', role: 'read_only' }),

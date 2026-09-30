@@ -23,8 +23,20 @@ export function canViewParticipantPii(event?: Event | null): boolean {
   return event?.can_view_participant_pii !== false;
 }
 
-/** Whether this event's role is one the participants API refuses outright. */
+/**
+ * Whether this event runs travel. Only an explicit false hides it, for the
+ * same reason as canViewParticipantPii.
+ */
+export function eventRunsTravel(event?: Event | null): boolean {
+  return event?.travel_enabled !== false;
+}
+
+/**
+ * Whether the participants API will answer for this event. The explicit
+ * `can_view_participants` flag wins; without it, fall back to the role.
+ */
 export function roleAllowsParticipantRecords(event?: Event | null): boolean {
+  if (typeof event?.can_view_participants === 'boolean') return event.can_view_participants;
   const role = event?.role;
   if (!role) return true;
   return !ROLES_WITHOUT_PARTICIPANT_RECORDS.includes(role);
@@ -101,12 +113,13 @@ class ForbiddenParticipantsStore {
    * upgrade (or a flag left over from a previous role) would strand the user
    * behind an empty roster until they signed out.
    *
-   * An event the payload reports no role for is left alone, so a 403 observed
+   * An event the payload reports neither a role nor the explicit flag for is
+   * left alone, so a 403 observed
    * against a server that predates the field still sticks.
    */
   applyEventRoles(events: Event[]): void {
     for (const event of events) {
-      if (!event.role) continue;
+      if (!event.role && typeof event.can_view_participants !== 'boolean') continue;
       if (roleAllowsParticipantRecords(event)) {
         this.clear(event.id);
       } else {
