@@ -3,12 +3,36 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'user_data';
+const KEYCHAIN_UPGRADED_KEY = 'keychain_after_first_unlock';
 let cachedToken: string | null | undefined;
+
+// iOS can launch the app in the background (prewarming, pushes, Live Activity
+// updates) while the phone is locked. The SecureStore default, WHEN_UNLOCKED,
+// makes the keychain unreadable then, so store with AFTER_FIRST_UNLOCK.
+const KEYCHAIN_OPTIONS: SecureStore.SecureStoreOptions = {
+  keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+};
+
+// Thrown when the keychain exists but can't be read yet — before the first
+// unlock after boot, or while locked for items still on WHEN_UNLOCKED. Callers
+// must not treat this as "signed out".
+export class KeychainLockedError extends Error {
+  constructor(cause: unknown) {
+    super('Keychain is locked', { cause });
+    this.name = 'KeychainLockedError';
+  }
+}
+
+function isKeychainLocked(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = (error as { code?: string }).code;
+  return code === 'ERR_KEY_CHAIN' && error.message.includes('User interaction is not allowed');
+}
 
 export const secureStorage = {
   async setToken(token: string): Promise<void> {
     try {
-      await SecureStore.setItemAsync(TOKEN_KEY, token);
+      await SecureStore.setItemAsync(TOKEN_KEY, token, KEYCHAIN_OPTIONS);
       cachedToken = token;
     } catch (error) {
       console.error('SecureStore setToken failed:', error);
@@ -22,6 +46,10 @@ export const secureStorage = {
       cachedToken = await SecureStore.getItemAsync(TOKEN_KEY);
       return cachedToken;
     } catch (error) {
+      if (isKeychainLocked(error)) {
+        console.warn('SecureStore getToken: keychain locked, deferring');
+        throw new KeychainLockedError(error);
+      }
       console.error('SecureStore getToken failed:', error);
       return null;
     }
@@ -38,7 +66,7 @@ export const secureStorage = {
 
   async setUser(user: object): Promise<void> {
     try {
-      await SecureStore.setItemAsync(USER_KEY, JSON.stringify(user));
+      await SecureStore.setItemAsync(USER_KEY, JSON.stringify(user), KEYCHAIN_OPTIONS);
     } catch (error) {
       console.error('SecureStore setUser failed:', error);
       throw error;
@@ -55,6 +83,7 @@ export const secureStorage = {
         return null;
       }
     } catch (error) {
+      if (isKeychainLocked(error)) throw new KeychainLockedError(error);
       console.error('SecureStore getUser failed:', error);
       return null;
     }
@@ -65,6 +94,23 @@ export const secureStorage = {
       await SecureStore.deleteItemAsync(USER_KEY);
     } catch (error) {
       console.error('SecureStore removeUser failed:', error);
+    }
+  },
+
+  // Items written before KEYCHAIN_OPTIONS keep WHEN_UNLOCKED: SecureStore's
+  // update path only replaces the value, so delete and re-add them once.
+  async upgradeKeychainAccessibility(): Promise<void> {
+    try {
+      if (await AsyncStorage.getItem(KEYCHAIN_UPGRADED_KEY)) return;
+      for (const key of [TOKEN_KEY, USER_KEY]) {
+        const value = await SecureStore.getItemAsync(key);
+        if (value === null) continue;
+        await SecureStore.deleteItemAsync(key);
+        await SecureStore.setItemAsync(key, value, KEYCHAIN_OPTIONS);
+      }
+      await AsyncStorage.setItem(KEYCHAIN_UPGRADED_KEY, '1');
+    } catch (error) {
+      console.warn('SecureStore accessibility upgrade failed:', error);
     }
   },
 
