@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef, ReactNode } from 'react';
+import { AppState as RNAppState } from 'react-native';
 import { authService } from '../services/auth';
 import { syncService, SyncStatus } from '../services/sync';
 import { notificationService } from '../services/notifications';
@@ -146,12 +147,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
   currentEventIdRef.current = state.currentEvent?.id ?? null;
 
   useEffect(() => {
+    let appStateSub: { remove: () => void } | null = null;
+
     const restoreAuth = async () => {
       try {
         // Before anything renders: which events have already refused
         // participant records, so no roster entry point flashes into view.
         await forbiddenParticipants.hydrate();
         const result = await authService.restoreSession();
+        if (result.locked) {
+          // Launched in the background with the keychain locked. Stay on the
+          // loading state rather than showing Login, and retry once the user
+          // opens the app (which means it's unlocked).
+          appStateSub ??= RNAppState.addEventListener('change', (next) => {
+            if (next !== 'active') return;
+            appStateSub?.remove();
+            appStateSub = null;
+            restoreAuth();
+          });
+          return;
+        }
         if (result.success && result.user) {
           const token = await authService.getToken();
           dispatch({ type: 'SET_AUTH', payload: { user: result.user, token: token! } });
@@ -192,6 +207,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     restoreAuth();
+    return () => appStateSub?.remove();
   }, []);
 
   // Register this device for push once authenticated (organizers get scan/flight

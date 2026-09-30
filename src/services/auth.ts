@@ -1,6 +1,6 @@
 import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
-import { secureStorage } from './storage';
+import { secureStorage, KeychainLockedError } from './storage';
 import { api } from './api';
 import type { User } from '../types';
 
@@ -22,6 +22,8 @@ export interface AuthResult {
   success: boolean;
   user?: User;
   error?: string;
+  // Keychain unreadable (background launch while locked); retry once active.
+  locked?: boolean;
 }
 
 export const authService = {
@@ -127,6 +129,7 @@ export const authService = {
       }
 
       const user = await secureStorage.getUser<User>();
+      void secureStorage.upgradeKeychainAccessibility();
       
       // Try to validate token, but don't logout on network errors
       try {
@@ -155,6 +158,9 @@ export const authService = {
 
       return { success: true, user };
     } catch (error) {
+      if (error instanceof KeychainLockedError) {
+        return { success: false, locked: true };
+      }
       // Only logout on explicit auth failures, not storage errors
       console.error('Session restore error:', error);
       return { success: false, error: 'Failed to restore session' };
