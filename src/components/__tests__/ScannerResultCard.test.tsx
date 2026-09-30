@@ -79,14 +79,17 @@ function result(outcome: ScannerOutcome, overrides: Partial<ScannerResult> = {})
 
 async function renderCard(
   scanResult: ScannerResult,
-  callbacks: { onClear?: jest.Mock; onDetails?: jest.Mock } = {}
+  callbacks: { onClear?: jest.Mock; onDetails?: jest.Mock | null } = {}
 ) {
   let tree!: renderer.ReactTestRenderer;
+  const onDetails = callbacks.onDetails === null
+    ? undefined
+    : callbacks.onDetails ?? jest.fn();
   await act(() => {
     tree = renderer.create(
       <ScannerResultCard
         result={scanResult}
-        onDetails={callbacks.onDetails ?? jest.fn()}
+        onDetails={onDetails}
         onRetry={jest.fn()}
         onClear={callbacks.onClear ?? jest.fn()}
       />
@@ -104,6 +107,11 @@ describe('ScannerResultCard', () => {
   ] as const)('renders the %s outcome in direct language', async (outcome, label) => {
     const tree = await renderCard(result(outcome));
     expect(JSON.stringify(tree.toJSON())).toContain(label);
+  });
+
+  it('drops the details action when the role cannot open participant records', async () => {
+    const tree = await renderCard(result('scanned'), { onDetails: null });
+    expect(JSON.stringify(tree.toJSON())).not.toContain('Details');
   });
 
   it('renders the cached headshot, context, and a details action without a dismiss control', async () => {

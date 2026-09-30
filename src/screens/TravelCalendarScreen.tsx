@@ -15,8 +15,9 @@ import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import { api } from '../services/api';
+import { ApiError, api } from '../services/api';
 import { useApp } from '../context/AppContext';
+import { useEventAccess } from '../hooks/useEventAccess';
 import { colors } from '../theme/colors';
 import { FilterChip, ScreenHeader, SearchField, cardSurface } from '../components/ui';
 import type {
@@ -175,13 +176,16 @@ function EntryRow({
 }: {
   entry: TravelCalendarEntry;
   timezone?: string | null;
-  onPress: () => void;
+  // Absent when this role can't open participant records: the row still shows
+  // the journey, it just isn't a link into a 403.
+  onPress?: () => void;
 }) {
   const time = entry.primaryTimeAt ? formatTimeInZone(entry.primaryTimeAt, timezone) : null;
   return (
     <TouchableOpacity
       style={[styles.row, entry.isUnaccompaniedMinor && styles.rowUm]}
       onPress={onPress}
+      disabled={!onPress}
       activeOpacity={0.7}
     >
       <View style={styles.rowTime}>
@@ -203,11 +207,15 @@ function EntryRow({
           )}
         </View>
 
-        {(entry.route || entry.reference) && (
+        {entry.route || entry.reference ? (
           <Text style={styles.routeText} numberOfLines={1}>
             {[entry.route, entry.reference].filter(Boolean).join(' · ')}
           </Text>
-        )}
+        ) : entry.routeRedacted ? (
+          <Text style={styles.routeRedactedText} numberOfLines={1}>
+            Pickup address hidden for your role
+          </Text>
+        ) : null}
 
         <View style={styles.rowMetaLine}>
           <DirectionBadge direction={entry.direction} />
@@ -221,7 +229,7 @@ function EntryRow({
         </View>
       </View>
 
-      <Ionicons name="chevron-forward" size={16} color={colors.gray[400]} />
+      {onPress ? <Ionicons name="chevron-forward" size={16} color={colors.gray[400]} /> : null}
     </TouchableOpacity>
   );
 }
@@ -229,11 +237,14 @@ function EntryRow({
 export function TravelCalendarScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { state } = useApp();
+  const { canViewParticipantRecords } = useEventAccess();
   const tabBarHeight = useBottomTabBarHeight();
   const [data, setData] = useState<TravelCalendarData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // `retryable` is false for an answer that won't change on a retry (a role
+  // that has no access), so the banner doesn't invite a pointless tap.
+  const [error, setError] = useState<{ message: string; retryable: boolean } | null>(null);
   const [chip, setChip] = useState<ChipId>('all');
   const [modeFilter, setModeFilter] = useState<TravelMode | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -253,7 +264,10 @@ export function TravelCalendarScreen() {
       }
     } catch (e) {
       if (requestSeq.current === seq) {
-        setError(e instanceof Error ? e.message : 'Failed to load travel calendar');
+        setError({
+          message: e instanceof Error ? e.message : 'Failed to load travel calendar',
+          retryable: !(e instanceof ApiError && e.isForbidden),
+        });
       }
     } finally {
       if (requestSeq.current === seq) {
@@ -282,17 +296,25 @@ export function TravelCalendarScreen() {
   }, [fetchData]);
 
   const openParticipant = useCallback(async (entry: TravelCalendarEntry) => {
-    if (!eventId || isOpeningId) return;
+    if (!eventId || isOpeningId || !canViewParticipantRecords) return;
     setIsOpeningId(entry.id);
     try {
       const participant = await api.getParticipant(eventId, entry.participantEventId);
       navigation.navigate('ParticipantDetail', { participant });
-    } catch {
-      setError('Could not open that participant.');
+    } catch (e) {
+      // A 403 isn't a failure to retry — it's the answer. The tap target is
+      // gone by the next render, so say what happened and leave it there.
+      const forbidden = e instanceof ApiError && e.isForbidden;
+      setError({
+        message: forbidden
+          ? "Your role on this event doesn't include participant records."
+          : 'Could not open that participant.',
+        retryable: !forbidden,
+      });
     } finally {
       setIsOpeningId(null);
     }
-  }, [eventId, isOpeningId, navigation]);
+  }, [canViewParticipantRecords, eventId, isOpeningId, navigation]);
 
   const trimmedQuery = searchQuery.trim();
 
@@ -423,9 +445,15 @@ export function TravelCalendarScreen() {
       )}
 
       {error && (
-        <TouchableOpacity style={styles.errorBanner} onPress={() => fetchData()}>
+        <TouchableOpacity
+          style={styles.errorBanner}
+          onPress={() => fetchData()}
+          disabled={!error.retryable}
+        >
           <Ionicons name="alert-circle-outline" size={16} color={colors.red} />
-          <Text style={styles.errorText} numberOfLines={2}>{error} · Tap to retry</Text>
+          <Text style={styles.errorText} numberOfLines={2}>
+            {error.retryable ? `${error.message} · Tap to retry` : error.message}
+          </Text>
         </TouchableOpacity>
       )}
 
@@ -459,7 +487,7 @@ export function TravelCalendarScreen() {
             <EntryRow
               entry={item}
               timezone={data?.eventTimezone}
-              onPress={() => openParticipant(item)}
+              onPress={canViewParticipantRecords ? () => openParticipant(item) : undefined}
             />
           )}
           ListEmptyComponent={
@@ -560,6 +588,7 @@ const styles = StyleSheet.create({
   },
   umBadgeText: { fontSize: 10, fontWeight: '900', color: colors.white },
   routeText: { fontSize: 13, color: colors.gray[500] },
+  routeRedactedText: { fontSize: 13, color: colors.gray[400], fontStyle: 'italic' },
   rowMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
   directionBadge: {
     flexDirection: 'row',

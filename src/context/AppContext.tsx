@@ -4,6 +4,7 @@ import { syncService, SyncStatus } from '../services/sync';
 import { notificationService } from '../services/notifications';
 import { liveActivityService } from '../services/liveActivity';
 import { mergeParticipant, type ParticipantUpdate } from '../services/participantIndex';
+import { forbiddenParticipants } from '../services/eventAccess';
 import { clearHeadshotCache, prefetchHeadshots } from '../services/headshotCache';
 import type { User, Event, Participant, AuthState, SyncState } from '../types';
 
@@ -73,8 +74,18 @@ function appReducer(state: AppState, action: AppAction): AppState {
         events: [],
         participants: [],
       };
-    case 'SET_EVENTS':
-      return { ...state, events: action.payload };
+    case 'SET_EVENTS': {
+      // Carry the fresh copy of the selected event across too: it holds the
+      // caller's role on that event, which decides what the app offers.
+      const refreshed = state.currentEvent
+        ? action.payload.find(event => event.id === state.currentEvent!.id)
+        : undefined;
+      return {
+        ...state,
+        events: action.payload,
+        currentEvent: refreshed ?? state.currentEvent,
+      };
+    }
     case 'SET_CURRENT_EVENT':
       return { ...state, currentEvent: action.payload };
     case 'SET_PARTICIPANTS':
@@ -117,6 +128,7 @@ interface AppContextValue {
   devLogin: (identifier: { userId: string } | { email: string }) => Promise<boolean>;
   logout: () => Promise<void>;
   selectEvent: (event: Event) => Promise<void>;
+  setEvents: (events: Event[]) => void;
   refreshParticipants: () => Promise<void>;
   updateParticipant: (participant: ParticipantUpdate) => void;
   confirmParticipant: (eventId: string, participant: ParticipantUpdate) => Promise<Participant>;
@@ -136,6 +148,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const restoreAuth = async () => {
       try {
+        // Before anything renders: which events have already refused
+        // participant records, so no roster entry point flashes into view.
+        await forbiddenParticipants.hydrate();
         const result = await authService.restoreSession();
         if (result.success && result.user) {
           const token = await authService.getToken();
@@ -271,11 +286,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const setEvents = useCallback((events: Event[]): void => {
+    dispatch({ type: 'SET_EVENTS', payload: events });
+  }, []);
+
+  // Pull-to-refresh is user-initiated, so it re-probes an event previously
+  // found to refuse participants rather than trusting a possibly stale flag.
   const refreshParticipants = useCallback(async (): Promise<void> => {
     if (!state.currentEvent) return;
     const eventId = state.currentEvent.id;
     const generation = eventSelectionGenerationRef.current;
-    const participants = await syncService.refreshParticipants(eventId);
+    const participants = await syncService.refreshParticipants(eventId, generation, {
+      probeForbidden: true,
+    });
     if (
       eventSelectionGenerationRef.current === generation
       && currentEventIdRef.current === eventId
@@ -356,6 +379,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     devLogin,
     logout,
     selectEvent,
+    setEvents,
     refreshParticipants,
     updateParticipant,
     confirmParticipant,

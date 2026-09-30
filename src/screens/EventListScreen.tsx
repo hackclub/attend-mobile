@@ -19,8 +19,10 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { useBiometric } from '../hooks/useBiometric';
+import { useEventAccess } from '../hooks/useEventAccess';
 import { api } from '../services/api';
 import { syncService } from '../services/sync';
+import { eventRoleLabel } from '../services/eventRoles';
 import { liveActivityService } from '../services/liveActivity';
 import { VersionFooter } from '../components/VersionFooter';
 import { colors } from '../theme/colors';
@@ -31,8 +33,19 @@ type NavigationProp = NativeStackNavigationProp<MainTabParamList, 'Events'>;
 
 export function EventListScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const { state, selectEvent, logout, startLiveActivity, stopLiveActivity } = useApp();
+  const { state, selectEvent, setEvents: setContextEvents, logout, startLiveActivity, stopLiveActivity } = useApp();
   const { isAvailable, isEnabled, biometricType, toggleEnabled } = useBiometric();
+  const {
+    roleLabel,
+    roleSummary,
+    canViewParticipantRecords,
+    canViewParticipantPii,
+  } = useEventAccess();
+  // Say once, in one place, why the selected event shows less than usual —
+  // otherwise a missing birthday or a missing tab reads as a bug.
+  const showRoleNotice = !!roleLabel
+    && !!roleSummary
+    && (!canViewParticipantRecords || !canViewParticipantPii);
   const [events, setEvents] = useState<Event[]>(state.events);
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -73,6 +86,9 @@ export function EventListScreen() {
 
       const fresh = await api.getEvents();
       setEvents(fresh);
+      // Share them with the app state too: each event carries the caller's role
+      // on it, which decides what the other tabs offer for the selected event.
+      setContextEvents(fresh);
       await syncService.cacheEvents(fresh, cacheGeneration);
     } catch (error) {
       const cached = await syncService.getCachedEvents();
@@ -82,7 +98,7 @@ export function EventListScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [setContextEvents]);
 
   useEffect(() => {
     loadEvents();
@@ -154,6 +170,8 @@ export function EventListScreen() {
     const isSelected = state.currentEvent?.id === item.id;
     const startDate = formatDate(item.starts_at, item.timezone);
     const hasBanner = !!item.banner_url;
+    // Absent on older servers, and null for a role this build doesn't know.
+    const roleLabel = eventRoleLabel(item.role);
 
     const content = (
       <>
@@ -185,6 +203,13 @@ export function EventListScreen() {
             {item.location_city}
           </Text>
         )}
+        {roleLabel ? (
+          <View style={[styles.roleBadge, hasBanner && styles.roleBadgeOnBanner]}>
+            <Text style={[styles.roleBadgeText, hasBanner && styles.textOnBanner]}>
+              {roleLabel}
+            </Text>
+          </View>
+        ) : null}
       </>
     );
 
@@ -233,6 +258,23 @@ export function EventListScreen() {
           </View>
         }
       />
+
+      {showRoleNotice && (
+        <View style={styles.roleNotice}>
+          <Ionicons name="information-circle-outline" size={20} color={colors.gray[600]} />
+          <View style={styles.roleNoticeText}>
+            <Text style={styles.roleNoticeTitle}>
+              {roleLabel} on {state.currentEvent?.name}
+            </Text>
+            <Text style={styles.roleNoticeBody}>
+              {roleSummary}
+              {canViewParticipantRecords
+                ? ''
+                : ' Participant records are not available for this role.'}
+            </Text>
+          </View>
+        </View>
+      )}
 
       {state.sync.pendingScans > 0 && (
         <View style={styles.syncBanner}>
@@ -446,6 +488,45 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text.primary,
     flex: 1,
+  },
+  roleNotice: {
+    ...cardSurface,
+    marginHorizontal: 16,
+    marginTop: 12,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  roleNoticeText: {
+    flex: 1,
+    gap: 2,
+  },
+  roleNoticeTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text.primary,
+  },
+  roleNoticeBody: {
+    fontSize: 13,
+    color: colors.text.secondary,
+    lineHeight: 18,
+  },
+  roleBadge: {
+    alignSelf: 'flex-start',
+    marginTop: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: colors.gray[100],
+  },
+  roleBadgeOnBanner: {
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+  },
+  roleBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.text.secondary,
   },
   selectedBadge: {
     backgroundColor: colors.red,

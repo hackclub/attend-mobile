@@ -7,7 +7,9 @@ import { colors } from '../theme/colors';
 
 interface ScannerResultCardProps {
   result: ScannerResult;
-  onDetails: () => void;
+  // Omitted for a role whose participant records the API refuses: without it
+  // the card shows no Details button rather than a link into a 403.
+  onDetails?: () => void;
   onRetry: () => void;
   onClear: () => void;
 }
@@ -265,7 +267,7 @@ export function ScannerResultCard({
               <Text style={styles.actionText}>Retry</Text>
             </Pressable>
           ) : null}
-          {participant ? (
+          {participant && onDetails ? (
             <Pressable
               style={({ pressed }) => [styles.actionButton, pressed && styles.actionPressed]}
               onPress={onDetails}
