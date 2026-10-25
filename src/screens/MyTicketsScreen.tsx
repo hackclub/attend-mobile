@@ -19,7 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
 import { VersionFooter } from '../components/VersionFooter';
-import { colors } from '../theme/colors';
+import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
 import type { RootStackParamList, Ticket } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ParticipantMain'>;
@@ -44,6 +44,8 @@ function formatDate(dateString?: string, timezone?: string) {
 }
 
 export function MyTicketsScreen() {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<NavigationProp>();
   const { state, logout } = useApp();
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -178,7 +180,7 @@ export function MyTicketsScreen() {
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               accessibilityLabel="Back"
             >
-              <Ionicons name="chevron-back" size={26} color={colors.red} />
+              <Ionicons name="chevron-back" size={26} color={colors.text.accent} />
             </TouchableOpacity>
           )}
           <View>
@@ -199,13 +201,13 @@ export function MyTicketsScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.red} />
+          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.text.accent} />
         }
         ListFooterComponent={<VersionFooter />}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             {isLoading ? (
-              <ActivityIndicator color={colors.red} />
+              <ActivityIndicator color={colors.text.accent} />
             ) : (
               <>
                 <Text style={styles.emptyTitle}>No tickets yet</Text>
@@ -221,7 +223,7 @@ export function MyTicketsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors, theme: Theme) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
@@ -243,7 +245,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glass.border,
   },
-  logoutText: { fontSize: 14, color: colors.red, fontWeight: '500' },
+  logoutText: { fontSize: 14, color: colors.text.accent, fontWeight: '500' },
   list: { padding: 16, paddingBottom: 100 },
   cardWrapper: {
     borderRadius: 16,
@@ -251,9 +253,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     shadowColor: colors.black,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.08 * theme.shadowOpacity,
     shadowRadius: 12,
-    elevation: 3,
+    elevation: 3 * theme.elevation,
     borderWidth: 1,
     borderColor: colors.glass.border,
   },

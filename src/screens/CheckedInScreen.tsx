@@ -14,12 +14,14 @@ import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { ParticipantRow } from '../components/ParticipantRow';
 import { SplitView } from '../components/SplitView';
 import { ParticipantDetailContent } from './ParticipantDetailContent';
-import { colors } from '../theme/colors';
+import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
 import type { RootStackParamList, Participant } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export function CheckedInScreen() {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<NavigationProp>();
   const { useSplitView } = useResponsiveLayout();
   const { checkedInParticipants, isRefreshing, refresh, currentEvent } = useParticipants();
@@ -79,7 +81,7 @@ export function CheckedInScreen() {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={refresh}
-            tintColor={colors.red}
+            tintColor={colors.text.accent}
           />
         }
         ListEmptyComponent={
@@ -119,7 +121,7 @@ export function CheckedInScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -127,7 +129,7 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 16,
     paddingVertical: 16,
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.gray[200],
   },

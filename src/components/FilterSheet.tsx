@@ -10,7 +10,7 @@ import {
   FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
+import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
 import {
   FILTER_FIELDS,
   SORT_FIELDS,
@@ -65,6 +65,8 @@ export function FilterSheet({
   onDeleteView,
   filterContext,
 }: FilterSheetProps) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const [picker, setPicker] = useState<PickerTarget | null>(null);
   const [viewName, setViewName] = useState('');
   const [isNamingView, setIsNamingView] = useState(false);
@@ -263,7 +265,7 @@ export function FilterSheet({
           })}
 
           <TouchableOpacity style={styles.addButton} onPress={addRule}>
-            <Ionicons name="add" size={18} color={colors.red} />
+            <Ionicons name="add" size={18} color={colors.text.accent} />
             <Text style={styles.addButtonText}>Add filter</Text>
           </TouchableOpacity>
 
@@ -317,7 +319,7 @@ export function FilterSheet({
           )}
           {savedViews.map(view => (
             <View key={view.id} style={styles.savedViewRow}>
-              <Ionicons name="bookmark" size={16} color={colors.red} />
+              <Ionicons name="bookmark" size={16} color={colors.text.accent} />
               <Text style={styles.savedViewName} numberOfLines={1}>{view.name}</Text>
               <Text style={styles.savedViewMeta}>
                 {view.rules.length} filter{view.rules.length === 1 ? '' : 's'}
@@ -411,7 +413,7 @@ export function FilterSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors, theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -422,7 +424,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 14,
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.gray[200],
   },
@@ -438,7 +440,7 @@ const styles = StyleSheet.create({
   doneText: {
     fontSize: 16,
     fontWeight: '600',
-    color: colors.red,
+    color: colors.text.accent,
   },
   content: {
     padding: 16,
@@ -475,12 +477,12 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   segmentActive: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     shadowColor: colors.black,
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.08 * theme.shadowOpacity,
     shadowRadius: 2,
     shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
+    elevation: 1 * theme.elevation,
   },
   segmentText: {
     fontSize: 14,
@@ -493,7 +495,7 @@ const styles = StyleSheet.create({
   ruleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.gray[200],
@@ -526,7 +528,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.red + '60',
     borderStyle: 'dashed',
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
   },
   pillPlaceholderText: {
     color: colors.text.muted,
@@ -558,7 +560,7 @@ const styles = StyleSheet.create({
   addButtonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: colors.red,
+    color: colors.text.accent,
   },
   addButtonTextDisabled: {
     color: colors.text.muted,
@@ -571,7 +573,7 @@ const styles = StyleSheet.create({
   savedViewRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.gray[200],
@@ -598,7 +600,7 @@ const styles = StyleSheet.create({
   },
   viewNameInput: {
     flex: 1,
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.gray[200],
@@ -624,7 +626,7 @@ const styles = StyleSheet.create({
   footer: {
     paddingVertical: 12,
     paddingHorizontal: 16,
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     borderTopWidth: 1,
     borderTopColor: colors.gray[200],
     alignItems: 'center',
@@ -641,7 +643,7 @@ const styles = StyleSheet.create({
     padding: 32,
   },
   pickerCard: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     borderRadius: 14,
     maxHeight: 420,
     alignSelf: 'center',

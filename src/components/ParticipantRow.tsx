@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { colors } from '../theme/colors';
+import { useThemedStyles, type ThemeColors } from '../theme';
 import { StatusBadge } from './StatusBadge';
 import { AlertBadge } from './AlertBadge';
 import type { Participant } from '../types';
@@ -12,6 +12,7 @@ interface ParticipantRowProps {
 }
 
 export function ParticipantRow({ participant, onPress, selected }: ParticipantRowProps) {
+  const styles = useThemedStyles(makeStyles);
   const hasAlerts = participant.has_anaphylaxis_risk || participant.high_support_flag;
 
   return (
@@ -55,7 +56,7 @@ export function ParticipantRow({ participant, onPress, selected }: ParticipantRo
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',

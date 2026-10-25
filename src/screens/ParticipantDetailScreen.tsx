@@ -3,13 +3,15 @@ import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useBiometric } from '../hooks/useBiometric';
-import { colors } from '../theme/colors';
+import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
 import { ParticipantDetailContent } from './ParticipantDetailContent';
 import type { RootStackParamList } from '../types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ParticipantDetail'>;
 
 export function ParticipantDetailScreen({ route, navigation }: Props) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const { participant } = route.params;
   const { authenticate } = useBiometric();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -31,7 +33,7 @@ export function ParticipantDetailScreen({ route, navigation }: Props) {
     return (
       <SafeAreaView style={styles.container} edges={['bottom']}>
         <View style={styles.authContainer}>
-          <ActivityIndicator size="large" color={colors.red} />
+          <ActivityIndicator size="large" color={colors.text.accent} />
           <Text style={styles.authText}>Authenticating...</Text>
         </View>
       </SafeAreaView>
@@ -49,7 +51,7 @@ export function ParticipantDetailScreen({ route, navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

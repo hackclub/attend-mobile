@@ -1,6 +1,6 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import { ActivityIndicator, View, StyleSheet, Platform } from 'react-native';
-import { NavigationContainer, DefaultTheme, NavigationContainerRef } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, DarkTheme, NavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
 import type { AppleIcon } from 'react-native-bottom-tabs';
@@ -22,7 +22,7 @@ import { KioskSetupScreen } from './src/screens/KioskSetupScreen';
 import { KioskScreen } from './src/screens/KioskScreen';
 import { MyTicketsScreen } from './src/screens/MyTicketsScreen';
 import { TicketDetailScreen } from './src/screens/TicketDetailScreen';
-import { colors } from './src/theme/colors';
+import { ThemeProvider, useTheme, useThemedStyles, type ThemeColors } from './src/theme';
 import type { RootStackParamList, MainTabParamList } from './src/types';
 import * as Sentry from '@sentry/react-native';
 
@@ -59,16 +59,24 @@ if (Platform.OS === 'android') {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createNativeBottomTabNavigator<MainTabParamList>();
 
-const LiquidGlassTheme = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-    background: colors.gray[50],
-    card: 'rgba(255,255,255,0.8)',
-    border: 'rgba(0,0,0,0.05)',
-    primary: colors.red,
-  },
-};
+function useNavigationTheme() {
+  const { colors, isDark } = useTheme();
+  // Memoized: NavigationContainer re-renders the whole tree when `theme`
+  // changes identity.
+  return useMemo(() => {
+    const base = isDark ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        background: colors.background,
+        card: isDark ? 'rgba(21,30,46,0.8)' : 'rgba(255,255,255,0.8)',
+        border: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+        primary: colors.text.accent,
+      },
+    };
+  }, [colors, isDark]);
+}
 
 // iOS renders SF Symbols in the native (liquid glass) tab bar; Android's
 // Material bottom bar can't use SF Symbols, so it gets bundled SVG sources,
@@ -76,28 +84,32 @@ const LiquidGlassTheme = {
 const tabIcon = (sfSymbol: AppleIcon['sfSymbol'], androidSource: number) => () =>
   Platform.OS === 'ios' ? ({ sfSymbol } satisfies AppleIcon) : androidSource;
 
-// Android-only bar styling: the Material bar follows the system theme by
-// default, which turns black in dark mode while our screens stay paper-light.
-const androidTabBarProps = Platform.OS === 'android'
-  ? {
-      // The native barTintColor is read from tabBarStyle.backgroundColor;
-      // without it the bar paints the theme's colorPrimary (near-black).
-      tabBarStyle: { backgroundColor: colors.white },
-      tabBarInactiveTintColor: colors.gray[500],
-      activeIndicatorColor: `${colors.red}1F`,
-      rippleColor: `${colors.red}22`,
-    }
-  : {};
+// Android-only bar styling: the Material bar's own theming doesn't track our
+// palette, so we paint it from the active scheme's surface color.
+function useAndroidTabBarProps() {
+  const { colors } = useTheme();
+  if (Platform.OS !== 'android') return {};
+  return {
+    // The native barTintColor is read from tabBarStyle.backgroundColor;
+    // without it the bar paints the theme's colorPrimary (near-black).
+    tabBarStyle: { backgroundColor: colors.surface },
+    tabBarInactiveTintColor: colors.gray[500],
+    activeIndicatorColor: `${colors.red}1F`,
+    rippleColor: `${colors.red}22`,
+  };
+}
 
 function MainTabs() {
   // A role without participant records gets no Search tab at all: the roster,
   // the search box, and every participant link behind it would only 403. An
   // event that doesn't run travel gets no Travel tab.
   const { canViewParticipantRecords, showTravel } = useEventAccess();
+  const { colors } = useTheme();
+  const androidTabBarProps = useAndroidTabBarProps();
 
   return (
     <Tab.Navigator
-      tabBarActiveTintColor={colors.red}
+      tabBarActiveTintColor={colors.text.accent}
       {...androidTabBarProps}
     >
       <Tab.Screen
@@ -142,11 +154,13 @@ function MainTabs() {
 
 function RootNavigator() {
   const { state } = useApp();
+  const { colors, isDark } = useTheme();
+  const styles = useThemedStyles(makeStyles);
 
   if (state.auth.isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.red} />
+        <ActivityIndicator size="large" color={colors.text.accent} />
       </View>
     );
   }
@@ -176,11 +190,11 @@ function RootNavigator() {
               headerShown: true,
               headerTitle: 'Participant',
               headerBackTitle: 'Back',
-              headerTintColor: colors.red,
+              headerTintColor: colors.text.accent,
               headerTransparent: Platform.OS === 'ios',
-              headerBlurEffect: 'light',
+              headerBlurEffect: isDark ? 'dark' : 'light',
               headerStyle: {
-                backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.white,
+                backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.surface,
               },
             }}
           />
@@ -262,25 +276,41 @@ export default Sentry.wrap(function App() {
 
   return (
     <SafeAreaProvider>
-      <AppProvider>
-        <NavigationContainer 
-          ref={navigationRef}
-          theme={LiquidGlassTheme}
-          linking={linking}
-        >
-          <StatusBar style="dark" />
-          <RootNavigator />
-        </NavigationContainer>
-      </AppProvider>
+      <ThemeProvider>
+        <AppProvider>
+          <ThemedNavigationContainer navigationRef={navigationRef}>
+            <RootNavigator />
+          </ThemedNavigationContainer>
+        </AppProvider>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 });
 
-const styles = StyleSheet.create({
+function ThemedNavigationContainer({
+  navigationRef,
+  children,
+}: {
+  navigationRef: React.RefObject<NavigationContainerRef<RootStackParamList> | null>;
+  children: React.ReactNode;
+}) {
+  const theme = useNavigationTheme();
+
+  return (
+    <NavigationContainer ref={navigationRef} theme={theme} linking={linking}>
+      {/* "auto" tracks the system appearance, so the clock and icons stay
+          readable against whichever background the scheme paints. */}
+      <StatusBar style="auto" />
+      {children}
+    </NavigationContainer>
+  );
+}
+
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
   },
 });

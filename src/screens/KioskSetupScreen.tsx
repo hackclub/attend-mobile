@@ -16,7 +16,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
-import { colors } from '../theme/colors';
+import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
 import { useApp } from '../context/AppContext';
 import { useBiometric } from '../hooks/useBiometric';
 import type { RootStackParamList } from '../types';
@@ -27,6 +27,8 @@ type KioskSetupRoute = RouteProp<RootStackParamList, 'KioskSetup'>;
 const PIN_LENGTH = 4;
 
 export function KioskSetupScreen() {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<KioskSetupRoute>();
   const { state } = useApp();
@@ -121,7 +123,7 @@ export function KioskSetupScreen() {
 
         <View style={styles.hero}>
           <View style={styles.iconWrap}>
-            <Ionicons name="lock-closed" size={36} color={colors.red} />
+            <Ionicons name="lock-closed" size={36} color={colors.text.accent} />
           </View>
           <Text style={styles.heroTitle}>Set a {PIN_LENGTH}-digit PIN</Text>
           <Text style={styles.heroSubtitle}>
@@ -187,7 +189,7 @@ export function KioskSetupScreen() {
         )}
 
         <View style={styles.tipBox}>
-          <Ionicons name="information-circle" size={18} color={colors.blue} />
+          <Ionicons name="information-circle" size={18} color={colors.status.info} />
           <Text style={styles.tipText}>
             Tip: Turn on Guided Access (Settings › Accessibility) for a hardware-level lock.
             Triple-click the side button to lock the iPad to this app.
@@ -211,7 +213,7 @@ export function KioskSetupScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors, theme: Theme) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   scroll: { padding: 24, paddingBottom: 48 },
   header: {
@@ -227,7 +229,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: 'rgba(236,55,80,0.1)',
+    backgroundColor: theme.isDark ? 'rgba(236,55,80,0.22)' : 'rgba(236,55,80,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -282,11 +284,11 @@ const styles = StyleSheet.create({
     height: 1,
     opacity: 0,
   },
-  errorText: { color: colors.red, fontSize: 14, marginTop: 8 },
+  errorText: { color: colors.text.accent, fontSize: 14, marginTop: 8 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     padding: 16,
     borderRadius: 12,
     marginBottom: 16,
@@ -296,7 +298,7 @@ const styles = StyleSheet.create({
   rowSubtitle: { fontSize: 13, color: colors.text.secondary, marginTop: 2 },
   tipBox: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(51,142,218,0.08)',
+    backgroundColor: theme.isDark ? 'rgba(51,142,218,0.20)' : 'rgba(51,142,218,0.08)',
     padding: 14,
     borderRadius: 10,
     gap: 10,

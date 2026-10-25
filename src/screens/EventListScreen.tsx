@@ -25,13 +25,16 @@ import { syncService } from '../services/sync';
 import { eventRoleLabel } from '../services/eventRoles';
 import { liveActivityService } from '../services/liveActivity';
 import { VersionFooter } from '../components/VersionFooter';
-import { colors } from '../theme/colors';
-import { ScreenHeader, SearchField, cardSurface, ui } from '../components/ui';
+import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
+import { ScreenHeader, SearchField, makeCardSurface, useUiStyles } from '../components/ui';
 import type { Event, MainTabParamList } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<MainTabParamList, 'Events'>;
 
 export function EventListScreen() {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  const ui = useUiStyles();
   const navigation = useNavigation<NavigationProp>();
   const { state, selectEvent, setEvents: setContextEvents, logout, startLiveActivity, stopLiveActivity } = useApp();
   const { isAvailable, isEnabled, biometricType, toggleEnabled } = useBiometric();
@@ -291,7 +294,7 @@ export function EventListScreen() {
               <Ionicons 
                 name={biometricType === 'Face ID' ? 'scan' : 'finger-print'} 
                 size={22} 
-                color={colors.blue} 
+                color={colors.status.info} 
               />
               <View style={styles.securityTextContainer}>
                 <Text style={styles.securityTitle}>{biometricType}</Text>
@@ -314,7 +317,7 @@ export function EventListScreen() {
         <View style={styles.liveActivitySection}>
           <View style={styles.securityRow}>
             <View style={styles.securityInfo}>
-              <Ionicons name="pulse" size={22} color={colors.red} />
+              <Ionicons name="pulse" size={22} color={colors.text.accent} />
               <View style={styles.securityTextContainer}>
                 <Text style={styles.securityTitle}>Live Activity</Text>
                 <Text style={styles.securitySubtitle}>
@@ -357,7 +360,7 @@ export function EventListScreen() {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={handleRefresh}
-            tintColor={colors.red}
+            tintColor={colors.text.accent}
           />
         }
         ListFooterComponent={<VersionFooter />}
@@ -377,7 +380,7 @@ export function EventListScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors, theme: Theme) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -399,7 +402,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   securitySection: {
-    ...cardSurface,
+    ...makeCardSurface(colors, theme),
     marginHorizontal: 16,
     marginTop: 12,
   },
@@ -434,7 +437,7 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
   eventCardWrapper: {
-    ...cardSurface,
+    ...makeCardSurface(colors, theme),
     marginBottom: 12,
     overflow: 'hidden',
   },
@@ -442,7 +445,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   eventCardPlain: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
   },
   eventCardImage: {
     borderRadius: 16,
@@ -490,7 +493,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   roleNotice: {
-    ...cardSurface,
+    ...makeCardSurface(colors, theme),
     marginHorizontal: 16,
     marginTop: 12,
     padding: 14,
@@ -579,7 +582,7 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
   },
   liveActivitySection: {
-    ...cardSurface,
+    ...makeCardSurface(colors, theme),
     marginHorizontal: 16,
     marginTop: 12,
     marginBottom: 12,

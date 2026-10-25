@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
+import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
 import type { EmergencyContact } from '../types';
 
 interface EmergencyContactCardProps {
@@ -11,6 +11,9 @@ interface EmergencyContactCardProps {
 }
 
 export function EmergencyContactCard({ contact, onCall, onEmail }: EmergencyContactCardProps) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -57,7 +60,7 @@ export function EmergencyContactCard({ contact, onCall, onEmail }: EmergencyCont
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     backgroundColor: colors.gray[50],
     borderRadius: 12,
