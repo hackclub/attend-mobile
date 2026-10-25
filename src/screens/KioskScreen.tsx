@@ -129,14 +129,14 @@ export function KioskScreen() {
   return (
     <View style={styles.container} onTouchStart={recordScannerActivity}>
       <CameraView
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
         facing={facing}
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         onBarcodeScanned={contextValid && !escapeOpen ? onBarcode : undefined}
       />
 
       {/* Dim overlay to make UI readable */}
-      <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
         <View style={styles.scrim} />
       </View>
 
@@ -268,7 +268,7 @@ function EscapeModal({ visible, onClose, onUnlocked, kioskPin, biometricUnlock }
   const [attempts, setAttempts] = useState(0);
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<React.ComponentRef<typeof TextInput>>(null);
   const triedBiometricRef = useRef(false);
 
   const locked = lockedUntil !== null && now < lockedUntil;
@@ -414,7 +414,7 @@ function EscapeModal({ visible, onClose, onUnlocked, kioskPin, biometricUnlock }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.black },
-  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)' },
+  scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.35)' },
   overlay: { flex: 1 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   permTitle: { color: colors.white, fontSize: 20, fontWeight: '700', marginBottom: 16 },
@@ -482,7 +482,7 @@ const styles = StyleSheet.create({
   flipBtnText: { color: colors.white, fontSize: 14, fontWeight: '600' },
 
   resultBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'flex-end',
     paddingHorizontal: 24,

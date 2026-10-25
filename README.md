@@ -53,19 +53,16 @@ EXPO_PUBLIC_OAUTH_CLIENT_ID=your-oauth-client-id
 Then build and run a development client:
 
 ```bash
-# iOS — start the bundler first, then build and launch in a second shell
-npx expo start --dev-client
-bin/ios
+# iOS
+npx expo run:ios
 
 # Android
 npx expo run:android
 ```
 
-`bin/ios` prebuilds, installs pods, then builds and launches on a simulator
-(pass a simulator name or UDID to pick one, `--clean` to regenerate `ios/`).
-It exists because `npx expo run:ios` can't open a simulator on Xcode 27 —
-that, the `Gemfile`, and `plugins/withPodMinimumDeploymentTarget.js` are all
-explained in [docs/ios-toolchain.md](docs/ios-toolchain.md).
+Both prebuild, install pods and launch on a simulator; pass `--device` to pick
+one. Why the `Gemfile` is there, and what the iOS 27 scene lifecycle changed,
+are in [docs/ios-toolchain.md](docs/ios-toolchain.md).
 
 ### Scripts
 

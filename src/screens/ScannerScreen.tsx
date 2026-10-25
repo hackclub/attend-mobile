@@ -90,7 +90,7 @@ export function ScannerScreen() {
   const [contextDropdownOpen, setContextDropdownOpen] = useState(false);
   const [isFocused, setIsFocused] = useState(true);
   const lastFeedbackAttemptRef = useRef<string | null>(null);
-  const scanAreaRef = useRef<View>(null);
+  const scanAreaRef = useRef<React.ComponentRef<typeof View>>(null);
   // Window-space rect of the scan frame, so the scrim cutout can track it.
   const [scanFrameRect, setScanFrameRect] = useState<{
     x: number; y: number; width: number; height: number;
@@ -231,7 +231,7 @@ export function ScannerScreen() {
     <View style={styles.container} onTouchStart={recordScannerActivity}>
       {isFocused ? (
         <CameraView
-          style={StyleSheet.absoluteFillObject}
+          style={StyleSheet.absoluteFill}
           facing="back"
           barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
           onBarcodeScanned={cameraScanningEnabled ? handleBarcodeScanned : undefined}
@@ -247,7 +247,7 @@ export function ScannerScreen() {
             <View style={[styles.scrim, { top: scanFrameRect.y + scanFrameRect.height, left: 0, right: 0, bottom: 0 }]} />
           </>
         ) : (
-          <View style={[styles.scrim, StyleSheet.absoluteFillObject]} />
+          <View style={[styles.scrim, StyleSheet.absoluteFill]} />
         )}
       </View>
 
@@ -690,7 +690,7 @@ function SearchSheet({
                 )}
               </View>
             </Pressable>
-          ) : null}
+          ) : undefined}
           renderItem={({ item }) => (
             <Pressable
               style={({ pressed }) => [styles.searchResult, pressed && styles.searchResultPressed]}
@@ -708,7 +708,7 @@ function SearchSheet({
               </View>
             </Pressable>
           )}
-          ListEmptyComponent={idCandidate ? null : (
+          ListEmptyComponent={idCandidate ? undefined : (
             <Text style={styles.searchEmptyText}>
               {!canSearchRoster
                 ? "Your role on this event doesn't include participant records, so scan or paste an attendee ID."
@@ -730,7 +730,7 @@ function SearchSheet({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.gray[900] },
   overlay: { flex: 1 },
-  cameraScrim: { ...StyleSheet.absoluteFillObject },
+  cameraScrim: { ...StyleSheet.absoluteFill },
   scrim: { position: 'absolute', backgroundColor: 'rgba(15,23,42,0.52)' },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 14 },
   messageTitle: { color: colors.white, fontSize: 23, lineHeight: 29, fontWeight: '800', textAlign: 'center' },
@@ -783,7 +783,7 @@ const styles = StyleSheet.create({
   controlDisabled: { opacity: 0.45 },
   toolButtonText: { color: colors.white, fontSize: 13, fontWeight: '700' },
   pressed: { opacity: 0.72 },
-  searchSheetBackdrop: { ...StyleSheet.absoluteFillObject, zIndex: 100, justifyContent: 'flex-end', backgroundColor: 'rgba(2,6,23,0.78)' },
+  searchSheetBackdrop: { ...StyleSheet.absoluteFill, zIndex: 100, justifyContent: 'flex-end', backgroundColor: 'rgba(2,6,23,0.78)' },
   sheet: { width: '100%', maxWidth: 680, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 28, gap: 14, borderTopLeftRadius: 26, borderTopRightRadius: 26, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.gray[600], backgroundColor: colors.gray[900] },
   searchSheet: { height: '72%' },
   sheetHeader: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },

@@ -262,7 +262,7 @@ const makeStyles = (colors: ThemeColors, theme: Theme) => StyleSheet.create({
   card: { padding: 16 },
   cardPlain: { backgroundColor: colors.glass.dark },
   cardImage: { borderRadius: 16 },
-  bannerScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
+  bannerScrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.5)' },
   cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
   logo: { width: 36, height: 36, borderRadius: 8, marginRight: 10, backgroundColor: colors.white },
   logoOnBanner: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.6)' },

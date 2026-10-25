@@ -125,7 +125,7 @@ export function LoginScreen() {
 
 const styles = StyleSheet.create({
   bg: { flex: 1, backgroundColor: colors.gray[900] },
-  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(10,12,20,0.32)' },
+  scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(10,12,20,0.32)' },
   // Smooth bottom-up fade (stacked bands) so the sign-in content stays legible.
   gradient: {
     position: 'absolute',
