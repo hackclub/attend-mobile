@@ -41,6 +41,28 @@ class BiometricService {
     this.lastAuthTime = null;
   }
 
+  // Always prompts, even when protection is off or a recent unlock is still
+  // valid, so changing the setting can't ride on an earlier authentication.
+  async confirmIdentity(reason: string): Promise<boolean> {
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: reason,
+        fallbackLabel: 'Use passcode',
+        cancelLabel: 'Cancel',
+        disableDeviceFallback: false,
+      });
+
+      if (result.success) {
+        this.lastAuthTime = Date.now();
+        return true;
+      }
+    } catch {
+      // A prompt that can't be shown counts as a failed authentication.
+    }
+
+    return false;
+  }
+
   async authenticate(reason?: string): Promise<boolean> {
     const isEnabled = await this.isEnabled();
     if (!isEnabled) return true;
@@ -49,19 +71,7 @@ class BiometricService {
       return true;
     }
 
-    const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: reason || 'Authenticate to view sensitive information',
-      fallbackLabel: 'Use passcode',
-      cancelLabel: 'Cancel',
-      disableDeviceFallback: false,
-    });
-
-    if (result.success) {
-      this.lastAuthTime = Date.now();
-      return true;
-    }
-
-    return false;
+    return this.confirmIdentity(reason || 'Authenticate to view sensitive information');
   }
 
   async getBiometricTypeName(): Promise<string> {

@@ -26,13 +26,13 @@ export function useBiometric() {
     if (!isAvailable) return false;
 
     const newValue = !isEnabled;
-    
-    if (newValue) {
-      const success = await biometricService.authenticate(
-        `Enable ${biometricType} protection`
-      );
-      if (!success) return false;
-    }
+
+    const success = await biometricService.confirmIdentity(
+      newValue
+        ? `Enable ${biometricType} protection`
+        : `Disable ${biometricType} protection`
+    );
+    if (!success) return false;
 
     await biometricService.setEnabled(newValue);
     setIsEnabled(newValue);
