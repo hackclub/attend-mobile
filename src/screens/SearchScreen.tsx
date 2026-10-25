@@ -318,7 +318,7 @@ export function SearchScreen() {
               <>
                 <Text style={styles.emptyTitle}>No Results</Text>
                 <Text style={styles.emptyText}>
-                  No participants found matching "{searchQuery}"
+                  No participants found matching &quot;{searchQuery}&quot;
                 </Text>
               </>
             ) : searchQuery.length > 0 ? (

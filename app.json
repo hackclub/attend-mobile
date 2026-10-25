@@ -109,7 +109,8 @@
         }
       ],
       "expo-audio",
-      "./plugins/withScannerOrientationFix"
+      "./plugins/withScannerOrientationFix",
+      "./plugins/withPodMinimumDeploymentTarget"
     ],
     "extra": {
       "eas": {
