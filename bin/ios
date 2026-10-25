@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# Build the dev client and run it on an iOS simulator.
+#
+# `npx expo run:ios` can't do this on Xcode 27. Apple replaced Simulator.app
+# with DeviceHub.app, and @expo/cli 54.x still resolves the simulator by the
+# old name, so run:ios bails with "Can't determine id of Simulator app" before
+# it ever builds (expo/expo#46671). The SDK 54 backport is still unmerged
+# (expo/expo#50250), so until we move to SDK 56+ this drives xcodebuild and
+# simctl directly. On Xcode 26 and earlier, `npx expo run:ios` still works and
+# this script is unnecessary.
+#
+# Usage: bin/ios [--clean] [simulator name or UDID]
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+# CocoaPods unicode-normalizes the project path, which raises
+# Encoding::CompatibilityError when the locale isn't UTF-8.
+export LANG="${LANG:-en_US.UTF-8}"
+
+SCHEME=Attend
+BUNDLE_ID=com.hackclub.attend
+DERIVED_DATA=ios/build
+
+CLEAN=0
+if [ "${1:-}" = "--clean" ]; then
+  CLEAN=1
+  shift
+fi
+
+# `simctl list devices available` prints lines like
+#     iPhone 17 (0A1B2C3D-...-9F) (Shutdown)
+# grouped under runtime headings, oldest runtime first.
+devices() {
+  xcrun simctl list devices available |
+    sed -n 's/^[[:space:]]*\(.*\) (\([0-9A-F-]\{36\}\)) (\([^)]*\))[[:space:]]*$/\2|\1|\3/p'
+}
+
+if [ $# -gt 0 ]; then
+  UDID="$(devices | awk -F'|' -v q="$1" '$1 == q || $2 == q { print $1; exit }')"
+  [ -n "$UDID" ] ||
+    { echo "no simulator named '$1' — see \`xcrun simctl list devices available\`" >&2; exit 1; }
+else
+  # Whatever is already booted, else the newest available iPhone.
+  UDID="$(devices | awk -F'|' '$3 == "Booted" { print $1; exit }')"
+  [ -n "$UDID" ] || UDID="$(devices | awk -F'|' '$2 ~ /^iPhone/ { print $1 }' | tail -1)"
+  [ -n "$UDID" ] || { echo "no available iPhone simulator found" >&2; exit 1; }
+fi
+
+echo "› Simulator: $UDID"
+xcrun simctl boot "$UDID" 2>/dev/null || true
+
+# @bacons/apple-targets can't update the widget target in place, so a second
+# prebuild over an existing ios/ crashes. Generate it once, and regenerate from
+# scratch with --clean after changing app.json or a config plugin.
+if [ "$CLEAN" = "1" ]; then
+  npx expo prebuild --platform ios --clean
+elif [ ! -d ios ]; then
+  npx expo prebuild --platform ios
+else
+  echo "› ios/ already generated — pass --clean to regenerate it"
+fi
+
+bundle exec pod install --project-directory=ios
+
+xcodebuild \
+  -workspace ios/$SCHEME.xcworkspace \
+  -scheme $SCHEME \
+  -configuration Debug \
+  -sdk iphonesimulator \
+  -destination "id=$UDID" \
+  -derivedDataPath "$DERIVED_DATA" \
+  CODE_SIGNING_ALLOWED=NO \
+  build
+
+APP="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/$SCHEME.app"
+[ -d "$APP" ] || { echo "build finished but $APP is missing" >&2; exit 1; }
+
+xcrun simctl install "$UDID" "$APP"
+xcrun simctl launch "$UDID" "$BUNDLE_ID"
+
+# Xcode 27 ships DeviceHub instead of Simulator.app; without this the simulator
+# runs headless and there is nothing to look at.
+open -b com.apple.dt.Devices 2>/dev/null || echo "› couldn't open DeviceHub; open it from Xcode > Window > Devices"
+
+echo
+echo "› Installed and launched. The dev client needs a bundler — if one isn't"
+echo "  already running, start it with: npx expo start --dev-client"

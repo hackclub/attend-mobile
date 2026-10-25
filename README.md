@@ -30,6 +30,7 @@ Built with Expo / React Native, with native Swift modules for Live Activities an
 
 - Node.js 18+
 - Xcode (for iOS) or Android Studio (for Android)
+- Ruby with Bundler, for iOS — CocoaPods and its dependencies are pinned in the [Gemfile](Gemfile)
 - An [Attend](https://attend.hackclub.com) account
 
 > [!NOTE]
@@ -39,6 +40,7 @@ Built with Expo / React Native, with native Swift modules for Live Activities an
 
 ```bash
 npm install
+bundle install   # iOS only — pinned CocoaPods
 ```
 
 Create a `.env.local` with your backend and OAuth config:
@@ -51,12 +53,19 @@ EXPO_PUBLIC_OAUTH_CLIENT_ID=your-oauth-client-id
 Then build and run a development client:
 
 ```bash
-# iOS
-npx expo run:ios
+# iOS — start the bundler first, then build and launch in a second shell
+npx expo start --dev-client
+bin/ios
 
 # Android
 npx expo run:android
 ```
+
+`bin/ios` prebuilds, installs pods, then builds and launches on a simulator
+(pass a simulator name or UDID to pick one, `--clean` to regenerate `ios/`).
+It exists because `npx expo run:ios` can't open a simulator on Xcode 27 —
+that, the `Gemfile`, and `plugins/withPodMinimumDeploymentTarget.js` are all
+explained in [docs/ios-toolchain.md](docs/ios-toolchain.md).
 
 ### Scripts
 
