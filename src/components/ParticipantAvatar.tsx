@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AccessibilityInfo, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import type { Participant } from '../types';
-import { colors } from '../theme/colors';
+import { useThemedStyles, type Theme, type ThemeColors } from '../theme';
 
 interface ParticipantAvatarProps {
   participant?: Participant;
@@ -19,6 +19,7 @@ function initialsFor(name: string): string {
 export function ParticipantAvatar({ participant, size = 84 }: ParticipantAvatarProps) {
   const name = participant?.display_name || participant?.full_name || 'Attendee';
   const uri = participant?.headshot_url;
+  const styles = useThemedStyles(makeStyles);
   const [imageFailed, setImageFailed] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
 
@@ -72,16 +73,16 @@ export function ParticipantAvatar({ participant, size = 84 }: ParticipantAvatarP
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors, { isDark }: Theme) => StyleSheet.create({
   avatar: {
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.72)',
+    borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.72)',
     overflow: 'hidden',
   },
   fallback: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.gray[700],
+    backgroundColor: isDark ? colors.gray[300] : colors.gray[700],
   },
   initials: {
     color: colors.white,

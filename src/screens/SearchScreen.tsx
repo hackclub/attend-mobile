@@ -24,8 +24,8 @@ import { SplitView } from '../components/SplitView';
 import { FilterSheet } from '../components/FilterSheet';
 import { ParticipantDetailContent } from './ParticipantDetailContent';
 import { api } from '../services/api';
-import { colors } from '../theme/colors';
-import { ScreenHeader, SearchField, ui } from '../components/ui';
+import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
+import { ScreenHeader, SearchField, useUiStyles } from '../components/ui';
 import {
   applyFilters,
   applySort,
@@ -42,6 +42,8 @@ import type { RootStackParamList, Participant, ScanContext } from '../types';
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export function SearchScreen() {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<NavigationProp>();
   const { useSplitView } = useResponsiveLayout();
   const { canViewParticipantRecords, roleLabel } = useEventAccess();
@@ -281,7 +283,7 @@ export function SearchScreen() {
                   {field.label} {OPERATOR_LABELS[rule.operator]}
                   {valueLabel ? ` ${valueLabel}` : ''}
                 </Text>
-                <Ionicons name="close" size={14} color={colors.red} />
+                <Ionicons name="close" size={14} color={colors.text.accent} />
               </TouchableOpacity>
             );
           })}
@@ -290,7 +292,7 @@ export function SearchScreen() {
 
       {isSearching && (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator color={colors.red} />
+          <ActivityIndicator color={colors.text.accent} />
         </View>
       )}
 
@@ -309,7 +311,7 @@ export function SearchScreen() {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={refresh}
-            tintColor={colors.red}
+            tintColor={colors.text.accent}
           />
         }
         ListEmptyComponent={
@@ -395,6 +397,8 @@ interface ViewChipProps {
 }
 
 function ViewChip({ label, count, isActive, isSaved, onPress }: ViewChipProps) {
+  const { colors } = useTheme();
+  const ui = useUiStyles();
   return (
     <TouchableOpacity
       style={[ui.chip, isActive && ui.chipActive]}
@@ -404,7 +408,7 @@ function ViewChip({ label, count, isActive, isSaved, onPress }: ViewChipProps) {
       accessibilityState={{ selected: isActive }}
     >
       {isSaved && (
-        <Ionicons name="bookmark" size={12} color={isActive ? colors.white : colors.gray[400]} />
+        <Ionicons name="bookmark" size={12} color={isActive ? colors.text.inverse : colors.gray[400]} />
       )}
       <Text style={[ui.chipText, isActive && ui.chipTextActive]}>{label}</Text>
       <View style={[ui.chipBadge, isActive && ui.chipBadgeActive]}>
@@ -414,7 +418,7 @@ function ViewChip({ label, count, isActive, isSaved, onPress }: ViewChipProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -439,7 +443,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.gray[300],
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
   },
   toolButtonActive: {
     borderColor: colors.red,
@@ -451,7 +455,7 @@ const styles = StyleSheet.create({
     color: colors.gray[600],
   },
   toolButtonTextActive: {
-    color: colors.red,
+    color: colors.text.accent,
   },
   ruleChip: {
     minHeight: 36,
@@ -468,7 +472,7 @@ const styles = StyleSheet.create({
   ruleChipText: {
     fontSize: 13,
     fontWeight: '600',
-    color: colors.red,
+    color: colors.text.accent,
   },
   loadingContainer: {
     padding: 16,

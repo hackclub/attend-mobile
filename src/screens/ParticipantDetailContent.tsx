@@ -23,7 +23,7 @@ import { useEventAccess } from '../hooks/useEventAccess';
 import { useNFC } from '../hooks/useNFC';
 import { api } from '../services/api';
 import { buildPhoneActions } from '../services/contactLinks';
-import { colors } from '../theme/colors';
+import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
 import type { Participant, ParticipantNote, Travel, Guardian, Consent, Accommodation, AccessibilityDetail, PersonalDetails } from '../types';
 
 interface ParticipantDetailContentProps {
@@ -33,6 +33,8 @@ interface ParticipantDetailContentProps {
 }
 
 export function ParticipantDetailContent({ participant, topInset = 100, bottomInset = 32 }: ParticipantDetailContentProps) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const { state, updateParticipant } = useApp();
   const { canViewParticipantRecords, canViewParticipantPii, roleLabel } = useEventAccess();
   const { isSupported: nfcSupported, writeTag } = useNFC();
@@ -332,7 +334,7 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
         <RefreshControl
           refreshing={isRefreshing}
           onRefresh={handleRefresh}
-          tintColor={colors.red}
+          tintColor={colors.text.accent}
           progressViewOffset={topInset}
         />
       }
@@ -580,7 +582,7 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
 
           {isLoadingNotes ? (
             <View style={styles.notesLoading}>
-              <ActivityIndicator size="small" color={colors.red} />
+              <ActivityIndicator size="small" color={colors.text.accent} />
             </View>
           ) : notes.length === 0 ? (
             <Text style={styles.noNotesText}>No notes yet</Text>
@@ -635,7 +637,7 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
           style={styles.openInBrowserButton}
           onPress={handleOpenInBrowser}
         >
-          <Ionicons name="open-outline" size={20} color={colors.blue} />
+          <Ionicons name="open-outline" size={20} color={colors.status.info} />
           <Text style={styles.openInBrowserText}>View on attend.hackclub.com</Text>
         </TouchableOpacity>
 
@@ -781,14 +783,16 @@ function AccessibilitySection({ a }: { a: AccessibilityDetail }) {
 }
 
 function ConsentsSection({ consents }: { consents: Consent[] }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const labelFor = (type: string) => type.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
   const toneFor = (status: string) => {
     switch (status) {
-      case 'signed': return { bg: colors.green + '20', fg: colors.green };
+      case 'signed': return { bg: colors.status.success + '20', fg: colors.status.success };
       case 'sent':
-      case 'viewed': return { bg: colors.blue + '20', fg: colors.blue };
+      case 'viewed': return { bg: colors.status.info + '20', fg: colors.status.info };
       case 'failed':
-      case 'voided': return { bg: colors.red + '20', fg: colors.red };
+      case 'voided': return { bg: colors.status.error + '20', fg: colors.status.error };
       default: return { bg: colors.gray[200], fg: colors.gray[700] };
     }
   };
@@ -803,7 +807,7 @@ function ConsentsSection({ consents }: { consents: Consent[] }) {
               <Text style={styles.consentType}>{labelFor(c.consent_type)}</Text>
               {signed && <Text style={styles.consentMeta}>Signed {signed}</Text>}
               {!signed && c.pending_on && <Text style={styles.consentMeta}>Pending: {c.pending_on}</Text>}
-              {c.failure_reason && <Text style={[styles.consentMeta, { color: colors.red }]}>{c.failure_reason}</Text>}
+              {c.failure_reason && <Text style={[styles.consentMeta, { color: colors.text.accent }]}>{c.failure_reason}</Text>}
             </View>
             <View style={[styles.consentBadge, { backgroundColor: tone.bg }]}>
               <Text style={[styles.consentBadgeText, { color: tone.fg }]}>{c.status}</Text>
@@ -816,6 +820,8 @@ function ConsentsSection({ consents }: { consents: Consent[] }) {
 }
 
 function GuardiansSection({ guardians, onCall, onEmail }: { guardians: Guardian[]; onCall: (n: string) => void; onEmail: (e: string) => void }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   return (
     <Section title={`Guardians (${guardians.length})`}>
       {guardians.map((g) => (
@@ -902,6 +908,8 @@ function GuardiansSection({ guardians, onCall, onEmail }: { guardians: Guardian[
 }
 
 function PermChip({ label, granted }: { label: string; granted: boolean }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={[styles.permChip, granted ? styles.permChipOn : styles.permChipOff]}>
       <Ionicons name={granted ? 'checkmark' : 'close'} size={10} color={granted ? colors.green : colors.red} />
@@ -911,6 +919,7 @@ function PermChip({ label, granted }: { label: string; granted: boolean }) {
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>{title}</Text>
@@ -928,6 +937,8 @@ function TravelSection({
   travel: Travel;
   canViewPii: boolean;
 }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const getModeLabel = (mode?: string) => {
     const modes: Record<string, string> = {
       plane: '✈️ Flight',
@@ -941,11 +952,11 @@ function TravelSection({
 
   const getStatusColor = (status?: string) => {
     switch (status?.toLowerCase()) {
-      case 'arrived': return colors.green;
+      case 'arrived': return colors.status.success;
       case 'departed':
-      case 'enroute': return colors.blue;
-      case 'delayed': return colors.orange;
-      case 'cancelled': return colors.red;
+      case 'enroute': return colors.status.info;
+      case 'delayed': return colors.status.warning;
+      case 'cancelled': return colors.status.error;
       case 'diverted': return colors.purple;
       default: return colors.gray[500];
     }
@@ -1107,6 +1118,7 @@ interface InfoRowProps {
 }
 
 function InfoRow({ label, value, onPress, highlight, selectable, accessibilityHint }: InfoRowProps) {
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={[styles.infoRow, highlight && styles.infoRowHighlight]}>
       <Text style={styles.infoLabel}>{label}</Text>
@@ -1123,7 +1135,7 @@ function InfoRow({ label, value, onPress, highlight, selectable, accessibilityHi
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   content: {
     padding: 16,
   },
@@ -1220,7 +1232,7 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
   },
   infoValueLink: {
-    color: colors.blue,
+    color: colors.status.info,
   },
   safeguardingRow: {
     flexDirection: 'row',
@@ -1272,7 +1284,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   openInBrowserText: {
-    color: colors.blue,
+    color: colors.status.info,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -1508,7 +1520,7 @@ const styles = StyleSheet.create({
   guardianStatusBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   guardianStatusText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
   guardianMeta: { fontSize: 12, color: colors.text.secondary, marginTop: 2 },
-  guardianLink: { fontSize: 13, color: colors.blue, marginTop: 2 },
+  guardianLink: { fontSize: 13, color: colors.status.info, marginTop: 2 },
   permRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 },
   permChip: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   permChipOn: { backgroundColor: colors.green + '15' },

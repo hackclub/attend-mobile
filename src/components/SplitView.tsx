@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
+import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
 
 interface SplitViewProps {
   sidebar: React.ReactNode;
@@ -11,6 +11,8 @@ interface SplitViewProps {
 }
 
 export function SplitView({ sidebar, detail, sidebarWidth = 360, placeholder }: SplitViewProps) {
+  const styles = useThemedStyles(makeStyles);
+
   return (
     <View style={styles.container}>
       <View style={[styles.sidebar, { width: sidebarWidth }]}>{sidebar}</View>
@@ -22,6 +24,9 @@ export function SplitView({ sidebar, detail, sidebarWidth = 360, placeholder }: 
 }
 
 function DefaultPlaceholder() {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
+
   return (
     <View style={styles.placeholder}>
       <View style={styles.placeholderIcon}>
@@ -35,7 +40,7 @@ function DefaultPlaceholder() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     flexDirection: 'row',

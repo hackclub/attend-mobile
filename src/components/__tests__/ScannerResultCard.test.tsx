@@ -34,6 +34,7 @@ jest.mock('react-native', () => ({
   },
 }));
 
+jest.mock('expo-system-ui', () => ({ setBackgroundColorAsync: jest.fn() }));
 jest.mock('expo-image', () => ({ Image: 'ExpoImage' }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 

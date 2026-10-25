@@ -18,8 +18,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { ApiError, api } from '../services/api';
 import { useApp } from '../context/AppContext';
 import { useEventAccess } from '../hooks/useEventAccess';
-import { colors } from '../theme/colors';
-import { FilterChip, ScreenHeader, SearchField, cardSurface } from '../components/ui';
+import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
+import { FilterChip, ScreenHeader, SearchField, makeCardSurface } from '../components/ui';
 import type {
   RootStackParamList,
   TravelCalendarData,
@@ -78,12 +78,12 @@ const PICKUP_LABEL: Record<TravelPickupState, string> = {
   pickup_not_needed: 'No pickup',
 };
 
-const PICKUP_TINT: Record<TravelPickupState, string> = {
-  awaiting_pickup: colors.orange,
-  collected: colors.green,
-  checked_in: colors.blue,
+const pickupTint = (colors: ThemeColors): Record<TravelPickupState, string> => ({
+  awaiting_pickup: colors.status.warning,
+  collected: colors.status.success,
+  checked_in: colors.status.info,
   pickup_not_needed: colors.gray[500],
-};
+});
 
 function displayName(entry: TravelCalendarEntry): string {
   return entry.participantPreferredName?.trim() || entry.participantName;
@@ -145,6 +145,8 @@ function entryMatchesChip(entry: TravelCalendarEntry, chip: ChipId): boolean {
 }
 
 function DirectionBadge({ direction }: { direction: TravelCalendarEntry['direction'] }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const inbound = direction === 'inbound';
   return (
     <View style={[styles.directionBadge, inbound ? styles.directionInbound : styles.directionOutbound]}>
@@ -161,7 +163,9 @@ function DirectionBadge({ direction }: { direction: TravelCalendarEntry['directi
 }
 
 function PickupPill({ state }: { state: TravelPickupState }) {
-  const tint = PICKUP_TINT[state];
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  const tint = pickupTint(colors)[state];
   return (
     <View style={[styles.pickupPill, { backgroundColor: `${tint}22`, borderColor: `${tint}55` }]}>
       <Text style={[styles.pickupPillText, { color: tint }]}>{PICKUP_LABEL[state]}</Text>
@@ -180,6 +184,8 @@ function EntryRow({
   // the journey, it just isn't a link into a 403.
   onPress?: () => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const time = entry.primaryTimeAt ? formatTimeInZone(entry.primaryTimeAt, timezone) : null;
   return (
     <TouchableOpacity
@@ -235,6 +241,8 @@ function EntryRow({
 }
 
 export function TravelCalendarScreen() {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<NavigationProp>();
   const { state } = useApp();
   const { canViewParticipantRecords } = useEventAccess();
@@ -450,7 +458,7 @@ export function TravelCalendarScreen() {
           onPress={() => fetchData()}
           disabled={!error.retryable}
         >
-          <Ionicons name="alert-circle-outline" size={16} color={colors.red} />
+          <Ionicons name="alert-circle-outline" size={16} color={colors.text.accent} />
           <Text style={styles.errorText} numberOfLines={2}>
             {error.retryable ? `${error.message} · Tap to retry` : error.message}
           </Text>
@@ -459,7 +467,7 @@ export function TravelCalendarScreen() {
 
       {isLoading && !data ? (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.red} />
+          <ActivityIndicator size="large" color={colors.text.accent} />
         </View>
       ) : (
         <SectionList
@@ -470,7 +478,7 @@ export function TravelCalendarScreen() {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + 24 }]}
           refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.red} />
+            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.text.accent} />
           }
           renderSectionHeader={({ section }) => (
             <View style={styles.sectionHeader}>
@@ -519,7 +527,7 @@ export function TravelCalendarScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors, theme: Theme) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.gray[50] },
   tzBadge: {
     flexDirection: 'row',
@@ -528,7 +536,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.gray[200],
   },
@@ -546,7 +554,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 7,
   },
-  errorText: { flex: 1, fontSize: 13, color: colors.red, fontWeight: '600' },
+  errorText: { flex: 1, fontSize: 13, color: colors.text.accent, fontWeight: '600' },
   listContent: { paddingHorizontal: 16, paddingTop: 4, flexGrow: 1 },
   sectionHeader: {
     flexDirection: 'row',
@@ -562,10 +570,10 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     backgroundColor: `${colors.red}18`,
   },
-  sectionBadgeText: { fontSize: 11, fontWeight: '800', color: colors.red },
+  sectionBadgeText: { fontSize: 11, fontWeight: '800', color: colors.text.accent },
   sectionCount: { marginLeft: 'auto', fontSize: 13, fontWeight: '700', color: colors.gray[400] },
   row: {
-    ...cardSurface,
+    ...makeCardSurface(colors, theme),
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,

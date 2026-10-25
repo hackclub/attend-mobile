@@ -11,7 +11,7 @@ import {
   isTicketActivityRunning,
 } from '../../modules/activity-controller/src';
 import { api } from '../services/api';
-import { colors } from '../theme/colors';
+import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
 import type { RootStackParamList, Ticket } from '../types';
 
 type TicketDetailRoute = RouteProp<RootStackParamList, 'TicketDetail'>;
@@ -75,6 +75,8 @@ function useCountdown(startsAt?: string, endsAt?: string): { label: string; sub:
 }
 
 export function TicketDetailScreen() {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   const route = useRoute<TicketDetailRoute>();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -233,7 +235,7 @@ export function TicketDetailScreen() {
           <View style={styles.passBottom}>
             <View style={styles.tile}>
               <View style={styles.tileHead}>
-                <Ionicons name="location-outline" size={16} color={colors.red} />
+                <Ionicons name="location-outline" size={16} color={colors.text.accent} />
                 <Text style={styles.tileLabel}>VENUE</Text>
               </View>
               <Text style={styles.tileValue} numberOfLines={2}>{venue}</Text>
@@ -244,7 +246,7 @@ export function TicketDetailScreen() {
             <View style={styles.tileDivider} />
             <View style={styles.tile}>
               <View style={styles.tileHead}>
-                <Ionicons name="time-outline" size={16} color={colors.red} />
+                <Ionicons name="time-outline" size={16} color={colors.text.accent} />
                 <Text style={styles.tileLabel}>STARTS</Text>
               </View>
               <Text style={styles.tileValue}>{start.time || 'TBA'}</Text>
@@ -264,7 +266,7 @@ export function TicketDetailScreen() {
         {/* Countdown */}
         {countdown.label ? (
           <View style={styles.countdownCard}>
-            <Ionicons name="airplane" size={18} color={colors.blue} style={styles.countdownIcon} />
+            <Ionicons name="airplane" size={18} color={colors.status.info} style={styles.countdownIcon} />
             <View>
               <Text style={styles.countdownValue}>{countdown.label}</Text>
               {countdown.sub ? <Text style={styles.countdownSub}>{countdown.sub}</Text> : null}
@@ -323,6 +325,8 @@ function formatFlightWhen(iso?: string): string {
 }
 
 function TravelCard({ travel }: { travel?: Ticket['travel_inbound'] }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   if (!travel) return null;
 
   const legs = travel.legs && travel.legs.length > 0 ? travel.legs : null;
@@ -383,12 +387,14 @@ function formatMessageWhen(iso?: string | null): string {
 }
 
 function MessagesCard({ messages }: { messages?: Ticket['messages'] }) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   if (!messages || messages.length === 0) return null;
 
   return (
     <View style={styles.sectionCard}>
       <View style={styles.sectionHeader}>
-        <Ionicons name="chatbubble-ellipses" size={16} color={colors.blue} />
+        <Ionicons name="chatbubble-ellipses" size={16} color={colors.status.info} />
         <Text style={styles.sectionTitle}>Messages</Text>
       </View>
 
@@ -413,10 +419,12 @@ const HOTLINE_DISPLAY = '+1 (855) 625 4225';
 const INCIDENT_URL = 'https://hack.club/incident';
 
 function SafetyCard() {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.sectionCard}>
       <View style={styles.sectionHeader}>
-        <Ionicons name="shield-checkmark" size={16} color={colors.red} />
+        <Ionicons name="shield-checkmark" size={16} color={colors.text.accent} />
         <Text style={styles.sectionTitle}>Safety</Text>
       </View>
 
@@ -443,9 +451,7 @@ function SafetyCard() {
   );
 }
 
-const BAND = colors.red;
-
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors, theme: Theme) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { paddingHorizontal: 16 },
   header: { height: 40, justifyContent: 'center', marginBottom: 8 },
@@ -460,15 +466,15 @@ const styles = StyleSheet.create({
   },
   pass: {
     borderRadius: 24,
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     overflow: 'hidden',
     shadowColor: colors.black,
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.14,
+    shadowOpacity: 0.14 * theme.shadowOpacity,
     shadowRadius: 20,
-    elevation: 5,
+    elevation: 5 * theme.elevation,
   },
-  passTop: { backgroundColor: BAND, paddingHorizontal: 22, paddingTop: 20, paddingBottom: 0, alignItems: 'center', overflow: 'hidden' },
+  passTop: { backgroundColor: colors.red, paddingHorizontal: 22, paddingTop: 20, paddingBottom: 0, alignItems: 'center', overflow: 'hidden' },
   bannerStrip: { height: 128, backgroundColor: colors.gray[200], justifyContent: 'flex-end' },
   bannerStripScrim: { backgroundColor: 'rgba(0,0,0,0.15)' },
   bannerLogo: {
@@ -521,7 +527,7 @@ const styles = StyleSheet.create({
   perforation: { alignSelf: 'stretch', height: 22, justifyContent: 'center', marginTop: 16 },
   dashRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   dash: { width: 7, height: 2, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.6)' },
-  passBottom: { flexDirection: 'row', backgroundColor: colors.white, paddingVertical: 18, paddingHorizontal: 4 },
+  passBottom: { flexDirection: 'row', backgroundColor: colors.surface, paddingVertical: 18, paddingHorizontal: 4 },
   tile: { flex: 1, paddingHorizontal: 18 },
   tileHead: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6 },
   tileLabel: { fontSize: 11, fontWeight: '700', color: colors.text.muted, letterSpacing: 1 },
@@ -546,7 +552,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     borderRadius: 14,
     paddingVertical: 14,
     marginTop: 16,
@@ -559,7 +565,7 @@ const styles = StyleSheet.create({
   countdownCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 16,
     marginTop: 16,
@@ -572,7 +578,7 @@ const styles = StyleSheet.create({
   checkedInTag: { marginLeft: 'auto', backgroundColor: colors.green, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
   checkedInTagText: { color: colors.white, fontSize: 12, fontWeight: '700' },
   sectionCard: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 16,
     marginTop: 16,

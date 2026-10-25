@@ -1,11 +1,12 @@
 import React, { ReactNode } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View, type TextInputProps } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
+import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
 
-// Shared light-surface primitives for the paper-world tab screens (Events,
-// Participants, Travel). The scanner and kiosk keep their own dark camera
-// treatment per DESIGN.md — do not use these there.
+// Shared surface primitives for the paper-world tab screens (Events,
+// Participants, Travel). These follow the system light/dark setting. The
+// scanner and kiosk keep their own dark camera treatment per DESIGN.md — do
+// not use these there.
 
 export function ScreenHeader({
   title,
@@ -16,6 +17,8 @@ export function ScreenHeader({
   subtitle?: string | null;
   right?: ReactNode;
 }) {
+  const ui = useUiStyles();
+
   return (
     <View style={ui.header}>
       <View style={ui.headerText}>
@@ -35,6 +38,9 @@ export function SearchField({
   onClear,
   ...inputProps
 }: TextInputProps & { value: string; onChangeText: (text: string) => void; onClear?: () => void }) {
+  const { colors } = useTheme();
+  const ui = useUiStyles();
+
   return (
     <View style={ui.searchField}>
       <Ionicons name="search" size={17} color={colors.gray[400]} />
@@ -75,6 +81,9 @@ export function FilterChip({
   badge?: string | number | null;
   onPress: () => void;
 }) {
+  const { colors } = useTheme();
+  const ui = useUiStyles();
+
   return (
     <TouchableOpacity
       style={[ui.chip, active && ui.chipActive]}
@@ -84,7 +93,7 @@ export function FilterChip({
       accessibilityState={{ selected: !!active }}
     >
       {icon ? (
-        <Ionicons name={icon} size={14} color={active ? colors.white : colors.gray[600]} />
+        <Ionicons name={icon} size={14} color={active ? colors.text.inverse : colors.gray[600]} />
       ) : null}
       <Text style={[ui.chipText, active && ui.chipTextActive]}>{label}</Text>
       {badge != null && badge !== '' ? (
@@ -96,20 +105,23 @@ export function FilterChip({
   );
 }
 
-// The paper world's card material: white, hairline border, soft low shadow.
-export const cardSurface = {
-  backgroundColor: colors.white,
-  borderRadius: 16,
-  borderWidth: StyleSheet.hairlineWidth,
-  borderColor: colors.gray[200],
-  shadowColor: colors.black,
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.06,
-  shadowRadius: 8,
-  elevation: 2,
-} as const;
+// The paper world's card material: the surface color, a hairline border, and
+// a soft low shadow. On dark the shadow is dropped — depth there comes from
+// the card sitting a step lighter than the page.
+export const makeCardSurface = (colors: ThemeColors, theme: Theme) =>
+  ({
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.gray[200],
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06 * theme.shadowOpacity,
+    shadowRadius: 8,
+    elevation: 2 * theme.elevation,
+  }) as const;
 
-export const ui = StyleSheet.create({
+export const makeUiStyles = (colors: ThemeColors, { isDark }: Theme) => StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -135,12 +147,12 @@ export const ui = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.gray[200],
   },
   headerActionText: { fontSize: 14, fontWeight: '600', color: colors.gray[700] },
-  headerActionTextDestructive: { color: colors.red },
+  headerActionTextDestructive: { color: colors.text.accent },
   searchField: {
     marginHorizontal: 16,
     paddingHorizontal: 12,
@@ -149,7 +161,7 @@ export const ui = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.gray[200],
   },
@@ -161,13 +173,15 @@ export const ui = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: colors.white,
+    backgroundColor: colors.surface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.gray[300],
   },
+  // Selected flips the chip against the page: near-black on light, near-white
+  // on dark, with the label taking the opposite color either way.
   chipActive: { backgroundColor: colors.gray[900], borderColor: colors.gray[900] },
   chipText: { fontSize: 13, fontWeight: '700', color: colors.gray[600] },
-  chipTextActive: { color: colors.white },
+  chipTextActive: { color: colors.text.inverse },
   chipBadge: {
     minWidth: 22,
     paddingHorizontal: 6,
@@ -176,7 +190,11 @@ export const ui = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.gray[100],
   },
-  chipBadgeActive: { backgroundColor: 'rgba(255,255,255,0.22)' },
+  chipBadgeActive: { backgroundColor: isDark ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.22)' },
   chipBadgeText: { fontSize: 12, fontWeight: '700', color: colors.gray[600] },
-  chipBadgeTextActive: { color: colors.white },
+  chipBadgeTextActive: { color: colors.text.inverse },
 });
+
+export function useUiStyles() {
+  return useThemedStyles(makeUiStyles);
+}
