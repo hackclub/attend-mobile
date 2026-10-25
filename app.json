@@ -13,11 +13,6 @@
     "updates": {
       "url": "https://u.expo.dev/1eae2e71-70e1-49b2-8b6a-6aeda7e22b93"
     },
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#EC3750"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -73,6 +68,15 @@
     },
     "plugins": [
       [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#EC3750",
+          "enableFullScreenImage_legacy": true
+        }
+      ],
+      [
         "expo-camera",
         {
           "cameraPermission": "Allow Attend to access your camera for QR code scanning."
@@ -109,8 +113,7 @@
         }
       ],
       "expo-audio",
-      "./plugins/withScannerOrientationFix",
-      "./plugins/withPodMinimumDeploymentTarget"
+      "./plugins/withScannerOrientationFix"
     ],
     "extra": {
       "eas": {

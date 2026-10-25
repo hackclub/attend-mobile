@@ -632,7 +632,7 @@ const makeStyles = (colors: ThemeColors, theme: Theme) => StyleSheet.create({
   emptyTitle: { fontSize: 17, fontWeight: '700', color: colors.gray[700] },
   emptyText: { fontSize: 14, color: colors.gray[500], textAlign: 'center', maxWidth: 280, lineHeight: 20 },
   openingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(15,23,42,0.25)',

@@ -39,7 +39,7 @@ export function KioskSetupScreen() {
   const [confirmPin, setConfirmPin] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [useBiometricUnlock, setUseBiometricUnlock] = useState(false);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<React.ComponentRef<typeof TextInput>>(null);
 
   useEffect(() => {
     if (biometricAvailable) setUseBiometricUnlock(true);

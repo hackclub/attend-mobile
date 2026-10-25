@@ -451,7 +451,7 @@ const makeStyles = (colors: ThemeColors, theme: Theme) => StyleSheet.create({
     borderRadius: 16,
   },
   bannerScrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   eventCardSelected: {
