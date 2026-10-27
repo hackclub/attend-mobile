@@ -68,6 +68,7 @@ export function ScannerScreen() {
     selectContext,
     isLoadingContexts,
     contextsReady,
+    needsContext,
   } = useScanner();
   const { search, clearSearch, searchResults, isSearching } = useParticipants();
   // Scanning itself works for every staff role; searching the roster and
@@ -100,17 +101,19 @@ export function ScannerScreen() {
   const selectedContext = contextsReady
     ? scanContexts.find(context => context.id === selectedContextId)
     : undefined;
+  const canScan = contextsReady && !needsContext;
+  // Until staff choose a context the camera sends nothing: the scan frame is
+  // covered with the reason instead of failing a scan they lined up.
   const cameraScanningEnabled = isFocused
     && manualEntryMode === 'none'
-    && !contextDropdownOpen;
-  const canEnterKiosk = contextsReady
-    && (scanContexts.length === 0 || !!selectedContext);
+    && !contextDropdownOpen
+    && canScan;
   const scannerStatus = isProcessing
     ? 'Confirming scan'
     : !contextsReady
       ? isLoadingContexts ? 'Loading contexts' : 'Contexts unavailable'
-      : scanContexts.length > 0 && !selectedContext
-        ? 'Select a scan context'
+      : needsContext
+        ? 'Choose a context'
         : !isFeedbackReady
           ? 'Preparing feedback'
           : 'Ready to scan';
@@ -152,12 +155,13 @@ export function ScannerScreen() {
     const trimmed = identifier.trim();
     if (!trimmed || isProcessing) return;
     recordScannerActivity();
+    if (!canScan) return;
     await handleScan(trimmed, 'manual');
     setSearchQuery('');
     clearSearch();
     setManualEntryMode('none');
     Keyboard.dismiss();
-  }, [clearSearch, handleScan, isProcessing, recordScannerActivity]);
+  }, [canScan, clearSearch, handleScan, isProcessing, recordScannerActivity]);
 
   const handleSearchChange = useCallback((text: string) => {
     recordScannerActivity();
@@ -176,12 +180,13 @@ export function ScannerScreen() {
     const identifier = participant.participant_event_id || participant.participant_id;
     if (!identifier || isProcessing) return;
     recordScannerActivity();
+    if (!canScan) return;
     await handleScan(identifier, 'manual');
     setSearchQuery('');
     clearSearch();
     setManualEntryMode('none');
     Keyboard.dismiss();
-  }, [clearSearch, handleScan, isProcessing, recordScannerActivity]);
+  }, [canScan, clearSearch, handleScan, isProcessing, recordScannerActivity]);
 
   const closeManualEntry = useCallback(() => {
     recordScannerActivity();
@@ -256,11 +261,7 @@ export function ScannerScreen() {
           <View style={styles.eventHeading}>
             <Text style={styles.headerTitle} numberOfLines={1}>{state.currentEvent?.name}</Text>
             <View style={styles.liveRow}>
-              <View style={[
-                styles.liveDot,
-                (!contextsReady || (scanContexts.length > 0 && !selectedContext))
-                  && styles.liveDotPaused,
-              ]} />
+              <View style={[styles.liveDot, !canScan && styles.liveDotPaused]} />
               <Text style={styles.headerSubtitle}>{scannerStatus}</Text>
             </View>
           </View>
@@ -295,17 +296,17 @@ export function ScannerScreen() {
               <Pressable
                 style={({ pressed }) => [
                   styles.iconButton,
-                  !canEnterKiosk && styles.controlDisabled,
-                  pressed && canEnterKiosk && styles.pressed,
+                  !canScan && styles.controlDisabled,
+                  pressed && canScan && styles.pressed,
                 ]}
                 onPress={() => navigation.navigate('KioskSetup', {
                   scanContextId: selectedContext?.id,
                   scanContextName: selectedContext?.name,
                 })}
-                disabled={!canEnterKiosk}
+                disabled={!canScan}
                 accessibilityRole="button"
                 accessibilityLabel="Open kiosk mode"
-                accessibilityState={{ disabled: !canEnterKiosk }}
+                accessibilityState={{ disabled: !canScan }}
               >
                 <Ionicons name="lock-closed" size={19} color={colors.white} />
               </Pressable>
@@ -347,6 +348,17 @@ export function ScannerScreen() {
               </View>
             ) : null}
           </View>
+
+          {needsContext ? (
+            <View style={styles.contextRequired} pointerEvents="none">
+              <Text style={styles.contextRequiredTitle}>
+                Choose a context to start scanning
+              </Text>
+              <Text style={styles.contextRequiredText}>
+                {"Pick where you're scanning people in from the context menu."}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         <View style={[styles.bottomDock, { paddingBottom: 8 + tabBarHeight }]}>
@@ -405,6 +417,7 @@ export function ScannerScreen() {
         {manualEntryMode === 'search' ? (
           <SearchSheet
             canSearchRoster={canViewParticipantRecords}
+            needsContext={needsContext}
             query={searchQuery}
             results={searchResults || []}
             isSearching={isSearching}
@@ -507,15 +520,20 @@ function ContextSelector({
   return (
     <View style={styles.contextSelector}>
       <Pressable
-        style={({ pressed }) => [styles.contextButton, pressed && styles.pressed]}
+        style={({ pressed }) => [
+          styles.contextButton,
+          !selectedContext && styles.contextButtonEmpty,
+          pressed && styles.pressed,
+        ]}
         onPress={onToggle}
         accessibilityRole="button"
         accessibilityState={{ expanded: isOpen }}
-        accessibilityLabel={`Scan context: ${selectedContext?.name || 'not selected'}`}
+        accessibilityLabel={`Scan context: ${selectedContext?.name || 'not chosen'}`}
+        accessibilityHint={selectedContext ? undefined : 'Choose a context before scanning'}
       >
         {selectedContext ? <ContextIcon context={selectedContext} /> : null}
         <Text style={styles.contextButtonText} numberOfLines={1}>
-          {selectedContext?.name || 'Select context'}
+          {selectedContext?.name || 'Choose a context'}
         </Text>
         <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} color={colors.white} />
       </Pressable>
@@ -599,6 +617,7 @@ function SheetHeader({ title, onClose }: { title: string; onClose: () => void })
 
 function SearchSheet({
   canSearchRoster,
+  needsContext,
   query,
   results,
   isSearching,
@@ -610,6 +629,7 @@ function SearchSheet({
   onClose,
 }: {
   canSearchRoster: boolean;
+  needsContext: boolean;
   query: string;
   results: Participant[];
   isSearching: boolean;
@@ -631,6 +651,16 @@ function SearchSheet({
           title={canSearchRoster ? 'Find an attendee' : 'Enter an attendee ID'}
           onClose={onClose}
         />
+        {needsContext ? (
+          <View style={styles.sheetNotice} accessibilityRole="alert">
+            <Ionicons name="alert-circle" size={18} color={colors.orange} />
+            <Text style={styles.sheetNoticeText}>
+              {'Choose a context before scanning. Close this and pick one from '
+                + 'the context menu — what you type here is kept.'}
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.searchInputRow}>
           <Ionicons
             name={canSearchRoster ? 'search' : 'keypad-outline'}
@@ -644,7 +674,7 @@ function SearchSheet({
             value={query}
             onChangeText={onChange}
             onSubmitEditing={() => {
-              if (idCandidate && !isProcessing) onSubmitId(idCandidate);
+              if (idCandidate && !isProcessing && !needsContext) onSubmitId(idCandidate);
             }}
             autoCapitalize="none"
             autoCorrect={false}
@@ -671,9 +701,13 @@ function SearchSheet({
           style={styles.searchResults}
           ListHeaderComponent={idCandidate ? (
             <Pressable
-              style={({ pressed }) => [styles.searchResult, pressed && styles.searchResultPressed]}
+              style={({ pressed }) => [
+                styles.searchResult,
+                pressed && styles.searchResultPressed,
+                needsContext && styles.searchResultBlocked,
+              ]}
               onPress={() => onSubmitId(idCandidate)}
-              disabled={isProcessing}
+              disabled={isProcessing || needsContext}
             >
               <View style={styles.searchResultText}>
                 <Text style={styles.searchResultName} numberOfLines={1}>Scan as attendee ID</Text>
@@ -693,8 +727,13 @@ function SearchSheet({
           ) : undefined}
           renderItem={({ item }) => (
             <Pressable
-              style={({ pressed }) => [styles.searchResult, pressed && styles.searchResultPressed]}
+              style={({ pressed }) => [
+                styles.searchResult,
+                pressed && styles.searchResultPressed,
+                needsContext && styles.searchResultBlocked,
+              ]}
               onPress={() => onSelect(item)}
+              disabled={needsContext}
             >
               <View style={styles.searchResultText}>
                 <Text style={styles.searchResultName} numberOfLines={1}>
@@ -752,6 +791,7 @@ const styles = StyleSheet.create({
   iconButton: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.28)', backgroundColor: 'rgba(15,23,42,0.76)' },
   contextSelector: { marginHorizontal: 18, zIndex: 60 },
   contextButton: { minHeight: 48, maxWidth: 620, width: '100%', alignSelf: 'center', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.28)', backgroundColor: 'rgba(15,23,42,0.9)' },
+  contextButtonEmpty: { borderColor: colors.orange, borderWidth: 1.5 },
   contextButtonText: { flex: 1, color: colors.white, fontSize: 15, fontWeight: '700' },
   contextMenu: { position: 'absolute', top: 54, left: 0, right: 0, alignSelf: 'center', maxWidth: 620, maxHeight: 280, overflow: 'hidden', borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.22)', backgroundColor: colors.gray[900], shadowColor: colors.black, shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.35, shadowRadius: 22, elevation: 16 },
   contextOption: { minHeight: 52, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.gray[700] },
@@ -765,6 +805,9 @@ const styles = StyleSheet.create({
   singleContextText: { color: colors.gray[100], fontSize: 14, fontWeight: '700' },
   scanStage: { flex: 1, minHeight: 150, alignItems: 'center', justifyContent: 'center', gap: 14, paddingHorizontal: 18, paddingVertical: 12 },
   scanArea: { position: 'relative' },
+  contextRequired: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 26, backgroundColor: 'rgba(15,23,42,0.94)' },
+  contextRequiredTitle: { color: colors.white, fontSize: 17, lineHeight: 23, fontWeight: '800', textAlign: 'center' },
+  contextRequiredText: { color: colors.gray[300], fontSize: 14, lineHeight: 20, textAlign: 'center', maxWidth: 340 },
   corner: { position: 'absolute', width: 46, height: 46, borderColor: colors.white },
   topLeft: { top: 0, left: 0, borderTopWidth: 4, borderLeftWidth: 4, borderTopLeftRadius: 15 },
   topRight: { top: 0, right: 0, borderTopWidth: 4, borderRightWidth: 4, borderTopRightRadius: 15 },
@@ -795,6 +838,9 @@ const styles = StyleSheet.create({
   searchResults: { flex: 1 },
   searchResult: { minHeight: 68, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.gray[700] },
   searchResultPressed: { backgroundColor: colors.gray[800] },
+  searchResultBlocked: { opacity: 0.5 },
+  sheetNotice: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, padding: 12, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.orange, backgroundColor: 'rgba(255,140,55,0.12)' },
+  sheetNoticeText: { flex: 1, color: colors.gray[100], fontSize: 13, lineHeight: 19, fontWeight: '600' },
   searchResultText: { flex: 1, gap: 3 },
   searchResultName: { color: colors.white, fontSize: 16, fontWeight: '700' },
   searchResultEmail: { color: colors.gray[400], fontSize: 13 },

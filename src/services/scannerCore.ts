@@ -49,6 +49,55 @@ export function responseOutcome(
   );
 }
 
+function isOnContextDay(context: ScanContext): boolean {
+  if (!context.starts_at) return true;
+  const offset = context.starts_at.match(/(Z|([+-])(\d{2}):(\d{2}))$/);
+  if (!offset) return true;
+  const offsetMinutes = offset[1] === 'Z'
+    ? 0
+    : (offset[2] === '-' ? -1 : 1) * (Number(offset[3]) * 60 + Number(offset[4]));
+  const nowAtContext = new Date(Date.now() + offsetMinutes * 60_000);
+  const today = nowAtContext.toISOString().slice(0, 10);
+  return context.starts_at.slice(0, 10) === today;
+}
+
+function isInCurrentTimeWindow(context: ScanContext): boolean {
+  if (!context.starts_at || !context.ends_at) return false;
+  const now = Date.now();
+  return now >= Date.parse(context.starts_at) && now <= Date.parse(context.ends_at);
+}
+
+function startTime(context: ScanContext): number | null {
+  if (!context.starts_at) return null;
+  const parsed = Date.parse(context.starts_at);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+// The order Attend's admin list and web scanner use: scheduled contexts by
+// start time, unscheduled ones after, then by manual position. Sorting is
+// stable, so contexts that tie keep the order the server sent them in.
+function bySchedule(contexts: ScanContext[]): ScanContext[] {
+  return [...contexts].sort((a, b) => {
+    const aStart = startTime(a);
+    const bStart = startTime(b);
+    if (aStart !== bStart) {
+      if (aStart === null) return 1;
+      if (bStart === null) return -1;
+      return aStart - bStart;
+    }
+    return (a.position ?? 0) - (b.position ?? 0);
+  });
+}
+
+// The contexts worth offering right now: the ones open at this moment, else
+// the ones scheduled for today, else all of them.
+export function scannableContexts(contexts: ScanContext[]): ScanContext[] {
+  const openNow = contexts.filter(isInCurrentTimeWindow);
+  if (openNow.length > 0) return bySchedule(openNow);
+  const today = contexts.filter(isOnContextDay);
+  return bySchedule(today.length > 0 ? today : contexts);
+}
+
 export class SameCodeGate {
   private lastCode: string | null = null;
   private lastSeenAt = 0;

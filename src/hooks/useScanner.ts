@@ -10,6 +10,7 @@ import {
   failedResult,
   parseQRCode,
   resultFromResponse,
+  scannableContexts,
   type ScannerResult,
 } from '../services/scannerCore';
 import { syncService } from '../services/sync';
@@ -25,42 +26,10 @@ interface ScanRequest {
   startedAt?: string;
 }
 
-function isOnContextDay(context: ScanContext): boolean {
-  if (!context.starts_at) return true;
-  const offset = context.starts_at.match(/(Z|([+-])(\d{2}):(\d{2}))$/);
-  if (!offset) return true;
-  const offsetMinutes = offset[1] === 'Z'
-    ? 0
-    : (offset[2] === '-' ? -1 : 1) * (Number(offset[3]) * 60 + Number(offset[4]));
-  const nowAtContext = new Date(Date.now() + offsetMinutes * 60_000);
-  const today = nowAtContext.toISOString().slice(0, 10);
-  return context.starts_at.slice(0, 10) === today;
-}
-
-function isInCurrentTimeWindow(context: ScanContext): boolean {
-  if (!context.starts_at || !context.ends_at) return false;
-  const now = Date.now();
-  return now >= Date.parse(context.starts_at) && now <= Date.parse(context.ends_at);
-}
-
-function activeContexts(contexts: ScanContext[]): ScanContext[] {
-  const activeNow = contexts.filter(isInCurrentTimeWindow);
-  if (activeNow.length > 0) return activeNow;
-  const today = contexts.filter(isOnContextDay);
-  return today.length > 0 ? today : contexts;
-}
-
-function defaultContext(contexts: ScanContext[]): ScanContext | undefined {
-  return contexts.find(isInCurrentTimeWindow)
-    ?? contexts.find(context => context.checks_in)
-    ?? contexts[0];
-}
-
 export function useScanner(options: {
   lockedContextId?: string;
-  selectDefaultContext?: boolean;
 } = {}) {
-  const { lockedContextId, selectDefaultContext = true } = options;
+  const { lockedContextId } = options;
   const { state, confirmParticipant } = useApp();
   const [isProcessing, setIsProcessing] = useState(false);
   const [lastScan, setLastScan] = useState<ScannerResult | null>(null);
@@ -81,12 +50,8 @@ export function useScanner(options: {
     [state.participants]
   );
 
-  const applyContexts = useCallback((
-    eventId: string,
-    allContexts: ScanContext[],
-    selectDefaultIfEmpty: boolean
-  ) => {
-    const contexts = activeContexts(allContexts);
+  const applyContexts = useCallback((eventId: string, allContexts: ScanContext[]) => {
+    const contexts = scannableContexts(allContexts);
     setScanContexts(contexts);
     setContextsEventId(eventId);
     setSelectedContextId(current => {
@@ -96,10 +61,11 @@ export function useScanner(options: {
           : null;
       }
       if (current && contexts.some(context => context.id === current)) return current;
-      if (current !== null || !selectDefaultIfEmpty || !selectDefaultContext) return null;
-      return defaultContext(contexts)?.id ?? null;
+      // Nothing is preselected: staff pick where they are scanning people in.
+      // An event with a single context has nothing to pick between.
+      return allContexts.length === 1 ? allContexts[0].id : null;
     });
-  }, [lockedContextId, selectDefaultContext]);
+  }, [lockedContextId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -133,14 +99,14 @@ export function useScanner(options: {
       setIsLoadingContexts(true);
       const cached = await syncService.getCachedScanContexts(activeEventId);
       if (!cancelled && cached.length > 0) {
-        applyContexts(activeEventId, cached, true);
+        applyContexts(activeEventId, cached);
         setIsLoadingContexts(false);
       }
 
       try {
         const fresh = await api.getScanContexts(activeEventId);
         if (cancelled) return;
-        applyContexts(activeEventId, fresh, cached.length === 0);
+        applyContexts(activeEventId, fresh);
         void syncService.cacheScanContexts(activeEventId, fresh, cacheGeneration);
       } catch (error) {
         if (!cancelled && cached.length === 0) {
@@ -158,6 +124,19 @@ export function useScanner(options: {
     };
   }, [applyContexts, state.currentEvent?.id]);
 
+  const contextRequiredResult = useCallback((
+    source: ScanSource,
+    rawData = ''
+  ): ScannerResult => {
+    const result = failedResult(new Error('Choose a context before scanning.'), {
+      attemptId: createAttemptId(),
+      rawData,
+      source,
+    });
+    setLastScan(result);
+    return result;
+  }, []);
+
   const runRequest = useCallback(async (
     request: ScanRequest
   ): Promise<ScannerResult | null> => {
@@ -168,13 +147,7 @@ export function useScanner(options: {
 
     const scanContext = request.scanContext;
     if (scanContexts.length > 0 && !scanContext) {
-      const result = failedResult(new Error('Select a scan context first.'), {
-        attemptId: createAttemptId(),
-        rawData: request.rawData,
-        source: request.source,
-      });
-      setLastScan(result);
-      return result;
+      return contextRequiredResult(request.source, request.rawData);
     }
 
     const cachedParticipant = request.kind === 'badge'
@@ -246,13 +219,20 @@ export function useScanner(options: {
         setIsProcessing(false);
       }
     }
-  }, [confirmParticipant, participantIndex, scanContexts.length, state.currentEvent]);
+  }, [
+    confirmParticipant,
+    contextRequiredResult,
+    participantIndex,
+    scanContexts.length,
+    state.currentEvent,
+  ]);
 
   const selectedContext = useMemo(() => {
     if (contextsEventId !== currentEventId) return undefined;
     return scanContexts.find(context => context.id === selectedContextId);
   }, [contextsEventId, currentEventId, scanContexts, selectedContextId]);
   const contextsReady = !!currentEventId && contextsEventId === currentEventId;
+  const needsContext = scanContexts.length > 0 && !selectedContext;
 
   const handleScan = useCallback(async (
     data: string,
@@ -286,6 +266,7 @@ export function useScanner(options: {
 
   const handleNFCScan = useCallback(async (): Promise<ScannerResult | null> => {
     if (processingRef.current || !contextsReady) return null;
+    if (needsContext) return contextRequiredResult('nfc');
 
     const eventIdAtStart = currentEventIdRef.current;
     const nfcRead = Symbol('nfc-read');
@@ -365,7 +346,7 @@ export function useScanner(options: {
       source: 'nfc',
       scanContext: selectedContext,
     });
-  }, [contextsReady, runRequest, selectedContext]);
+  }, [contextRequiredResult, contextsReady, needsContext, runRequest, selectedContext]);
 
   const retryLastScan = useCallback((): Promise<ScannerResult | null> => {
     const request = lastRequestRef.current;
@@ -399,6 +380,7 @@ export function useScanner(options: {
     scanContexts,
     selectedContextId,
     selectContext,
+    needsContext,
     isLoadingContexts,
     contextsReady,
   };

@@ -5,6 +5,7 @@ import {
   parseQRCode,
   responseOutcome,
   resultFromResponse,
+  scannableContexts,
 } from '../scannerCore';
 
 function participant(overrides: Partial<Participant> = {}): Participant {
@@ -119,5 +120,73 @@ describe('authoritative result mapping', () => {
     expect(result.outcome).toBe('not_scanned');
     expect(result.retryable).toBe(true);
     expect(result.message).toBe('Could not reach Attend. Try again.');
+  });
+});
+
+describe('scannableContexts', () => {
+  function scanContext(overrides: Partial<ScanContext> & { id: string }): ScanContext {
+    return {
+      name: overrides.id,
+      checks_in: false,
+      is_airport: false,
+      ...overrides,
+    };
+  }
+
+  const now = Date.parse('2026-08-24T15:00:00-04:00');
+
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(now);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('offers the contexts open right now, earliest start first', () => {
+    const lunch = scanContext({
+      id: 'lunch',
+      starts_at: '2026-08-24T12:00:00-04:00',
+      ends_at: '2026-08-24T18:00:00-04:00',
+    });
+    const workshop = scanContext({
+      id: 'workshop',
+      starts_at: '2026-08-24T09:00:00-04:00',
+      ends_at: '2026-08-24T17:00:00-04:00',
+    });
+    const dinner = scanContext({
+      id: 'dinner',
+      starts_at: '2026-08-24T19:00:00-04:00',
+      ends_at: '2026-08-24T21:00:00-04:00',
+    });
+
+    expect(scannableContexts([lunch, workshop, dinner]).map(c => c.id))
+      .toEqual(['workshop', 'lunch']);
+  });
+
+  it("falls back to today's contexts, scheduled ones before unscheduled", () => {
+    const registration = scanContext({
+      id: 'registration',
+      starts_at: '2026-08-24T08:00:00-04:00',
+      ends_at: '2026-08-24T09:00:00-04:00',
+    });
+    const tomorrow = scanContext({
+      id: 'tomorrow',
+      starts_at: '2026-08-25T08:00:00-04:00',
+      ends_at: '2026-08-25T09:00:00-04:00',
+    });
+    const anytime = scanContext({ id: 'anytime', position: 1 });
+    const alsoAnytime = scanContext({ id: 'also-anytime', position: 0 });
+
+    expect(scannableContexts([anytime, alsoAnytime, tomorrow, registration]).map(c => c.id))
+      .toEqual(['registration', 'also-anytime', 'anytime']);
+  });
+
+  it('keeps every context when none belongs to today', () => {
+    const yesterday = scanContext({ id: 'yesterday', starts_at: '2026-08-23T08:00:00-04:00' });
+    const tomorrow = scanContext({ id: 'tomorrow', starts_at: '2026-08-25T08:00:00-04:00' });
+
+    expect(scannableContexts([tomorrow, yesterday]).map(c => c.id))
+      .toEqual(['yesterday', 'tomorrow']);
   });
 });

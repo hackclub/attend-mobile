@@ -56,7 +56,7 @@ export function KioskScreen() {
     scanContexts,
     selectedContextId,
     contextsReady,
-  } = useScanner({ lockedContextId: scanContextId, selectDefaultContext: false });
+  } = useScanner({ lockedContextId: scanContextId });
   const { play, isReady: isFeedbackReady } = useScanFeedback();
 
   const [permission, requestPermission] = useCameraPermissions();
