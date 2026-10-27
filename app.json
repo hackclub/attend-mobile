@@ -113,7 +113,8 @@
         }
       ],
       "expo-audio",
-      "./plugins/withScannerOrientationFix"
+      "./plugins/withScannerOrientationFix",
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {
