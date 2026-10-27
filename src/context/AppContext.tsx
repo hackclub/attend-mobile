@@ -7,7 +7,18 @@ import { liveActivityService } from '../services/liveActivity';
 import { mergeParticipant, type ParticipantUpdate } from '../services/participantIndex';
 import { forbiddenParticipants } from '../services/eventAccess';
 import { clearHeadshotCache, prefetchHeadshots } from '../services/headshotCache';
+import { activeParticipants } from '../services/participantStatus';
 import type { User, Event, Participant, AuthState, SyncState } from '../types';
+
+// Withdrawn and rejected registrations are still in the synced roster but are
+// not attending, so they never count towards the event total.
+function checkInCounts(participants: Participant[]): { checkedInCount: number; totalCount: number } {
+  const active = activeParticipants(participants);
+  return {
+    checkedInCount: active.filter(p => p.checked_in_at).length,
+    totalCount: active.length,
+  };
+}
 
 interface AppState {
   auth: AuthState;
@@ -366,8 +377,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const startLiveActivity = useCallback(async (): Promise<void> => {
     if (!state.currentEvent) return;
-    const checkedInCount = state.participants.filter(p => p.checked_in_at).length;
-    const totalCount = state.participants.length;
+    const { checkedInCount, totalCount } = checkInCounts(state.participants);
     await liveActivityService.start(
       state.currentEvent.id,
       state.currentEvent.name,
@@ -383,8 +393,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Update Live Activity when participants change
   useEffect(() => {
     if (liveActivityService.isRunning() && state.currentEvent) {
-      const checkedInCount = state.participants.filter(p => p.checked_in_at).length;
-      const totalCount = state.participants.length;
+      const { checkedInCount, totalCount } = checkInCounts(state.participants);
       liveActivityService.update(checkedInCount, totalCount);
     }
   }, [state.participants, state.currentEvent]);

@@ -54,7 +54,7 @@ export function SearchScreen() {
     searchResults,
     isSearching,
     currentEvent,
-    participants,
+    activeParticipants,
     isRefreshing,
     refresh,
   } = useParticipants();
@@ -124,12 +124,14 @@ export function SearchScreen() {
     }
   };
 
-  const baseParticipants = searchResults ?? participants;
+  // Browsing shows only people who are still attending. Server search results
+  // can still surface withdrawn registrations, which the row flags with a badge.
+  const baseParticipants = searchResults ?? activeParticipants;
 
-  // Options (status, diet, etc.) derive from the full roster, not the current search subset
+  // Options (status, diet, etc.) derive from the full active roster, not the current search subset
   const filterContext = useMemo<FilterContext>(
-    () => ({ scanContexts, participants }),
-    [scanContexts, participants],
+    () => ({ scanContexts, participants: activeParticipants }),
+    [scanContexts, activeParticipants],
   );
 
   const activeRules = useMemo(() => rules.filter(ruleIsComplete), [rules]);

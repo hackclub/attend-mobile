@@ -23,6 +23,7 @@ import { useEventAccess } from '../hooks/useEventAccess';
 import { useNFC } from '../hooks/useNFC';
 import { api } from '../services/api';
 import { buildPhoneActions } from '../services/contactLinks';
+import { isWithdrawn } from '../services/participantStatus';
 import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
 import type { Participant, ParticipantNote, Travel, Guardian, Consent, Accommodation, AccessibilityDetail, PersonalDetails } from '../types';
 
@@ -357,7 +358,7 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
               <Text style={styles.pronouns}>({currentParticipant.pronouns})</Text>
             )}
             <View style={styles.statusRow}>
-              <StatusBadge status={currentParticipant.checked_in_at ? 'checkedIn' : 'pending'} />
+              <StatusBadge status={isWithdrawn(currentParticipant) ? 'withdrawn' : currentParticipant.checked_in_at ? 'checkedIn' : 'pending'} />
               {currentParticipant.checked_in_at && (
                 <Text style={styles.checkedInTime}>
                   {formatDateTime(currentParticipant.checked_in_at)}
