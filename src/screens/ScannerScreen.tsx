@@ -805,7 +805,7 @@ const styles = StyleSheet.create({
   singleContextText: { color: colors.gray[100], fontSize: 14, fontWeight: '700' },
   scanStage: { flex: 1, minHeight: 150, alignItems: 'center', justifyContent: 'center', gap: 14, paddingHorizontal: 18, paddingVertical: 12 },
   scanArea: { position: 'relative' },
-  contextRequired: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 26, backgroundColor: 'rgba(15,23,42,0.94)' },
+  contextRequired: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 26, backgroundColor: 'rgba(15,23,42,0.94)' },
   contextRequiredTitle: { color: colors.white, fontSize: 17, lineHeight: 23, fontWeight: '800', textAlign: 'center' },
   contextRequiredText: { color: colors.gray[300], fontSize: 14, lineHeight: 20, textAlign: 'center', maxWidth: 340 },
   corner: { position: 'absolute', width: 46, height: 46, borderColor: colors.white },
