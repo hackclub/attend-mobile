@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useThemedStyles, type ThemeColors } from '../theme';
 import { StatusBadge } from './StatusBadge';
+import { isWithdrawn } from '../services/participantStatus';
 import { AlertBadge } from './AlertBadge';
 import type { Participant } from '../types';
 
@@ -33,7 +34,7 @@ export function ParticipantRow({ participant, onPress, selected }: ParticipantRo
             )}
           </View>
           <View style={styles.status}>
-            <StatusBadge status={participant.checked_in_at ? 'checkedIn' : 'pending'} />
+            <StatusBadge status={isWithdrawn(participant) ? 'withdrawn' : participant.checked_in_at ? 'checkedIn' : 'pending'} />
           </View>
         </View>
 

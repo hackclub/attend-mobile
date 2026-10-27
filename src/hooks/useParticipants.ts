@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
 import { canViewParticipantRecords } from '../services/eventAccess';
+import { activeParticipants as filterActive } from '../services/participantStatus';
 import type { Participant } from '../types';
 
 export function useParticipants() {
@@ -16,13 +17,17 @@ export function useParticipants() {
   const participants = state.participants;
   const currentEvent = state.currentEvent;
 
+  // The synced roster still includes withdrawn and rejected registrations;
+  // everything that counts or lists attendees works from the active subset.
+  const activeParticipants = useMemo(() => filterActive(participants), [participants]);
+
   const checkedInParticipants = useMemo(() => {
-    return participants.filter(p => p.checked_in_at);
-  }, [participants]);
+    return activeParticipants.filter(p => p.checked_in_at);
+  }, [activeParticipants]);
 
   const notCheckedInParticipants = useMemo(() => {
-    return participants.filter(p => !p.checked_in_at);
-  }, [participants]);
+    return activeParticipants.filter(p => !p.checked_in_at);
+  }, [activeParticipants]);
 
   useEffect(() => {
     searchGenerationRef.current += 1;
@@ -124,6 +129,7 @@ export function useParticipants() {
 
   return {
     participants,
+    activeParticipants,
     checkedInParticipants,
     notCheckedInParticipants,
     isRefreshing,

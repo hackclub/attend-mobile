@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { useThemedStyles, useTheme, type ThemeColors } from '../theme';
 
 interface StatusBadgeProps {
-  status: 'checkedIn' | 'pending' | 'signed' | 'unsigned';
+  status: 'checkedIn' | 'pending' | 'withdrawn' | 'signed' | 'unsigned';
   label?: string;
 }
 
@@ -15,6 +15,10 @@ const statusConfig = (colors: ThemeColors) => ({
   pending: {
     backgroundColor: colors.gray[400],
     label: 'Not Checked In',
+  },
+  withdrawn: {
+    backgroundColor: colors.red,
+    label: 'Withdrawn',
   },
   signed: {
     backgroundColor: colors.green,
