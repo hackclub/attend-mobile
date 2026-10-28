@@ -113,6 +113,14 @@
         }
       ],
       "expo-audio",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Attend lets you attach photos to a confidential incident report.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
       "./plugins/withScannerOrientationFix"
     ],
     "extra": {

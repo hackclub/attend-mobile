@@ -32,6 +32,14 @@ export function eventRunsTravel(event?: Event | null): boolean {
 }
 
 /**
+ * Whether the incident log answers for this role. Only an explicit false
+ * hides it, for the same reason as canViewParticipantPii.
+ */
+export function canViewIncidents(event?: Event | null): boolean {
+  return event?.can_view_incidents !== false;
+}
+
+/**
  * Whether the participants API will answer for this event. The explicit
  * `can_view_participants` flag wins; without it, fall back to the role.
  */

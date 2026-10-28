@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect, useMemo, useCallback } from 'react';
 import { ActivityIndicator, View, StyleSheet, Platform } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme, NavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -22,6 +22,16 @@ import { KioskSetupScreen } from './src/screens/KioskSetupScreen';
 import { KioskScreen } from './src/screens/KioskScreen';
 import { MyTicketsScreen } from './src/screens/MyTicketsScreen';
 import { TicketDetailScreen } from './src/screens/TicketDetailScreen';
+import { IncidentListScreen } from './src/screens/IncidentListScreen';
+import { IncidentDetailScreen } from './src/screens/IncidentDetailScreen';
+import { IncidentFormScreen } from './src/screens/IncidentFormScreen';
+import { IncidentReportScreen } from './src/screens/IncidentReportScreen';
+import { MessageListScreen } from './src/screens/MessageListScreen';
+import { MessageDetailScreen } from './src/screens/MessageDetailScreen';
+import { MessageComposeScreen } from './src/screens/MessageComposeScreen';
+import { MessagePreviewScreen } from './src/screens/MessagePreviewScreen';
+import { InboxScreen } from './src/screens/InboxScreen';
+import { InboxMessageScreen } from './src/screens/InboxMessageScreen';
 import { ThemeProvider, useTheme, useThemedStyles, type ThemeColors } from './src/theme';
 import type { RootStackParamList, MainTabParamList } from './src/types';
 import * as Sentry from '@sentry/react-native';
@@ -152,10 +162,31 @@ function MainTabs() {
   );
 }
 
+// The pushed paper-world screens share the participant page's header: a
+// translucent blurred bar on iOS, the surface color on Android.
+function useStackHeaderOptions() {
+  const { colors, isDark } = useTheme();
+  return useCallback(
+    (title: string) => ({
+      headerShown: true,
+      headerTitle: title,
+      headerBackTitle: 'Back',
+      headerTintColor: colors.text.accent,
+      headerTransparent: Platform.OS === 'ios',
+      headerBlurEffect: isDark ? ('dark' as const) : ('light' as const),
+      headerStyle: {
+        backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.surface,
+      },
+    }),
+    [colors, isDark]
+  );
+}
+
 function RootNavigator() {
   const { state } = useApp();
   const { colors, isDark } = useTheme();
   const styles = useThemedStyles(makeStyles);
+  const header = useStackHeaderOptions();
 
   if (state.auth.isLoading) {
     return (
@@ -198,6 +229,16 @@ function RootNavigator() {
               },
             }}
           />
+          <Stack.Screen name="IncidentList" component={IncidentListScreen} options={header('Incidents')} />
+          <Stack.Screen name="IncidentDetail" component={IncidentDetailScreen} options={header('Incident details')} />
+          <Stack.Screen name="IncidentForm" component={IncidentFormScreen} options={header('New incident')} />
+          <Stack.Screen name="IncidentReport" component={IncidentReportScreen} options={header('Report an incident')} />
+          <Stack.Screen name="MessageList" component={MessageListScreen} options={header('Messages')} />
+          <Stack.Screen name="MessageDetail" component={MessageDetailScreen} options={header('Message')} />
+          <Stack.Screen name="MessageCompose" component={MessageComposeScreen} options={header('Compose message')} />
+          <Stack.Screen name="MessagePreview" component={MessagePreviewScreen} options={header('Preview & send')} />
+          <Stack.Screen name="Inbox" component={InboxScreen} options={header('Messages')} />
+          <Stack.Screen name="InboxMessage" component={InboxMessageScreen} options={header('Message')} />
           <Stack.Screen
             name="KioskSetup"
             component={KioskSetupScreen}
@@ -234,6 +275,11 @@ const linking = {
       },
       ParticipantMain: 'my-tickets',
       ParticipantDetail: 'participant/:id',
+      IncidentList: 'incidents',
+      IncidentReport: 'incident',
+      MessageList: 'event-messages',
+      Inbox: 'messages',
+      InboxMessage: 'messages/:messageId',
     },
   },
 };
@@ -260,10 +306,15 @@ export default Sentry.wrap(function App() {
     // Handle initial URL (app opened from Live Activity)
     Linking.getInitialURL().then(openScanner);
 
-    // Tapping an organizer-message push opens the participant's tickets.
+    // Tapping an organizer-message push opens that message in the inbox
+    // (it carries the message id); an older payload without one opens the
+    // participant's tickets as before.
     const notifSub = notificationService.addNotificationResponseListener((response) => {
-      const data = response.notification.request.content.data as { type?: string } | undefined;
-      if (data?.type === 'message' && navigationRef.current) {
+      const data = response.notification.request.content.data as { type?: string; message_id?: string } | undefined;
+      if (data?.type !== 'message' || !navigationRef.current) return;
+      if (data.message_id) {
+        navigationRef.current.navigate('InboxMessage', { messageId: data.message_id });
+      } else {
         navigationRef.current.navigate('ParticipantMain' as any);
       }
     });

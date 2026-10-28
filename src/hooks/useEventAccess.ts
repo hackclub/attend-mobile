@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import { useApp } from '../context/AppContext';
 import {
+  canViewIncidents,
   canViewParticipantPii,
   canViewParticipantRecords,
   eventRunsTravel,
@@ -38,6 +39,8 @@ export function useEventAccess() {
       canViewParticipantPii: canViewParticipantPii(event),
       // Whether the Travel tab has anything to show.
       showTravel: eventRunsTravel(event),
+      // The event's incident log (any role on the event itself).
+      canViewIncidents: canViewIncidents(event),
     };
     // forbiddenVersion is the store's change signal, not a value we read.
     // eslint-disable-next-line react-hooks/exhaustive-deps
