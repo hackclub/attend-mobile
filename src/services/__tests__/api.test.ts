@@ -292,6 +292,45 @@ describe('participant access tracking', () => {
   });
 });
 
+describe('api.submitIncidentReport', () => {
+  it('posts multipart without forcing a JSON content type', async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ incident_report: { id: 'r1', priority: 's0' } }));
+
+    const result = await api.submitIncidentReport({
+      reporter_name: 'Sam',
+      reporter_email: 'sam@example.com',
+      reporter_phone: '+14155550150',
+      reporter_role: 'participant',
+      incident_type: 'medical_emergency',
+      emergency_services_called: true,
+      priority: 's1',
+      summary: 'Fell',
+      details: 'At lunch',
+      event_choice: 'event-1',
+      attachments: [],
+    });
+
+    expect(result).toEqual({ id: 'r1', priority: 's0' });
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toMatch(/\/api\/v1\/incident_reports$/);
+    expect(init.body).toBeInstanceOf(FormData);
+    expect((init.body as FormData).get('incident_report[emergency_services_called]')).toBe('1');
+    expect((init.body as FormData).get('event_choice')).toBe('event-1');
+    expect(init.headers['Content-Type']).toBeUndefined();
+  });
+});
+
+describe('api.getInbox', () => {
+  it('sends only the filters that are set', async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ messages: [], unread_count: 2, events: [] }));
+
+    const page = await api.getInbox({ eventId: 'e1' });
+
+    expect(mockFetch.mock.calls[0][0]).toMatch(/\/api\/v1\/messages\?event_id=e1$/);
+    expect(page.unread_count).toBe(2);
+  });
+});
+
 describe('api.recordIdCheck', () => {
   it('posts the outcome under id_check to the participant id_checks endpoint', async () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({ note_id: 'note-1' }));

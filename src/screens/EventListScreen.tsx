@@ -43,6 +43,7 @@ export function EventListScreen() {
     roleSummary,
     canViewParticipantRecords,
     canViewParticipantPii,
+    canViewIncidents,
   } = useEventAccess();
   // Say once, in one place, why the selected event shows less than usual —
   // otherwise a missing birthday or a missing tab reads as a bug.
@@ -287,6 +288,33 @@ export function EventListScreen() {
         </View>
       )}
 
+      {state.currentEvent && (
+        <View style={styles.toolsSection}>
+          <Text style={styles.toolsTitle} numberOfLines={1}>{state.currentEvent.name}</Text>
+          {canViewIncidents && (
+            <ToolRow
+              icon="shield-checkmark-outline"
+              label="Incidents"
+              detail="Log, follow up and escalate to HQ"
+              onPress={() => navigation.getParent()?.navigate('IncidentList' as never)}
+            />
+          )}
+          <ToolRow
+            icon="megaphone-outline"
+            label="Messages"
+            detail="Email, SMS, Slack and push to attendees"
+            onPress={() => navigation.getParent()?.navigate('MessageList' as never)}
+          />
+          <ToolRow
+            icon="alert-circle-outline"
+            label="Report to Hack Club HQ"
+            detail="Confidential report straight to HQ"
+            onPress={() => navigation.getParent()?.navigate('IncidentReport' as never)}
+            last
+          />
+        </View>
+      )}
+
       {isAvailable && (
         <View style={styles.securitySection}>
           <View style={styles.securityRow}>
@@ -380,7 +408,63 @@ export function EventListScreen() {
   );
 }
 
+function ToolRow({
+  icon,
+  label,
+  detail,
+  onPress,
+  last,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  detail: string;
+  onPress: () => void;
+  last?: boolean;
+}) {
+  const { colors } = useTheme();
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <TouchableOpacity
+      style={[styles.toolRow, !last && styles.toolRowDivider]}
+      onPress={onPress}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+    >
+      <Ionicons name={icon} size={22} color={colors.text.accent} />
+      <View style={styles.securityTextContainer}>
+        <Text style={styles.securityTitle}>{label}</Text>
+        <Text style={styles.securitySubtitle}>{detail}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.gray[400]} />
+    </TouchableOpacity>
+  );
+}
+
 const makeStyles = (colors: ThemeColors, theme: Theme) => StyleSheet.create({
+  toolsSection: {
+    ...makeCardSurface(colors, theme),
+    marginHorizontal: 16,
+    marginTop: 12,
+    paddingTop: 12,
+  },
+  toolsTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.gray[500],
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    paddingHorizontal: 16,
+  },
+  toolRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  toolRowDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.gray[200],
+  },
   container: {
     flex: 1,
     backgroundColor: colors.background,

@@ -5,9 +5,25 @@ import type {
   TravelCalendarData,
   TravelCalendarEntry,
   ApiResponse,
+  BroadcastMessage,
   CreateScanOptions,
   CreateScanResponse,
+  EscalationInput,
   Event,
+  InboxMessage,
+  InboxPage,
+  Incident,
+  IncidentFormOptions,
+  IncidentInput,
+  IncidentReportInput,
+  IncidentReportOptions,
+  IncidentStatus,
+  IncidentSummary,
+  MessageFormOptions,
+  MessageInput,
+  MessagePreview,
+  MessageSummary,
+  WithNotice,
   Participant,
   ParticipantNote,
   ParticipantsSyncPage,
@@ -79,6 +95,11 @@ class ApiClient {
       controller.abort();
     }, timeoutMs);
     let response: Response;
+
+    // A multipart body sets its own Content-Type, boundary included.
+    if (options.body instanceof FormData) {
+      delete (headers as Record<string, string>)['Content-Type'];
+    }
 
     try {
       response = await fetch(url, {
@@ -372,6 +393,199 @@ class ApiClient {
       }
     );
     return response.note;
+  }
+
+  // Event incident log. Access follows IncidentPolicy: any role on the event.
+
+  async getIncidents(eventId: string): Promise<IncidentSummary[]> {
+    const response = await this.request<{ incidents: IncidentSummary[] }>(
+      `/api/v1/events/${eventId}/incidents`
+    );
+    return response.incidents || [];
+  }
+
+  async getIncidentFormOptions(eventId: string): Promise<IncidentFormOptions> {
+    return this.request<IncidentFormOptions>(`/api/v1/events/${eventId}/incidents/options`);
+  }
+
+  async getIncident(eventId: string, incidentId: string): Promise<Incident> {
+    const response = await this.request<{ incident: Incident }>(
+      `/api/v1/events/${eventId}/incidents/${incidentId}`
+    );
+    return response.incident;
+  }
+
+  async createIncident(
+    eventId: string,
+    incident: IncidentInput,
+    escalation?: EscalationInput | null
+  ): Promise<WithNotice<Incident>> {
+    const response = await this.request<{ incident: Incident; notice?: string }>(
+      `/api/v1/events/${eventId}/incidents`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ incident, escalate: !!escalation, escalation: escalation ?? undefined }),
+      }
+    );
+    return { record: response.incident, notice: response.notice };
+  }
+
+  async updateIncident(eventId: string, incidentId: string, incident: IncidentInput): Promise<WithNotice<Incident>> {
+    const response = await this.request<{ incident: Incident; notice?: string }>(
+      `/api/v1/events/${eventId}/incidents/${incidentId}`,
+      { method: 'PATCH', body: JSON.stringify({ incident }) }
+    );
+    return { record: response.incident, notice: response.notice };
+  }
+
+  async escalateIncident(
+    eventId: string,
+    incidentId: string,
+    escalation: EscalationInput
+  ): Promise<WithNotice<Incident>> {
+    const response = await this.request<{ incident: Incident; notice?: string }>(
+      `/api/v1/events/${eventId}/incidents/${incidentId}/escalate`,
+      { method: 'POST', body: JSON.stringify({ escalation }) }
+    );
+    return { record: response.incident, notice: response.notice };
+  }
+
+  async createIncidentComment(
+    eventId: string,
+    incidentId: string,
+    body: string,
+    newStatus?: IncidentStatus | null
+  ): Promise<{ incident_status: IncidentStatus }> {
+    return this.request<{ incident_status: IncidentStatus }>(
+      `/api/v1/events/${eventId}/incidents/${incidentId}/comments`,
+      { method: 'POST', body: JSON.stringify({ comment: { body, new_status: newStatus || '' } }) }
+    );
+  }
+
+  // Organizer broadcasts. Access: anyone with access to the event.
+
+  async getMessages(eventId: string): Promise<MessageSummary[]> {
+    const response = await this.request<{ messages: MessageSummary[] }>(
+      `/api/v1/events/${eventId}/messages`
+    );
+    return response.messages || [];
+  }
+
+  async getMessageFormOptions(eventId: string): Promise<MessageFormOptions> {
+    return this.request<MessageFormOptions>(`/api/v1/events/${eventId}/messages/options`);
+  }
+
+  async getMessage(eventId: string, messageId: string): Promise<BroadcastMessage> {
+    const response = await this.request<{ message: BroadcastMessage }>(
+      `/api/v1/events/${eventId}/messages/${messageId}`
+    );
+    return response.message;
+  }
+
+  async createMessage(eventId: string, message: MessageInput): Promise<BroadcastMessage> {
+    const response = await this.request<{ message: BroadcastMessage }>(
+      `/api/v1/events/${eventId}/messages`,
+      { method: 'POST', body: JSON.stringify({ message }) }
+    );
+    return response.message;
+  }
+
+  async updateMessage(eventId: string, messageId: string, message: MessageInput): Promise<BroadcastMessage> {
+    const response = await this.request<{ message: BroadcastMessage }>(
+      `/api/v1/events/${eventId}/messages/${messageId}`,
+      { method: 'PATCH', body: JSON.stringify({ message }) }
+    );
+    return response.message;
+  }
+
+  async deleteMessage(eventId: string, messageId: string): Promise<void> {
+    await this.request(`/api/v1/events/${eventId}/messages/${messageId}`, { method: 'DELETE' });
+  }
+
+  async previewMessage(eventId: string, messageId: string): Promise<MessagePreview> {
+    const response = await this.request<{ preview: MessagePreview }>(
+      `/api/v1/events/${eventId}/messages/${messageId}/preview`
+    );
+    return response.preview;
+  }
+
+  /**
+   * One of the message's member actions (send_now, cancel, retry_failed,
+   * retry_delivery, send_to_new_recipients). Each answers with the updated
+   * message and the notice the web would flash.
+   */
+  async messageAction(
+    eventId: string,
+    messageId: string,
+    action: 'send_now' | 'cancel' | 'retry_failed' | 'retry_delivery' | 'send_to_new_recipients',
+    params: Record<string, string> = {}
+  ): Promise<WithNotice<BroadcastMessage>> {
+    const response = await this.request<{ message: BroadcastMessage; notice?: string }>(
+      `/api/v1/events/${eventId}/messages/${messageId}/${action}`,
+      { method: 'POST', body: JSON.stringify(params) }
+    );
+    return { record: response.message, notice: response.notice };
+  }
+
+  // The participant's own inbox.
+
+  async getInbox(filters: { eventId?: string | null; q?: string } = {}, signal?: AbortSignal): Promise<InboxPage> {
+    const query = new URLSearchParams();
+    if (filters.eventId) query.set('event_id', filters.eventId);
+    if (filters.q) query.set('q', filters.q);
+    const suffix = query.toString() ? `?${query.toString()}` : '';
+    const response = await this.request<Partial<InboxPage>>(`/api/v1/messages${suffix}`, { signal });
+    return {
+      messages: response.messages ?? [],
+      unread_count: response.unread_count ?? 0,
+      events: response.events ?? [],
+    };
+  }
+
+  async getInboxMessage(messageId: string): Promise<InboxMessage> {
+    const response = await this.request<{ message: InboxMessage }>(`/api/v1/messages/${messageId}`);
+    return response.message;
+  }
+
+  // The confidential report form, for anyone signed in.
+
+  async getIncidentReportOptions(): Promise<IncidentReportOptions> {
+    return this.request<IncidentReportOptions>('/api/v1/incident_reports/options');
+  }
+
+  async submitIncidentReport(report: IncidentReportInput): Promise<{ id: string; priority: string }> {
+    const form = new FormData();
+    const fields: (keyof IncidentReportInput)[] = [
+      'reporter_name',
+      'reporter_email',
+      'reporter_phone',
+      'reporter_role',
+      'incident_type',
+      'priority',
+      'summary',
+      'details',
+    ];
+    for (const field of fields) {
+      form.append(`incident_report[${field}]`, String(report[field] ?? ''));
+    }
+    form.append('incident_report[emergency_services_called]', report.emergency_services_called ? '1' : '0');
+    form.append('event_choice', report.event_choice);
+    for (const file of report.attachments) {
+      // React Native's FormData takes a { uri, name, type } descriptor for a file.
+      form.append('incident_report[attachments][]', {
+        uri: file.uri,
+        name: file.name,
+        type: file.mimeType,
+      } as unknown as Blob);
+    }
+
+    const response = await this.request<{ incident_report: { id: string; priority: string } }>(
+      '/api/v1/incident_reports',
+      { method: 'POST', body: form },
+      // Attachments can be large; give the upload longer than a JSON call.
+      120_000
+    );
+    return response.incident_report;
   }
 
   // Records the outcome of an on-device ID document check (global admins

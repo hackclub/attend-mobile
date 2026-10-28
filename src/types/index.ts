@@ -84,6 +84,9 @@ export interface Event {
   can_view_sensitive_data?: boolean;
   // Whether the event runs travel at all; no Travel tab when it's false.
   travel_enabled?: boolean;
+  // Whether the incident log answers for this role (any role on the event
+  // itself; series membership alone doesn't count).
+  can_view_incidents?: boolean;
 }
 
 export interface EmergencyContact {
@@ -472,6 +475,16 @@ export type RootStackParamList = {
   ParticipantMain: undefined;
   ParticipantDetail: { participant: Participant };
   TicketDetail: { ticket: Ticket };
+  IncidentList: undefined;
+  IncidentDetail: { incidentId: string };
+  IncidentForm: { incidentId?: string };
+  MessageList: undefined;
+  MessageDetail: { messageId: string };
+  MessageCompose: { messageId?: string };
+  MessagePreview: { messageId: string };
+  Inbox: undefined;
+  InboxMessage: { messageId: string };
+  IncidentReport: undefined;
   IdCheck: { participant: Participant; eventId: string };
   KioskSetup: { scanContextId?: string; scanContextName?: string };
   Kiosk: {
@@ -554,4 +567,301 @@ export interface TravelCalendarData {
   dates: string[];
   entries: TravelCalendarEntry[];
   counts: TravelCalendarCounts;
+}
+
+// An option in a server-supplied pick list.
+export interface SelectOption {
+  value: string;
+  label: string;
+}
+
+// One step of the S0–S3 triage scale (IncidentLevel on the server).
+export interface IncidentLevel {
+  value: string;
+  code: string;
+  name: string;
+  target: string;
+  label: string;
+  color: 'red' | 'amber' | 'green' | 'blue' | (string & {});
+  examples: string[];
+}
+
+export type IncidentCategory = 'safeguarding' | 'medical' | 'behavior' | 'other';
+export type IncidentStatus = 'open' | 'in_review' | 'closed';
+// An HQ report's status, which says "resolved" where an incident says "closed".
+export type HqReportStatus = 'open' | 'in_review' | 'resolved';
+
+export interface IncidentPerson {
+  id: string;
+  name: string;
+  email?: string | null;
+}
+
+export interface IncidentMedication {
+  id?: string;
+  name: string;
+  dose: string;
+  notes?: string | null;
+}
+
+export interface IncidentSummary {
+  id: string;
+  category: IncidentCategory;
+  severity: string;
+  status: IncidentStatus;
+  summary?: string | null;
+  location?: string | null;
+  occurred_at?: string | null;
+  created_at: string;
+  reported_by?: IncidentPerson | null;
+  participant_names: string[];
+  hq_report?: { id: string; status: HqReportStatus; created_at: string } | null;
+}
+
+export type IncidentTimelineItem =
+  | {
+      type: 'comment';
+      id: string;
+      body: string;
+      new_status?: IncidentStatus | null;
+      author_name?: string | null;
+      source?: string | null;
+      slack_url?: string | null;
+      created_at: string;
+    }
+  | {
+      type: 'change';
+      id: string;
+      action: 'created' | 'updated';
+      actor_name: string;
+      fields: string[];
+      created_at: string;
+    };
+
+export interface Incident extends IncidentSummary {
+  details?: string | null;
+  // Null for a reporter who holds none of the incident's roles: they get a
+  // receipt, not the casework.
+  actions_taken?: string | null;
+  visible_to_roles: string[];
+  medication_dispensed: boolean;
+  medications: IncidentMedication[];
+  participants: IncidentPerson[];
+  helping_staff: IncidentPerson[];
+  timeline: IncidentTimelineItem[];
+  permissions: {
+    update: boolean;
+    comment: boolean;
+    change_status: boolean;
+    view_casework: boolean;
+    escalate: boolean;
+  };
+}
+
+export interface IncidentFormOptions {
+  categories: SelectOption[];
+  levels: IncidentLevel[];
+  statuses: SelectOption[];
+  roles: SelectOption[];
+  default_visible_to_roles: string[];
+  default_severity: string;
+  emergency_level: string;
+  participants: IncidentPerson[];
+  staff: IncidentPerson[];
+  reporter_phone?: string | null;
+}
+
+export interface IncidentInput {
+  category: string;
+  severity: string;
+  status: string;
+  summary: string;
+  details: string;
+  actions_taken: string;
+  location: string;
+  occurred_at: string | null;
+  medication_dispensed: boolean;
+  visible_to_roles: string[];
+  participant_event_ids: string[];
+  helping_staff_ids: string[];
+  medications_attributes: (IncidentMedication & { _destroy?: boolean })[];
+}
+
+export interface EscalationInput {
+  reporter_phone: string;
+  emergency_services_called: boolean;
+}
+
+// Organizer broadcasts (Message on the server).
+export type MessageStatus = 'draft' | 'scheduled' | 'sending' | 'completed' | 'failed' | 'cancelled';
+export type MessageChannel = 'slack' | 'email' | 'sms' | 'push';
+export type DeliveryStatus = 'pending' | 'sending' | 'delivered' | 'failed';
+
+export interface MessageSummary {
+  id: string;
+  subject?: string | null;
+  status: MessageStatus;
+  audience: string;
+  audience_label: string;
+  channels: MessageChannel[];
+  recipient_count: number;
+  sent_count: number;
+  failed_count: number;
+  scheduled_at?: string | null;
+  sent_at?: string | null;
+  created_at: string;
+  sent_by?: string | null;
+  preview_text: string;
+}
+
+export interface MessageDelivery {
+  id: string;
+  channel: MessageChannel;
+  status: DeliveryStatus;
+  // Null for an SMS when the role can't see phone numbers.
+  recipient_identifier?: string | null;
+  error_message?: string | null;
+  delivered_at?: string | null;
+  read_at?: string | null;
+}
+
+export interface MessageRecipient {
+  id: string;
+  name: string;
+  kind: 'attendee' | 'guardian';
+  catch_up: boolean;
+  deliveries: MessageDelivery[];
+}
+
+export interface BroadcastMessage extends MessageSummary {
+  body: string;
+  body_html: string;
+  participant_event_ids: string[];
+  group_ids: string[];
+  opened_count?: number | null;
+  pending_count: number;
+  new_recipient_count: number;
+  recipients: MessageRecipient[];
+  permissions: {
+    edit: boolean;
+    send_now: boolean;
+    destroy: boolean;
+    cancel: boolean;
+    retry_failed: boolean;
+    send_to_new_recipients: boolean;
+  };
+}
+
+export interface MessageFormOptions {
+  audiences: SelectOption[];
+  channels: (SelectOption & { disabled: boolean; description?: string | null })[];
+  groups: { id: string; name: string; color?: string | null }[];
+  participants: { id: string; name: string; email: string; status: string }[];
+  defaults: { audience: string; channels: MessageChannel[] };
+}
+
+export interface MessageInput {
+  subject: string;
+  body: string;
+  audience: string;
+  channels: string[];
+  participant_event_ids: string[];
+  group_ids: string[];
+  scheduled_at: string | null;
+}
+
+export interface MessagePreview {
+  total_count: number;
+  recipient_names: string[];
+  audience_label: string;
+  channel_labels: string;
+  channels: MessageChannel[];
+  slack_text?: string | null;
+  email_subject?: string | null;
+  body_html: string;
+  sms_text?: string | null;
+  sms_length: number;
+  sms_segments: number;
+  scheduled_at?: string | null;
+  scheduled_in_future: boolean;
+}
+
+// Mutations answer with the record plus the flash the web would show.
+export interface WithNotice<T> {
+  record: T;
+  notice?: string | null;
+}
+
+// The participant's inbox (/dashboard/messages).
+export interface InboxMessageSummary {
+  id: string;
+  subject?: string | null;
+  preview_text: string;
+  event: { id: string; name: string };
+  ticket_id?: string | null;
+  channels: MessageChannel[];
+  delivered_at?: string | null;
+  sender_name?: string | null;
+  unread: boolean;
+}
+
+export interface InboxPage {
+  messages: InboxMessageSummary[];
+  unread_count: number;
+  events: { id: string; name: string }[];
+}
+
+export interface InboxMessage {
+  id: string;
+  subject?: string | null;
+  body_html: string;
+  event: { id: string; name: string };
+  ticket_id?: string | null;
+  channels: MessageChannel[];
+  delivered_at?: string | null;
+  sender_name?: string | null;
+}
+
+// The confidential report form (/incident).
+export interface IncidentReportEventOption extends SelectOption {
+  emergency_allowed: boolean;
+}
+
+export interface IncidentReportOptions {
+  roles: SelectOption[];
+  incident_types: SelectOption[];
+  levels: IncidentLevel[];
+  emergency_level: string;
+  default_level: string;
+  events: IncidentReportEventOption[];
+  custom_events: IncidentReportEventOption[];
+  organizer_events: { id: string; name: string }[];
+  max_attachment_count: number;
+  max_attachment_bytes: number;
+  prefill: {
+    reporter_name?: string | null;
+    reporter_email?: string | null;
+    reporter_phone?: string | null;
+  };
+}
+
+export interface ReportAttachment {
+  uri: string;
+  name: string;
+  mimeType: string;
+  size?: number | null;
+}
+
+export interface IncidentReportInput {
+  reporter_name: string;
+  reporter_email: string;
+  reporter_phone: string;
+  reporter_role: string;
+  incident_type: string;
+  emergency_services_called: boolean;
+  priority: string;
+  summary: string;
+  details: string;
+  event_choice: string;
+  attachments: ReportAttachment[];
 }

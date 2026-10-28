@@ -13,7 +13,7 @@ import {
   Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
@@ -68,6 +68,15 @@ export function MyTicketsScreen() {
   useEffect(() => {
     loadTickets();
   }, [loadTickets]);
+
+  // The unread count on the Messages button, refreshed whenever the list is
+  // back in view (reading a message clears it).
+  const [unread, setUnread] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      api.getInbox().then(page => setUnread(page.unread_count)).catch(() => {});
+    }, [])
+  );
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -195,6 +204,31 @@ export function MyTicketsScreen() {
         </TouchableOpacity>
       </View>
 
+      <View style={styles.quickActions}>
+        <TouchableOpacity
+          style={styles.quickAction}
+          onPress={() => navigation.navigate('Inbox')}
+          accessibilityRole="button"
+          accessibilityLabel={unread ? `Messages, ${unread} unread` : 'Messages'}
+        >
+          <Ionicons name="mail-outline" size={16} color={colors.gray[700]} />
+          <Text style={styles.quickActionText}>Messages</Text>
+          {unread > 0 ? (
+            <View style={styles.unreadBadge}>
+              <Text style={styles.unreadText}>{unread}</Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickAction}
+          onPress={() => navigation.navigate('IncidentReport')}
+          accessibilityRole="button"
+        >
+          <Ionicons name="alert-circle-outline" size={16} color={colors.gray[700]} />
+          <Text style={styles.quickActionText}>Report an incident</Text>
+        </TouchableOpacity>
+      </View>
+
       <FlatList
         data={tickets}
         renderItem={renderTicket}
@@ -246,6 +280,27 @@ const makeStyles = (colors: ThemeColors, theme: Theme) => StyleSheet.create({
     borderColor: colors.glass.border,
   },
   logoutText: { fontSize: 14, color: colors.text.accent, fontWeight: '500' },
+  quickActions: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
+  quickAction: {
+    minHeight: 38,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.gray[200],
+  },
+  quickActionText: { fontSize: 14, fontWeight: '600', color: colors.gray[700] },
+  unreadBadge: {
+    minWidth: 20,
+    paddingHorizontal: 6,
+    borderRadius: 999,
+    alignItems: 'center',
+    backgroundColor: colors.red,
+  },
+  unreadText: { fontSize: 12, fontWeight: '700', color: colors.white },
   list: { padding: 16, paddingBottom: 100 },
   cardWrapper: {
     borderRadius: 16,

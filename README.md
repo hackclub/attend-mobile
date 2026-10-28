@@ -16,6 +16,8 @@ Built with Expo / React Native, with native Swift modules for Live Activities an
 - **Airport mode** — live view of participants in transit: flight legs, arrival status, and unaccompanied-minor pickup tracking
 - **Kiosk mode** — PIN-locked self-serve check-in station for a spare iPad at the door
 - **Biometric lock** — Face ID / Touch ID gate on sensitive participant information
+- **Incident log** — log, edit, comment on and escalate event incidents to Hack Club HQ, with the same role-based visibility as the web
+- **Messages** — compose, preview, schedule and send email / SMS / Slack / push broadcasts, and follow each delivery
 
 **For participants:**
 
@@ -23,6 +25,8 @@ Built with Expo / React Native, with native Swift modules for Live Activities an
 - **Apple Wallet** — add tickets as Wallet passes
 - **Live Activities** — event-day status on the Lock Screen and Dynamic Island
 - **Push notifications** — event updates from organizers
+- **Inbox** — every organizer message, searchable by event, opened straight from its push notification
+- **Incident reports** — the confidential report to Hack Club HQ, with photo and file attachments
 
 ## Getting started
 
