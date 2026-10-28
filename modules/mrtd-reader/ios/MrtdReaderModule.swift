@@ -21,11 +21,16 @@ public class MrtdReaderModule: Module {
             return NFCTagReaderSession.readingAvailable
         }
 
+        // VisionKit's scanner is main actor isolated, and sync functions run
+        // on the JS thread.
         Function("isMrzScannerSupported") { () -> Bool in
-            if #available(iOS 16.0, *) {
-                return MrzScanner.isSupported
+            guard #available(iOS 16.0, *) else { return false }
+            if Thread.isMainThread {
+                return MainActor.assumeIsolated { MrzScanner.isSupported }
             }
-            return false
+            return DispatchQueue.main.sync {
+                MainActor.assumeIsolated { MrzScanner.isSupported }
+            }
         }
 
         // Whether this build bundles any CSCA certificates. Without them every
@@ -38,31 +43,37 @@ public class MrtdReaderModule: Module {
         // Shows the camera and streams the recognised text lines as onMrzText
         // events. JS picks the MRZ out of them and calls dismissMrzScanner.
         // Resolves when the scanner closes; true if the user cancelled it.
+        // runOnQueue(.main) puts these on the main thread, but the compiler
+        // can't see that, hence assumeIsolated.
         AsyncFunction("presentMrzScanner") { (promise: Promise) in
-            guard #available(iOS 16.0, *), MrzScanner.isSupported else {
-                promise.reject("ERR_MRZ_SCANNER_UNAVAILABLE", "The camera MRZ scanner needs iOS 16 or later")
-                return
-            }
-            guard let presenter = self.appContext?.utilities?.currentViewController() else {
-                promise.reject("ERR_NO_VIEW_CONTROLLER", "Nothing to present the scanner from")
-                return
-            }
-            let scanner = MrzScanner(
-                onLines: { [weak self] lines in
-                    self?.sendEvent("onMrzText", ["lines": lines])
-                },
-                onClose: { [weak self] cancelled in
-                    self?.mrzScanner = nil
-                    promise.resolve(cancelled)
+            MainActor.assumeIsolated {
+                guard #available(iOS 16.0, *), MrzScanner.isSupported else {
+                    promise.reject("ERR_MRZ_SCANNER_UNAVAILABLE", "The camera MRZ scanner needs iOS 16 or later")
+                    return
                 }
-            )
-            self.mrzScanner = scanner
-            scanner.present(from: presenter)
+                guard let presenter = self.appContext?.utilities?.currentViewController() else {
+                    promise.reject("ERR_NO_VIEW_CONTROLLER", "Nothing to present the scanner from")
+                    return
+                }
+                let scanner = MrzScanner(
+                    onLines: { [weak self] lines in
+                        self?.sendEvent("onMrzText", ["lines": lines])
+                    },
+                    onClose: { [weak self] cancelled in
+                        self?.mrzScanner = nil
+                        promise.resolve(cancelled)
+                    }
+                )
+                self.mrzScanner = scanner
+                scanner.present(from: presenter)
+            }
         }.runOnQueue(.main)
 
         AsyncFunction("dismissMrzScanner") { () in
-            if #available(iOS 16.0, *), let scanner = self.mrzScanner as? MrzScanner {
-                scanner.dismiss(cancelled: false)
+            MainActor.assumeIsolated {
+                if #available(iOS 16.0, *), let scanner = self.mrzScanner as? MrzScanner {
+                    scanner.dismiss(cancelled: false)
+                }
             }
         }.runOnQueue(.main)
 
@@ -113,8 +124,10 @@ public class MrtdReaderModule: Module {
         // a read that finishes afterwards is discarded rather than delivered.
         AsyncFunction("cancel") { () in
             self.activeReadId += 1
-            if #available(iOS 16.0, *), let scanner = self.mrzScanner as? MrzScanner {
-                scanner.dismiss(cancelled: true)
+            MainActor.assumeIsolated {
+                if #available(iOS 16.0, *), let scanner = self.mrzScanner as? MrzScanner {
+                    scanner.dismiss(cancelled: true)
+                }
             }
         }.runOnQueue(.main)
     }
