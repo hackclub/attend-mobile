@@ -291,3 +291,31 @@ describe('participant access tracking', () => {
     expect(forbiddenParticipants.has('evt-limited')).toBe(false);
   });
 });
+
+describe('api.recordIdCheck', () => {
+  it('posts the outcome under id_check to the participant id_checks endpoint', async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ note_id: 'note-1' }));
+    const payload = {
+      verdict: 'confirmed' as const,
+      result: 'green' as const,
+      document_type: 'P',
+      issuing_state: 'GBR',
+      data_integrity: 'valid' as const,
+      issuer: 'valid' as const,
+      active_auth: 'passed' as const,
+      chip_auth: 'unsupported' as const,
+      access_protocol: 'PACE' as const,
+      name_match: 'exact' as const,
+      dob_match: true,
+      expired: false,
+    };
+
+    const result = await api.recordIdCheck('evt-1', 'pe-1', payload);
+
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toContain('/api/v1/events/evt-1/participants/pe-1/id_checks');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ id_check: payload });
+    expect(result.note_id).toBe('note-1');
+  });
+});
