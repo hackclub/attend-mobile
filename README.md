@@ -87,6 +87,7 @@ src/
 modules/
   activity-controller/  native Swift module for starting/updating Live Activities
   wallet/               native Swift module for adding Apple Wallet passes
+  mrtd-reader/          native Swift module that reads passport and ID card chips for ID checks
 targets/
   widget/      WidgetKit extension rendering the Live Activity
 ```
@@ -102,6 +103,14 @@ bin/ota "what changed"
 ```
 
 The `bin/ota` script temporarily stashes local `.env` files so development values never leak into a production bundle.
+
+Before a native build, refresh the CSCA trust list the ID check verifies documents against, and commit the result:
+
+```bash
+bin/update-csca    # writes modules/mrtd-reader/ios/Resources/masterList.pem
+```
+
+Without it every document's issuer is unknown and ID checks can't go green.
 
 ## Contributing
 

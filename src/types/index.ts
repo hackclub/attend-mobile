@@ -485,6 +485,7 @@ export type RootStackParamList = {
   Inbox: undefined;
   InboxMessage: { messageId: string };
   IncidentReport: undefined;
+  IdCheck: { participant: Participant; eventId: string };
   KioskSetup: { scanContextId?: string; scanContextName?: string };
   Kiosk: {
     pin: string;

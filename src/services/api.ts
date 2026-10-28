@@ -1,5 +1,6 @@
 import { secureStorage } from './storage';
 import { forbiddenParticipants } from './eventAccess';
+import type { IdCheckPayload } from './idCheck/verdict';
 import type {
   TravelCalendarData,
   TravelCalendarEntry,
@@ -585,6 +586,19 @@ class ApiClient {
       120_000
     );
     return response.incident_report;
+  }
+
+  // Records the outcome of an on-device ID document check (global admins
+  // only). The payload is outcome only, built by buildIdCheckPayload; the
+  // server writes it as a participant note plus an audit log entry.
+  async recordIdCheck(eventId: string, participantEventId: string, payload: IdCheckPayload): Promise<{ note_id: string }> {
+    return this.request<{ note_id: string }>(
+      `/api/v1/events/${eventId}/participants/${participantEventId}/id_checks`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ id_check: payload }),
+      }
+    );
   }
 
 }

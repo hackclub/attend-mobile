@@ -15,6 +15,8 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AlertBadge } from '../components/AlertBadge';
 import { StatusBadge } from '../components/StatusBadge';
 import { EmergencyContactCard } from '../components/EmergencyContactCard';
@@ -25,7 +27,7 @@ import { api } from '../services/api';
 import { buildPhoneActions } from '../services/contactLinks';
 import { isWithdrawn } from '../services/participantStatus';
 import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
-import type { Participant, ParticipantNote, Travel, Guardian, Consent, Accommodation, AccessibilityDetail, PersonalDetails } from '../types';
+import type { RootStackParamList, Participant, ParticipantNote, Travel, Guardian, Consent, Accommodation, AccessibilityDetail, PersonalDetails } from '../types';
 
 interface ParticipantDetailContentProps {
   participant: Participant;
@@ -39,6 +41,10 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
   const { state, updateParticipant } = useApp();
   const { canViewParticipantRecords, canViewParticipantPii, roleLabel } = useEventAccess();
   const { isSupported: nfcSupported, writeTag } = useNFC();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  // On-device passport/ID card check: global admins only, iOS only (the
+  // server refuses anyone else too).
+  const canVerifyId = !!state.auth.user?.global_admin && Platform.OS === 'ios';
   const [isUndoing, setIsUndoing] = useState(false);
   const [isWritingBadge, setIsWritingBadge] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -285,6 +291,11 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
       `${currentParticipant.display_name || currentParticipant.full_name} has been scanned at multiple locations. Which would you like to undo?`,
       buttons
     );
+  };
+
+  const handleVerifyId = () => {
+    if (!state.currentEvent) return;
+    navigation.navigate('IdCheck', { participant: currentParticipant, eventId: state.currentEvent.id });
   };
 
   const handleOpenInBrowser = () => {
@@ -631,6 +642,13 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
                 <Text style={styles.writeBadgeButtonText}>Write to NFC Badge</Text>
               </>
             )}
+          </TouchableOpacity>
+        )}
+
+        {canVerifyId && (
+          <TouchableOpacity style={styles.openInBrowserButton} onPress={handleVerifyId}>
+            <Ionicons name="id-card-outline" size={20} color={colors.status.info} />
+            <Text style={styles.openInBrowserText}>Verify ID</Text>
           </TouchableOpacity>
         )}
 

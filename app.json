@@ -25,8 +25,8 @@
         ]
       },
       "infoPlist": {
-        "NFCReaderUsageDescription": "Attend uses NFC to scan and write attendee badges.",
-        "NSCameraUsageDescription": "Attend needs camera access to scan attendee QR codes.",
+        "NFCReaderUsageDescription": "Attend uses NFC to scan and write attendee badges, and to read the chip in passports and ID cards for ID checks.",
+        "NSCameraUsageDescription": "Attend needs camera access to scan attendee QR codes and the code on ID documents.",
         "NSFaceIDUsageDescription": "Attend uses Face ID to protect sensitive participant information.",
         "ITSAppUsesNonExemptEncryption": false,
         "NSSupportsLiveActivities": true,
@@ -79,7 +79,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Attend to access your camera for QR code scanning."
+          "cameraPermission": "Allow Attend to access your camera to scan QR codes and the code on ID documents."
         }
       ],
       [
@@ -108,8 +108,9 @@
       [
         "react-native-nfc-manager",
         {
-          "nfcPermission": "Attend uses NFC to scan and write attendee badges.",
-          "includeNdefEntitlement": false
+          "nfcPermission": "Attend uses NFC to scan and write attendee badges, and to read the chip in passports and ID cards for ID checks.",
+          "includeNdefEntitlement": false,
+          "selectIdentifiers": ["A0000002471001"]
         }
       ],
       "expo-audio",

@@ -32,9 +32,11 @@ import { MessageComposeScreen } from './src/screens/MessageComposeScreen';
 import { MessagePreviewScreen } from './src/screens/MessagePreviewScreen';
 import { InboxScreen } from './src/screens/InboxScreen';
 import { InboxMessageScreen } from './src/screens/InboxMessageScreen';
+import { IdCheckScreen } from './src/screens/IdCheckScreen';
 import { ThemeProvider, useTheme, useThemedStyles, type ThemeColors } from './src/theme';
 import type { RootStackParamList, MainTabParamList } from './src/types';
 import * as Sentry from '@sentry/react-native';
+import { scrubIdCheckBreadcrumb, scrubIdCheckEvent } from './src/services/idCheck/sentryScrub';
 
 Sentry.init({
   dsn: 'https://6a7370567b34299ea8bb4ecf2aec3628@o4509680631087104.ingest.us.sentry.io/4510470752043008',
@@ -53,6 +55,10 @@ Sentry.init({
   replaysSessionSampleRate: 0.1,
   replaysOnErrorSampleRate: 1,
   integrations: [Sentry.mobileReplayIntegration(), Sentry.feedbackIntegration()],
+
+  // Keep anything logged during an on-device ID check out of Sentry.
+  beforeBreadcrumb: scrubIdCheckBreadcrumb,
+  beforeSend: scrubIdCheckEvent,
 
   // uncomment the line below to enable Spotlight (https://spotlightjs.com)
   // spotlight: __DEV__,
@@ -239,6 +245,13 @@ function RootNavigator() {
           <Stack.Screen name="MessagePreview" component={MessagePreviewScreen} options={header('Preview & send')} />
           <Stack.Screen name="Inbox" component={InboxScreen} options={header('Messages')} />
           <Stack.Screen name="InboxMessage" component={InboxMessageScreen} options={header('Message')} />
+          {user?.global_admin ? (
+            <Stack.Screen
+              name="IdCheck"
+              component={IdCheckScreen}
+              options={{ presentation: 'modal', gestureEnabled: false }}
+            />
+          ) : null}
           <Stack.Screen
             name="KioskSetup"
             component={KioskSetupScreen}
