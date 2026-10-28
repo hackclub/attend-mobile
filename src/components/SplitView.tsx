@@ -6,16 +6,22 @@ import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
 interface SplitViewProps {
   sidebar: React.ReactNode;
   detail: React.ReactNode | null;
+  /** Upper bound only — the sidebar is sized against its container. */
   sidebarWidth?: number;
   placeholder?: React.ReactNode;
 }
 
+/**
+ * The sidebar takes a share of whatever the container gives it rather than a
+ * fixed 360pt, so it still leaves a usable detail pane on iPhone Duo's inner
+ * display, which is a good deal narrower than an iPad in landscape.
+ */
 export function SplitView({ sidebar, detail, sidebarWidth = 360, placeholder }: SplitViewProps) {
   const styles = useThemedStyles(makeStyles);
 
   return (
     <View style={styles.container}>
-      <View style={[styles.sidebar, { width: sidebarWidth }]}>{sidebar}</View>
+      <View style={[styles.sidebar, { maxWidth: sidebarWidth }]}>{sidebar}</View>
       <View style={styles.detail}>
         {detail ?? placeholder ?? <DefaultPlaceholder />}
       </View>
@@ -47,6 +53,10 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.background,
   },
   sidebar: {
+    flexBasis: '36%',
+    flexGrow: 0,
+    flexShrink: 0,
+    minWidth: 300,
     borderRightWidth: 1,
     borderRightColor: colors.gray[200],
     backgroundColor: colors.background,

@@ -27,7 +27,6 @@ const DEV_ORGANIZER_EMAIL = 'admin@hackclub.com';
 export function LoginScreen() {
   const { login, devLogin } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
-
   const handleDevLogin = async (email: string) => {
     setIsLoading(true);
     try {

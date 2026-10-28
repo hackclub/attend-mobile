@@ -14,7 +14,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
+import { useTabBarInset } from '../hooks/useTabBarInset';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -75,10 +75,10 @@ export function ScannerScreen() {
   // opening a participant do not, so both entry points come and go with access.
   const { canViewParticipantRecords } = useEventAccess();
   const { isSupported: nfcSupported, isReading: nfcReading } = useNFC();
-  const { isPad } = useResponsiveLayout();
+  const { isRegular } = useResponsiveLayout();
   const { width, height } = useWindowDimensions();
-  // The native tab bar floats over content, so the bottom dock must clear it.
-  const tabBarHeight = useBottomTabBarHeight();
+  // Zero once the native bar is laid out as a side rail — see useTabBarInset.
+  const tabBarHeight = useTabBarInset();
   const { play, isReady: isFeedbackReady } = useScanFeedback();
   const [permission, requestPermission] = useCameraPermissions();
   const {
@@ -97,7 +97,7 @@ export function ScannerScreen() {
     x: number; y: number; width: number; height: number;
   } | null>(null);
 
-  const scanAreaSize = Math.min(width * 0.66, height * 0.39, isPad ? 420 : 300);
+  const scanAreaSize = Math.min(width * 0.66, height * 0.39, isRegular ? 420 : 300);
   const selectedContext = contextsReady
     ? scanContexts.find(context => context.id === selectedContextId)
     : undefined;
@@ -256,7 +256,7 @@ export function ScannerScreen() {
         )}
       </View>
 
-      <SafeAreaView style={styles.overlay} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.overlay} edges={['top', 'bottom', 'left', 'right']}>
         <View style={styles.header}>
           <View style={styles.eventHeading}>
             <Text style={styles.headerTitle} numberOfLines={1}>{state.currentEvent?.name}</Text>
@@ -292,7 +292,7 @@ export function ScannerScreen() {
               </Text>
             </Pressable>
 
-            {isPad ? (
+            {isRegular ? (
               <Pressable
                 style={({ pressed }) => [
                   styles.iconButton,

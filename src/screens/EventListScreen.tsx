@@ -241,7 +241,7 @@ export function EventListScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <ScreenHeader
         title="Events"
         subtitle={state.auth.user?.name || state.auth.user?.email}

@@ -200,9 +200,11 @@ Base screens use 16-point horizontal gutters and cards; focused setup flows expa
 
 The staff scanner is vertically zoned: event/readiness header, context selector, flexible scan stage, persistent result card, then scan tools. The camera remains visible beneath three scrim zones: a darker top band for navigation, a light middle band around the code, and a darker bottom band for results and tools. A visible result never blocks the next different scan.
 
-Scanner controls, menus, result cards, and sheets are centered and capped at 620 points; sheets cap at 680. The QR frame scales to the smallest of 66% viewport width, 39% viewport height, 300 points on phones, or 420 points on iPad. Kiosk mode uses 55% of the viewport's shorter dimension and keeps its prompt centered above the frame.
+Scanner controls, menus, result cards, and sheets are centered and capped at 620 points; sheets cap at 680. The QR frame scales to the smallest of 66% viewport width, 39% viewport height, 300 points in a compact scene, or 420 points in a regular one. Kiosk mode uses 55% of the viewport's shorter dimension and keeps its prompt centered above the frame.
 
-On larger devices, add breathing room without stretching the operational column. iPad may expose kiosk entry, and landscape iPad layouts may use split-view patterns elsewhere, but scanner hierarchy and control order stay unchanged. Preserve iOS edge gestures, Android Back behavior outside locked kiosk mode, and platform window insets.
+In a roomier scene, add breathing room without stretching the operational column. A regular-width scene may expose kiosk entry, and a scene wide enough for two panes may use split-view patterns elsewhere, but scanner hierarchy and control order stay unchanged. Preserve iOS edge gestures, Android Back behavior outside locked kiosk mode, and platform window insets.
+
+Size everything against the current scene, never against the device. A scene resizes underneath the app — iPhone Duo moves between its outer and inner displays as it is folded and unfolded, and iPad multitasking resizes at will — so read the live window rather than a device class, a snapshot taken at import, or the orientation. The thresholds live in `useResponsiveLayout`: 600 points separates a compact scene from a regular one, and 700 points is where the two-pane split view earns its place.
 
 **The Continuous Stage Rule.** Do not replace the camera with a result page or require dismissal. Results occupy the bottom dock and the live frame stays ready.
 
