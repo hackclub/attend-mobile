@@ -7,10 +7,7 @@ import renderer, { act } from 'react-test-renderer';
 jest.mock('../../services/biometric', () => ({
   biometricService: {
     isAvailable: jest.fn().mockResolvedValue(true),
-    isEnabled: jest.fn().mockResolvedValue(true),
     getBiometricTypeName: jest.fn().mockResolvedValue('Face ID'),
-    confirmIdentity: jest.fn(),
-    setEnabled: jest.fn().mockResolvedValue(undefined),
     authenticate: jest.fn(),
     clearSession: jest.fn(),
   },
@@ -39,46 +36,35 @@ async function renderHook(): Promise<Hook> {
 beforeEach(() => {
   jest.clearAllMocks();
   jest.mocked(biometricService.isAvailable).mockResolvedValue(true);
-  jest.mocked(biometricService.isEnabled).mockResolvedValue(true);
   jest.mocked(biometricService.getBiometricTypeName).mockResolvedValue('Face ID');
 });
 
-describe('useBiometric.toggleEnabled', () => {
-  it('keeps protection on when the prompt to turn it off is not passed', async () => {
-    jest.mocked(biometricService.confirmIdentity).mockResolvedValue(false);
+describe('useBiometric', () => {
+  it('reports what the device offers', async () => {
+    const hook = await renderHook();
+
+    expect(hook.isAvailable).toBe(true);
+    expect(hook.biometricType).toBe('Face ID');
+  });
+
+  it('offers no way to turn protection off', async () => {
+    const hook = await renderHook();
+
+    expect(hook).not.toHaveProperty('toggleEnabled');
+    expect(hook).not.toHaveProperty('isEnabled');
+  });
+
+  it('runs every unlock through the service', async () => {
+    jest.mocked(biometricService.authenticate).mockResolvedValue(false);
     const hook = await renderHook();
 
     let result: boolean | undefined;
     await act(async () => {
-      result = await hook.toggleEnabled();
+      result = await hook.authenticate('Authenticate to view participant details');
     });
 
-    expect(biometricService.confirmIdentity).toHaveBeenCalledWith('Disable Face ID protection');
-    expect(biometricService.setEnabled).not.toHaveBeenCalled();
+    expect(biometricService.authenticate)
+      .toHaveBeenCalledWith('Authenticate to view participant details');
     expect(result).toBe(false);
-  });
-
-  it('turns protection off once the prompt is passed', async () => {
-    jest.mocked(biometricService.confirmIdentity).mockResolvedValue(true);
-    const hook = await renderHook();
-
-    await act(async () => {
-      await hook.toggleEnabled();
-    });
-
-    expect(biometricService.setEnabled).toHaveBeenCalledWith(false);
-  });
-
-  it('requires the prompt to turn protection on as well', async () => {
-    jest.mocked(biometricService.isEnabled).mockResolvedValue(false);
-    jest.mocked(biometricService.confirmIdentity).mockResolvedValue(false);
-    const hook = await renderHook();
-
-    await act(async () => {
-      await hook.toggleEnabled();
-    });
-
-    expect(biometricService.confirmIdentity).toHaveBeenCalledWith('Enable Face ID protection');
-    expect(biometricService.setEnabled).not.toHaveBeenCalled();
   });
 });

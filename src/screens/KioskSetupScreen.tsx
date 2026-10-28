@@ -82,8 +82,8 @@ export function KioskSetupScreen() {
     navigation.replace('Kiosk', {
       pin: entered,
       biometricUnlock: biometricAvailable && useBiometricUnlock,
-      scanContextId: route.params.scanContextId,
-      scanContextName: route.params.scanContextName,
+      scanContextId: route.params?.scanContextId,
+      scanContextName: route.params?.scanContextName,
     });
   };
 
@@ -133,7 +133,7 @@ export function KioskSetupScreen() {
           <View style={styles.contextPill}>
             <Ionicons name="scan" size={16} color={colors.text.secondary} />
             <Text style={styles.contextPillText}>
-              {route.params.scanContextName || 'No scan context'}
+              {route.params?.scanContextName || 'No scan context'}
             </Text>
           </View>
         </View>

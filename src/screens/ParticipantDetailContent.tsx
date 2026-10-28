@@ -42,9 +42,10 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
   const { canViewParticipantRecords, canViewParticipantPii, roleLabel } = useEventAccess();
   const { isSupported: nfcSupported, writeTag } = useNFC();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  // On-device passport/ID card check: global admins only, iOS only (the
-  // server refuses anyone else too).
-  const canVerifyId = !!state.auth.user?.global_admin && Platform.OS === 'ios';
+  // On-device passport/ID card check: global admins only (the server refuses
+  // anyone else too), and only on an iPhone with an NFC reader to read the
+  // document's chip — iPads and simulators have none.
+  const canVerifyId = !!state.auth.user?.global_admin && Platform.OS === 'ios' && nfcSupported;
   const [isUndoing, setIsUndoing] = useState(false);
   const [isWritingBadge, setIsWritingBadge] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
