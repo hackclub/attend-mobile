@@ -6,24 +6,42 @@
 #
 # Usage: bin/update-csca [masterlist.ml | masterlist.zip]
 #   CSCA_MASTERLIST_URL  override the download URL
-#   CSCA_SIGNER_CA       PEM file to verify the master list signer's chain
-#                        against (for example the German CSCA). Without it only
-#                        the signature itself is checked, and the signer is
-#                        printed for you to confirm.
+#   CSCA_SIGNER_CA       PEM of the German CSCA root, to check the master list
+#                        signer was issued by it. Without it only the list's
+#                        own signature is checked, and the signer is printed
+#                        for you to confirm. The root is published at
+#                        https://bsi.bund.de/EN/Themen/Oeffentliche-Verwaltung/Elektronische-Identitaeten/Public-Key-Infrastrukturen/CSCA/Root_Cert_Germany/Root_Certificate_node.html
+#                        with its SHA-256 fingerprint: compare before use.
 #
 # CSCA certificates are valid for years, so running this before each native
 # release is enough. Commit the resulting masterList.pem.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-URL="${CSCA_MASTERLIST_URL:-https://www.bsi.bund.de/SharedDocs/Downloads/DE/BSI/ElekAusweise/CSCA/GermanMasterList.zip?__blob=publicationFile}"
+# The zip's URL carries a version parameter that changes with each release, so
+# it is read from the download page rather than hard-coded.
+BSI="https://www.bsi.bund.de"
+PAGE="$BSI/SharedDocs/Downloads/DE/BSI/ElekAusweise/CSCA/GermanMasterList.html"
 OUT="modules/mrtd-reader/ios/Resources/masterList.pem"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
+# cut_bytes FILE OFFSET LENGTH: write LENGTH bytes from OFFSET to stdout.
+# head closing the pipe early is expected (SIGPIPE under pipefail); whatever
+# is cut is parsed by openssl afterwards, so a bad cut still fails loudly.
+cut_bytes() {
+  tail -c +"$(($2 + 1))" "$1" | head -c "$3" || true
+}
+
 src="${1:-}"
 if [ -z "$src" ]; then
+  URL="${CSCA_MASTERLIST_URL:-}"
+  if [ -z "$URL" ]; then
+    path="$(curl -fsSL "$PAGE" | grep -oE 'href="[^"]*GermanMasterList\.zip[^"]*"' | head -n 1 | sed -E 's/^href="//; s/"$//; s/&amp;/\&/g')"
+    [ -n "$path" ] || { echo "No master list link found on $PAGE" >&2; exit 1; }
+    URL="$BSI$path"
+  fi
   echo "Downloading $URL"
   curl -fsSL "$URL" -o "$work/download"
   src="$work/download"
@@ -37,15 +55,40 @@ else
   ml="$src"
 fi
 
-# The master list is CMS SignedData. Check the signature (and the signer's
-# chain when a CA is given) and pull out the signed content.
+# The master list is CMS SignedData. Check its signature against the signer
+# certificate it carries and pull out the signed content.
+openssl cms -verify -inform DER -in "$ml" -noverify -binary -out "$work/content.der" \
+  -signer "$work/signer.pem" 2>/dev/null
+echo "Master list signature valid."
+
 if [ -n "${CSCA_SIGNER_CA:-}" ]; then
-  openssl cms -verify -inform DER -in "$ml" -CAfile "$CSCA_SIGNER_CA" -purpose any -binary -out "$work/content.der"
+  # ICAO certificates use explicit EC parameters, which OpenSSL 3 refuses in
+  # chain validation (error 94), so `cms -CAfile` can't be used. Instead check
+  # by hand that the certificate that signed the list is signed by the given
+  # CSCA and is in date. Same reason NFCPassportReader skips that error on
+  # device.
+  signer="$work/signer.pem"
+
+  openssl x509 -in "$signer" -noout -checkend 0 >/dev/null || { echo "Signer certificate has expired" >&2; exit 1; }
+  openssl x509 -in "$signer" -outform DER -out "$work/signer.der"
+  # Certificate ::= SEQUENCE { tbsCertificate, signatureAlgorithm, signatureValue BIT STRING }
+  read -r tbs_off tbs_hl tbs_len < <(openssl asn1parse -inform DER -in "$work/signer.der" \
+    | sed -nE 's/^ *([0-9]+):d=1 +hl=([0-9]+) +l= *([0-9]+) +cons: SEQUENCE.*/\1 \2 \3/p' | head -n 1)
+  read -r sig_off sig_hl sig_len < <(openssl asn1parse -inform DER -in "$work/signer.der" \
+    | sed -nE 's/^ *([0-9]+):d=1 +hl=([0-9]+) +l= *([0-9]+) +prim: BIT STRING.*/\1 \2 \3/p' | tail -n 1)
+  cut_bytes "$work/signer.der" "$tbs_off" "$((tbs_hl + tbs_len))" > "$work/tbs.der"
+  # Skip the BIT STRING's unused-bits byte.
+  cut_bytes "$work/signer.der" "$((sig_off + sig_hl + 1))" "$((sig_len - 1))" > "$work/sig.der"
+  digest="$(openssl x509 -in "$signer" -noout -text | grep -m 1 'Signature Algorithm' \
+    | grep -oiE 'sha(256|384|512)' | tr 'A-Z' 'a-z')"
+  [ -n "$digest" ] || { echo "Unsupported signer signature algorithm" >&2; exit 1; }
+  openssl x509 -in "$CSCA_SIGNER_CA" -noout -pubkey > "$work/ca.pub"
+  openssl dgst -"$digest" -verify "$work/ca.pub" -signature "$work/sig.der" "$work/tbs.der" >/dev/null \
+    || { echo "Master list signer is not signed by $CSCA_SIGNER_CA" >&2; exit 1; }
+  echo "Signer $(openssl x509 -in "$signer" -noout -subject | sed 's/subject=//') is signed by the given CSCA."
 else
-  openssl cms -verify -inform DER -in "$ml" -noverify -binary -out "$work/content.der"
-  echo "Signature valid. Signer (confirm this is the expected master list signer):"
-  openssl cms -cmsout -inform DER -in "$ml" -print 2>/dev/null \
-    | sed -n '/signerInfos:/,$p' | grep -m 2 -E '^ *(issuer|serialNumber):' | sed 's/^ */  /'
+  echo "Signer (confirm this is the expected master list signer, or pass CSCA_SIGNER_CA):"
+  openssl x509 -in "$work/signer.pem" -noout -subject -issuer | sed 's/^/  /'
 fi
 
 # Content is CscaMasterList ::= SEQUENCE { version INTEGER, certList SET OF Certificate }.
@@ -53,7 +96,7 @@ fi
 : > "$work/all.pem"
 count=0
 while read -r offset header length; do
-  tail -c +"$((offset + 1))" "$work/content.der" | head -c "$((header + length))" > "$work/cert.der"
+  cut_bytes "$work/content.der" "$offset" "$((header + length))" > "$work/cert.der"
   openssl x509 -inform DER -in "$work/cert.der" -outform PEM >> "$work/all.pem"
   count=$((count + 1))
 done < <(

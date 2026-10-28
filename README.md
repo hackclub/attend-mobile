@@ -107,8 +107,10 @@ The `bin/ota` script temporarily stashes local `.env` files so development value
 Before a native build, refresh the CSCA trust list the ID check verifies documents against, and commit the result:
 
 ```bash
-bin/update-csca    # writes modules/mrtd-reader/ios/Resources/masterList.pem
+CSCA_SIGNER_CA=csca-germany.pem bin/update-csca    # writes modules/mrtd-reader/ios/Resources/masterList.pem
 ```
+
+`csca-germany.pem` is the German CSCA root from BSI; check its SHA-256 fingerprint against the one BSI publishes (see the comment at the top of `bin/update-csca`).
 
 Without it every document's issuer is unknown and ID checks can't go green.
 
