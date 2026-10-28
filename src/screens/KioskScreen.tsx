@@ -12,7 +12,8 @@ import {
   ScrollView,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
@@ -46,6 +47,10 @@ export function KioskScreen() {
     scanContextId,
   } = route.params;
   const { state } = useApp();
+  // Read from the provider rather than a native SafeAreaView: presented as a
+  // full-screen modal, the native view under-reported the top inset on
+  // iPhone and the header ran into the Dynamic Island.
+  const insets = useSafeAreaInsets();
   // Measured per render, not once at import: the scene resizes under us every
   // time iPhone Duo is folded, unfolded or rotated.
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
@@ -130,6 +135,8 @@ export function KioskScreen() {
 
   return (
     <View style={styles.container} onTouchStart={recordScannerActivity}>
+      {/* The camera stage is always dark, whatever the system appearance. */}
+      <StatusBar style="light" />
       <CameraView
         style={StyleSheet.absoluteFill}
         facing={facing}
@@ -142,11 +149,22 @@ export function KioskScreen() {
         <View style={styles.scrim} />
       </View>
 
-      <SafeAreaView style={styles.overlay} edges={['top', 'bottom', 'left', 'right']}>
-        {/* Hidden escape hatch in top-left */}
+      <View
+        style={[
+          styles.overlay,
+          {
+            paddingTop: insets.top,
+            paddingBottom: insets.bottom,
+            paddingLeft: insets.left,
+            paddingRight: insets.right,
+          },
+        ]}
+      >
+        {/* Hidden escape hatch in top-left. Absolutely placed, so it takes
+            the inset itself rather than from the padding above. */}
         <Pressable
           onPress={() => setEscapeOpen(true)}
-          style={styles.escapeHotspot}
+          style={[styles.escapeHotspot, { top: insets.top + 4, left: insets.left + 8 }]}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           accessibilityLabel="Exit kiosk mode"
         >
@@ -207,7 +225,7 @@ export function KioskScreen() {
         </View>
 
         {lastScan ? <KioskResult result={lastScan} /> : null}
-      </SafeAreaView>
+      </View>
 
       {/* Escape modal */}
       <EscapeModal
@@ -430,8 +448,6 @@ const styles = StyleSheet.create({
 
   escapeHotspot: {
     position: 'absolute',
-    top: 8,
-    left: 8,
     width: 48,
     height: 48,
     alignItems: 'center',
