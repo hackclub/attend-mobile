@@ -472,6 +472,7 @@ export type RootStackParamList = {
   ParticipantMain: undefined;
   ParticipantDetail: { participant: Participant };
   TicketDetail: { ticket: Ticket };
+  IdCheck: { participant: Participant; eventId: string };
   KioskSetup: { scanContextId?: string; scanContextName?: string };
   Kiosk: {
     pin: string;
