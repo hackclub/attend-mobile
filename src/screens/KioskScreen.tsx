@@ -5,12 +5,12 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  Dimensions,
   Modal,
   Pressable,
   BackHandler,
   AccessibilityInfo,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
@@ -32,8 +32,6 @@ import type { RootStackParamList } from '../types';
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Kiosk'>;
 type KioskRoute = RouteProp<RootStackParamList, 'Kiosk'>;
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-const SCAN_SIZE = Math.min(SCREEN_W, SCREEN_H) * 0.55;
 const PIN_LENGTH = 4;
 const MAX_PIN_ATTEMPTS = 3;
 const LOCKOUT_MS = 30_000;
@@ -48,6 +46,10 @@ export function KioskScreen() {
     scanContextId,
   } = route.params;
   const { state } = useApp();
+  // Measured per render, not once at import: the scene resizes under us every
+  // time iPhone Duo is folded, unfolded or rotated.
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const scanSize = Math.min(windowWidth, windowHeight) * 0.55;
   const {
     handleScan,
     isProcessing,
@@ -140,7 +142,7 @@ export function KioskScreen() {
         <View style={styles.scrim} />
       </View>
 
-      <SafeAreaView style={styles.overlay} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.overlay} edges={['top', 'bottom', 'left', 'right']}>
         {/* Hidden escape hatch in top-left */}
         <Pressable
           onPress={() => setEscapeOpen(true)}
@@ -183,7 +185,7 @@ export function KioskScreen() {
 
         {/* Scan area */}
         <View style={styles.scanAreaContainer}>
-          <View style={styles.scanArea}>
+          <View style={[styles.scanArea, { width: scanSize, height: scanSize }]}>
             <View style={[styles.corner, styles.tl]} />
             <View style={[styles.corner, styles.tr]} />
             <View style={[styles.corner, styles.bl]} />
@@ -459,7 +461,7 @@ const styles = StyleSheet.create({
   },
 
   scanAreaContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  scanArea: { width: SCAN_SIZE, height: SCAN_SIZE, position: 'relative' },
+  scanArea: { position: 'relative' },
   corner: { position: 'absolute', width: 48, height: 48, borderColor: colors.white },
   tl: { top: 0, left: 0, borderTopWidth: 5, borderLeftWidth: 5, borderTopLeftRadius: 6 },
   tr: { top: 0, right: 0, borderTopWidth: 5, borderRightWidth: 5, borderTopRightRadius: 6 },
@@ -530,7 +532,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderRadius: 24,
     padding: 28,
-    width: 360,
+    width: '100%',
+    maxWidth: 360,
     alignItems: 'center',
   },
   modalClose: { position: 'absolute', top: 12, right: 12, padding: 4 },

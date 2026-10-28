@@ -175,7 +175,7 @@ export function SearchScreen() {
 
   if (!currentEvent) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         <View style={styles.centered}>
           <Text style={styles.emptyTitle}>No Event Selected</Text>
           <Text style={styles.emptyText}>
@@ -368,7 +368,7 @@ export function SearchScreen() {
 
   if (useSplitView) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         <SplitView
           sidebar={sidebar}
           detail={selectedParticipant ? (
@@ -384,7 +384,7 @@ export function SearchScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {sidebar}
     </SafeAreaView>
   );

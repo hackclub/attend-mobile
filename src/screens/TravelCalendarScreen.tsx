@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useBottomTabBarHeight } from 'react-native-bottom-tabs';
+import { useTabBarInset } from '../hooks/useTabBarInset';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -246,7 +246,7 @@ export function TravelCalendarScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { state } = useApp();
   const { canViewParticipantRecords } = useEventAccess();
-  const tabBarHeight = useBottomTabBarHeight();
+  const tabBarHeight = useTabBarInset();
   const [data, setData] = useState<TravelCalendarData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -387,7 +387,7 @@ export function TravelCalendarScreen() {
 
   if (!state.currentEvent) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         <View style={styles.centered}>
           <Ionicons name="airplane-outline" size={42} color={colors.gray[400]} />
           <Text style={styles.emptyTitle}>No event selected</Text>
@@ -398,7 +398,7 @@ export function TravelCalendarScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <ScreenHeader
         title="Travel"
         subtitle={state.currentEvent.name}
