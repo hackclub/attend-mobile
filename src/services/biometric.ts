@@ -1,8 +1,11 @@
 import * as LocalAuthentication from 'expo-local-authentication';
-import { asyncStorage } from './storage';
 
-const BIOMETRIC_ENABLED_KEY = 'biometric_enabled';
 const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+// Participant details are always behind the device's own lock: Face ID or
+// Touch ID where it's set up, the passcode otherwise. There is deliberately
+// no setting to turn this off. A device with no lock at all can't pass the
+// prompt, so it can't open participant details either.
 
 class BiometricService {
   private lastAuthTime: number | null = null;
@@ -19,18 +22,6 @@ class BiometricService {
     return LocalAuthentication.supportedAuthenticationTypesAsync();
   }
 
-  async isEnabled(): Promise<boolean> {
-    const enabled = await asyncStorage.get<boolean>(BIOMETRIC_ENABLED_KEY);
-    return enabled ?? false;
-  }
-
-  async setEnabled(enabled: boolean): Promise<void> {
-    await asyncStorage.set(BIOMETRIC_ENABLED_KEY, enabled);
-    if (!enabled) {
-      this.lastAuthTime = null;
-    }
-  }
-
   isSessionValid(): boolean {
     if (!this.lastAuthTime) return false;
     const elapsed = Date.now() - this.lastAuthTime;
@@ -41,8 +32,7 @@ class BiometricService {
     this.lastAuthTime = null;
   }
 
-  // Always prompts, even when protection is off or a recent unlock is still
-  // valid, so changing the setting can't ride on an earlier authentication.
+  // Always prompts, even when a recent unlock is still valid.
   async confirmIdentity(reason: string): Promise<boolean> {
     try {
       const result = await LocalAuthentication.authenticateAsync({
@@ -64,9 +54,6 @@ class BiometricService {
   }
 
   async authenticate(reason?: string): Promise<boolean> {
-    const isEnabled = await this.isEnabled();
-    if (!isEnabled) return true;
-
     if (this.isSessionValid()) {
       return true;
     }

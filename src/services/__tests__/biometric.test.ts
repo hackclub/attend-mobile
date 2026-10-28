@@ -36,14 +36,6 @@ describe('biometricService.confirmIdentity', () => {
     expect(LocalAuthentication.authenticateAsync).toHaveBeenCalledTimes(2);
   });
 
-  it('prompts even when protection is turned off', async () => {
-    jest.mocked(LocalAuthentication.authenticateAsync).mockResolvedValue({ success: true });
-
-    await expect(biometricService.isEnabled()).resolves.toBe(false);
-    await expect(biometricService.confirmIdentity('Enable Face ID protection')).resolves.toBe(true);
-    expect(LocalAuthentication.authenticateAsync).toHaveBeenCalledTimes(1);
-  });
-
   it('reports failure when the prompt is cancelled', async () => {
     jest.mocked(LocalAuthentication.authenticateAsync)
       .mockResolvedValue({ success: false, error: 'user_cancel' });
@@ -60,14 +52,30 @@ describe('biometricService.confirmIdentity', () => {
 });
 
 describe('biometricService.authenticate', () => {
+  it('prompts on a fresh session, whatever an older build stored', async () => {
+    // Builds that had the toggle stored `false` here to switch protection off.
+    const AsyncStorage = require('@react-native-async-storage/async-storage');
+    jest.mocked(AsyncStorage.getItem).mockResolvedValue(JSON.stringify(false));
+    jest.mocked(LocalAuthentication.authenticateAsync).mockResolvedValue({ success: false, error: 'user_cancel' });
+
+    await expect(biometricService.authenticate()).resolves.toBe(false);
+    expect(LocalAuthentication.authenticateAsync).toHaveBeenCalledTimes(1);
+  });
+
   it('reuses a valid session instead of prompting again', async () => {
     jest.mocked(LocalAuthentication.authenticateAsync).mockResolvedValue({ success: true });
-    await biometricService.setEnabled(true);
-    const AsyncStorage = require('@react-native-async-storage/async-storage');
-    jest.mocked(AsyncStorage.getItem).mockResolvedValue(JSON.stringify(true));
 
     await expect(biometricService.authenticate()).resolves.toBe(true);
     await expect(biometricService.authenticate()).resolves.toBe(true);
     expect(LocalAuthentication.authenticateAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('prompts again once the session is cleared', async () => {
+    jest.mocked(LocalAuthentication.authenticateAsync).mockResolvedValue({ success: true });
+
+    await biometricService.authenticate();
+    biometricService.clearSession();
+    await biometricService.authenticate();
+    expect(LocalAuthentication.authenticateAsync).toHaveBeenCalledTimes(2);
   });
 });
