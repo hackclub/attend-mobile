@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { api } from '../services/api';
@@ -9,7 +9,7 @@ import { VersionFooter } from '../components/VersionFooter';
 import { AccountButton } from '../components/AccountSheet';
 import { EventCard } from '../components/EventBanner';
 import { useTheme } from '../theme';
-import { Button, Icon, QuickActionTile, Screen } from '../components/ui';
+import { Button, EmptyState, ErrorView, LoadingView, QuickActionTile, Screen } from '../components/ui';
 import type { AppStackParamList, Ticket } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<AppStackParamList, 'MyTickets'>;
@@ -137,28 +137,21 @@ export function MyTicketsScreen() {
           )
         ) : null}
 
-        {tickets.length === 0 ? (
-          <View style={styles.empty}>
-            {isLoading ? (
-              <ActivityIndicator color={tokens.accent} />
-            ) : loadFailed ? (
-              <>
-                <Text style={[type.body, styles.center, { color: tokens.text2 }]}>
-                  Couldn’t load your tickets. Check your connection and try again.
-                </Text>
-                <Button title="Retry" variant="normal" onPress={() => void handleRefresh()} />
-              </>
-            ) : (
-              <>
-                <Icon name="ticket" size={32} color={tokens.muted} />
-                <Text style={[type.h3, { color: tokens.textH }]}>No tickets yet</Text>
-                <Text style={[type.body, styles.center, { color: tokens.text2 }]}>
-                  When you register for an event, your ticket will appear here.
-                </Text>
-              </>
-            )}
-          </View>
-        ) : null}
+        {tickets.length > 0 ? null : isLoading ? (
+          <LoadingView />
+        ) : loadFailed ? (
+          <ErrorView
+            title="Couldn’t load your tickets"
+            message="Check your connection and try again."
+            onRetry={() => void handleRefresh()}
+          />
+        ) : (
+          <EmptyState
+            icon="ticket"
+            title="No tickets yet"
+            message="When you register for an event, your ticket will appear here."
+          />
+        )}
 
         <VersionFooter />
       </Screen>
@@ -171,6 +164,4 @@ const styles = StyleSheet.create({
   groupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   fill: { flex: 1 },
   pastToggle: { alignSelf: 'flex-start' },
-  empty: { alignItems: 'center', gap: 8, paddingVertical: 64, paddingHorizontal: 32 },
-  center: { textAlign: 'center' },
 });

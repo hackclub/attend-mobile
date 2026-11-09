@@ -24,6 +24,7 @@ export {
   EmptyState,
   ErrorView,
   LoadingView,
+  RETRY_LABEL,
   type EmptyStateProps,
   type ErrorViewProps,
 } from './StateViews';

@@ -2,8 +2,13 @@ import React, { type ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useTheme, useThemedStyles, type Theme } from '../../theme';
 import { Button } from './Button';
+import { Icon, type IconName } from './Icon';
 
-// Whole-pane loading, error and empty states for the stack screens.
+// Whole-pane loading, error and empty states for the stack screens. They
+// take the background of the screen they sit in.
+
+/** The label of every button that retries a failed load. */
+export const RETRY_LABEL = 'Try again';
 
 export function LoadingView() {
   const { tokens } = useTheme();
@@ -16,31 +21,37 @@ export function LoadingView() {
 }
 
 export interface ErrorViewProps {
+  /** Defaults to "Couldn’t load this". */
+  title?: string;
   message: string;
   onRetry?: () => void;
 }
 
-export function ErrorView({ message, onRetry }: ErrorViewProps) {
+export function ErrorView({ title = 'Couldn’t load this', message, onRetry }: ErrorViewProps) {
   const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.center}>
-      <Text style={styles.title}>Couldn’t load this</Text>
+      <Text style={styles.title}>{title}</Text>
       <Text style={styles.text}>{message}</Text>
-      {onRetry ? <Button title="Try again" onPress={onRetry} /> : null}
+      {onRetry ? <Button title={RETRY_LABEL} onPress={onRetry} /> : null}
     </View>
   );
 }
 
 export interface EmptyStateProps {
+  /** A muted glyph above the title. */
+  icon?: IconName;
   title: string;
   message?: string;
   action?: ReactNode;
 }
 
-export function EmptyState({ title, message, action }: EmptyStateProps) {
+export function EmptyState({ icon, title, message, action }: EmptyStateProps) {
+  const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.empty}>
+      {icon ? <Icon name={icon} size={32} color={tokens.muted} /> : null}
       <Text style={styles.title}>{title}</Text>
       {message ? <Text style={styles.text}>{message}</Text> : null}
       {action}
@@ -55,7 +66,6 @@ const makeStyles = ({ tokens, type, spacing }: Theme) => StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.md,
     padding: spacing.xxl,
-    backgroundColor: tokens.bg,
   },
   empty: { alignItems: 'center', gap: spacing.sm, padding: spacing.xxxl },
   title: { ...type.h3, color: tokens.textH, textAlign: 'center' },
