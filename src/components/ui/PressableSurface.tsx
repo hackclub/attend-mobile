@@ -1,5 +1,13 @@
 import React, { type ReactNode } from 'react';
-import { Pressable, StyleSheet, View, type PressableProps, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  experimental_LayoutConformance as LayoutConformance,
+  Pressable,
+  StyleSheet,
+  View,
+  type PressableProps,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { isAndroid, pressedStyle, ripple, STATE_LAYER_ALPHA } from './pressFeedback';
 
 export interface PressableSurfaceProps extends Omit<PressableProps, 'style' | 'android_ripple' | 'children'> {
@@ -26,13 +34,27 @@ export interface PressableSurfaceProps extends Omit<PressableProps, 'style' | 'a
 /**
  * A pressable whose Android ripple stays inside its rounded shape. The shape
  * is an outer view that clips (radius, border, background); the Pressable
- * inside it carries the ripple under the content. The content ignores
- * touches so the ripple starts where the finger is. On iOS it is one
- * Pressable that dims while held.
+ * inside it fills the shape, lays out the content and carries the ripple
+ * under it. It takes touches itself (`box-only`), not its content, so the
+ * ripple starts where the finger is. On iOS it is one Pressable that dims
+ * while held.
  *
  * Android only delivers a touch to a child of a clipping view when it lands
  * inside that view, so `hitSlop` goes on the outer view too; without it a
  * slop outside the shape never reaches the Pressable.
+ *
+ * The Pressable grows to fill a shape larger than its content (a fixed-size
+ * icon button, a tile stretched by its row), so the shape is laid out with
+ * strict (CSS) flexbox. React Native's default Yoga errata include
+ * StretchFlexBasis: an auto-height box with a growing child, measured
+ * against the space its parent has (any alignment but stretch, e.g.
+ * `alignSelf: 'flex-start'` or a row's `alignItems: 'center'`), grows to
+ * fill that space instead of fitting its content. In a ScrollView that is
+ * the whole content's height, so a back link or an inline button became
+ * thousands of points tall. Yoga's strict mode only gets one level of
+ * growing right, so only the box inside the shape grows (the Pressable on
+ * Android, the content view on iOS), and the caller's content keeps the
+ * default layout.
  */
 export function PressableSurface({
   style,
@@ -46,38 +68,40 @@ export function PressableSurface({
   ...pressableProps
 }: PressableSurfaceProps) {
   const shape = (pressed: boolean) => (typeof style === 'function' ? style(pressed) : style);
-  const content = (
-    <View pointerEvents="none" style={[styles.fill, contentStyle]}>
-      {children}
-    </View>
-  );
+  // The caller's content keeps React Native's default layout.
+  const content = <LayoutConformance mode="compatibility">{children}</LayoutConformance>;
 
   if (isAndroid) {
     return (
-      <View style={[shape(false), styles.clip]} hitSlop={hitSlop}>
-        <Pressable
-          {...pressableProps}
-          hitSlop={hitSlop}
-          android_ripple={ripple(rippleColor, { alpha: rippleAlpha, foreground: rippleForeground })}
-          style={styles.fill}
-        >
-          {content}
-        </Pressable>
-      </View>
+      <LayoutConformance mode="strict">
+        <View style={[shape(false), styles.clip]} hitSlop={hitSlop}>
+          <Pressable
+            {...pressableProps}
+            hitSlop={hitSlop}
+            android_ripple={ripple(rippleColor, { alpha: rippleAlpha, foreground: rippleForeground })}
+            pointerEvents="box-only"
+            style={[styles.fill, contentStyle]}
+          >
+            {content}
+          </Pressable>
+        </View>
+      </LayoutConformance>
     );
   }
 
   return (
-    <Pressable
-      {...pressableProps}
-      hitSlop={hitSlop}
-      style={({ pressed }) => [
-        shape(pressed),
-        pressedOpacity === null ? null : pressedStyle(pressed, pressedOpacity),
-      ]}
-    >
-      {content}
-    </Pressable>
+    <LayoutConformance mode="strict">
+      <Pressable
+        {...pressableProps}
+        hitSlop={hitSlop}
+        style={({ pressed }) => [
+          shape(pressed),
+          pressedOpacity === null ? null : pressedStyle(pressed, pressedOpacity),
+        ]}
+      >
+        <View style={[styles.fill, contentStyle]}>{content}</View>
+      </Pressable>
+    </LayoutConformance>
   );
 }
 
