@@ -26,8 +26,8 @@ const joinMeta = (...parts: (string | null | undefined)[]) => parts.filter(Boole
 
 /**
  * Every event the user can open: the ones they organize, which open the
- * Overview, and the ones they attend, which open that ticket. Past events are
- * left out.
+ * Overview, and the ones they attend, which open that ticket. Ended events of
+ * either kind sit in a Past group, collapsed until asked for (or searched).
  *
  * Presented as a modal from the Overview banner. `embedded` renders the same
  * list in place of the Overview while no event is chosen yet.
@@ -57,6 +57,7 @@ export function SwitchEventList({
   const [accountOpen, setAccountOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [query, setQuery] = useState('');
+  const [pastOpen, setPastOpen] = useState(false);
   const currentId = state.currentEvent?.id;
   // Global admins see every event; past a handful, offer a search.
   const searchable = switcherEventCount(allGroups) > SWITCHER_SEARCH_THRESHOLD;
@@ -84,6 +85,8 @@ export function SwitchEventList({
     setIsRefreshing(false);
   }, [refresh]);
 
+  const searching = searchable && query.trim().length > 0;
+  const showPast = pastOpen || searching;
   const empty = switcherEventCount(allGroups) === 0;
   const noMatches = !empty && switcherEventCount(groups) === 0;
   // A modal sheet on iOS starts below the status bar; full screen elsewhere.
@@ -158,6 +161,49 @@ export function SwitchEventList({
           </>
         ) : null}
 
+        {groups.past.length > 0 ? (
+          showPast ? (
+            <>
+              <View style={[styles.groupHeader, styles.groupLabel]}>
+                <Text style={[type.label, styles.title, { color: tokens.text2 }]} accessibilityRole="header">
+                  Past
+                </Text>
+                {searching ? null : (
+                  <Button title="Hide" variant="link" onPress={() => setPastOpen(false)} />
+                )}
+              </View>
+              {groups.past.map((entry) =>
+                entry.kind === 'organising' ? (
+                  <EventCard
+                    key={`event-${entry.event.id}`}
+                    event={entry.event}
+                    meta={joinMeta(eventPhaseLabel(entry.event, undefined, 'in'), eventRoleLabel(entry.event.role))}
+                    selected={entry.event.id === currentId}
+                    onPress={() => pickEvent(entry.event)}
+                  />
+                ) : (
+                  <EventCard
+                    key={`ticket-${entry.ticket.id}`}
+                    event={entry.ticket.event}
+                    meta={joinMeta(eventPhaseLabel(entry.ticket.event, undefined, 'in'), 'Attendee')}
+                    onPress={() => pickTicket(entry.ticket)}
+                    accessibilityHint="Opens your ticket"
+                  />
+                )
+              )}
+            </>
+          ) : (
+            <Button
+              title={`Past (${groups.past.length})`}
+              variant="link"
+              icon="chevron-down"
+              iconPosition="end"
+              onPress={() => setPastOpen(true)}
+              style={styles.groupLabel}
+            />
+          )
+        ) : null}
+
         {noMatches ? (
           <View style={styles.empty}>
             <Text style={[type.body, { color: tokens.text2 }]}>No events match “{query.trim()}”</Text>
@@ -197,6 +243,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { flex: 1 },
   groupLabel: { marginTop: 8 },
+  groupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   empty: { alignItems: 'center', gap: 12, paddingVertical: 48 },
   center: { textAlign: 'center' },
 });

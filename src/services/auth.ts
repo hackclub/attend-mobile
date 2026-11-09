@@ -174,8 +174,8 @@ export const authService = {
       
       // Try to validate token, but don't logout on network errors
       try {
-        const isValid = await api.validateToken();
-        if (!isValid) {
+        const freshUser = await api.validateToken();
+        if (!freshUser) {
           // Token is explicitly invalid (401): nothing left to revoke. Same
           // local cleanup as any sign-out, but scans still waiting to sync
           // are kept for when this user signs back in.
@@ -183,12 +183,11 @@ export const authService = {
           return { success: false, error: 'Session expired' };
         }
         
-        // If we have a valid token but no cached user, fetch fresh user
-        if (!user) {
-          const freshUser = await api.getCurrentUser();
-          await secureStorage.setUser(freshUser);
-          return { success: true, user: freshUser };
-        }
+        // /me is the source of truth for the user (name, avatar, whether
+        // they're a participant), so the stored copy follows it. Failing to
+        // store it only means the next offline start uses the older copy.
+        await secureStorage.setUser(freshUser).catch(() => {});
+        return { success: true, user: freshUser };
       } catch {
         // Network error - if we have cached user, continue offline
         if (user) {
@@ -197,8 +196,6 @@ export const authService = {
         // No cached user and can't validate - fail but don't clear token
         return { success: false, error: 'Unable to verify session' };
       }
-
-      return { success: true, user };
     } catch (error) {
       if (error instanceof KeychainLockedError) {
         return { success: false, locked: true };

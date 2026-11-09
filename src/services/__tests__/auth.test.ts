@@ -9,6 +9,7 @@ jest.mock('../storage', () => ({
   secureStorage: {
     getToken: jest.fn(),
     getUser: jest.fn(),
+    setUser: jest.fn().mockResolvedValue(undefined),
     upgradeKeychainAccessibility: jest.fn().mockResolvedValue(undefined),
     clearPersisted: jest.fn().mockResolvedValue(undefined),
     clear: jest.fn().mockResolvedValue(undefined),
@@ -133,7 +134,7 @@ describe('authService.logout', () => {
 
   it('gives an expired session the same full cleanup, keeping its queued scans', async () => {
     jest.mocked(secureStorage.getUser).mockResolvedValue({ id: 'u1' } as never);
-    jest.mocked(api.validateToken).mockResolvedValue(false);
+    jest.mocked(api.validateToken).mockResolvedValue(null);
 
     const result = await authService.restoreSession();
 
@@ -155,5 +156,30 @@ describe('authService.logout', () => {
     await authService.logout();
 
     expect(secureStorage.clear).not.toHaveBeenCalled();
+  });
+});
+
+describe('authService.restoreSession', () => {
+  it('replaces the stored user with the one /me returns', async () => {
+    const stale = { id: 'u1', name: 'Old', is_participant: false };
+    const fresh = { id: 'u1', name: 'New', is_participant: true };
+    jest.mocked(secureStorage.getUser).mockResolvedValue(stale as never);
+    jest.mocked(api.validateToken).mockResolvedValue(fresh as never);
+
+    const result = await authService.restoreSession();
+
+    expect(result).toEqual({ success: true, user: fresh });
+    expect(secureStorage.setUser).toHaveBeenCalledWith(fresh);
+  });
+
+  it('keeps the cached user when /me is unreachable', async () => {
+    const cached = { id: 'u1', name: 'Cached' };
+    jest.mocked(secureStorage.getUser).mockResolvedValue(cached as never);
+    jest.mocked(api.validateToken).mockRejectedValue(new Error('offline'));
+
+    const result = await authService.restoreSession();
+
+    expect(result).toEqual({ success: true, user: cached });
+    expect(secureStorage.setUser).not.toHaveBeenCalled();
   });
 });

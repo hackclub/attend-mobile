@@ -341,14 +341,14 @@ class ApiClient {
     });
   }
 
-  async validateToken(): Promise<boolean> {
+  /** The signed-in user from /me, or null when the token is invalid (401). */
+  async validateToken(): Promise<User | null> {
     try {
-      await this.getCurrentUser();
-      return true;
+      return await this.getCurrentUser();
     } catch (error) {
-      // If it's a 401, token is invalid - return false
+      // If it's a 401, token is invalid - return null
       if (error instanceof ApiError && error.isUnauthorized) {
-        return false;
+        return null;
       }
       // For network errors or other issues, rethrow so caller can decide
       throw error;

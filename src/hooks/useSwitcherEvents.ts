@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
-import { canSwitchEvents, groupSwitcherEvents } from '../services/eventSwitcher';
+import { canSwitchEvents, groupSwitcherEvents, switcherEventCount } from '../services/eventSwitcher';
 import { syncService } from '../services/sync';
 import type { Ticket } from '../types';
 
@@ -11,13 +11,14 @@ let lastTickets: { userId: string; tickets: Ticket[] } | null = null;
 
 /**
  * The events the switcher lists: events the user organizes (cached, then
- * fresh from GET /events) and their own tickets (GET /tickets).
+ * fresh from GET /events) and their own tickets (GET /tickets). Tickets are
+ * fetched for everyone signed in: an organizer can hold tickets too, and the
+ * user's participant flag can lag behind a new registration.
  */
 export function useSwitcherEvents() {
   const { state, setEvents } = useApp();
   const user = state.auth.user;
   const userId = user?.id ?? null;
-  const isParticipant = !!user?.is_participant;
   const [tickets, setTickets] = useState<Ticket[]>(() =>
     lastTickets && lastTickets.userId === userId ? lastTickets.tickets : []
   );
@@ -32,7 +33,7 @@ export function useSwitcherEvents() {
         setEvents(fresh);
         await syncService.cacheEvents(fresh, cacheGeneration);
       }),
-      isParticipant && userId
+      userId
         ? api.getMyTickets().then((fresh) => {
             lastTickets = { userId, tickets: fresh };
             setTickets(fresh);
@@ -41,7 +42,7 @@ export function useSwitcherEvents() {
     ]);
     setLoadFailed(results.some((result) => result.status === 'rejected'));
     setIsLoading(false);
-  }, [isParticipant, setEvents, userId]);
+  }, [setEvents, userId]);
 
   useEffect(() => {
     void load();
@@ -53,17 +54,15 @@ export function useSwitcherEvents() {
     await load();
   }, [load]);
 
-  const groups = useMemo(
-    () => groupSwitcherEvents(state.events, isParticipant ? tickets : []),
-    [isParticipant, state.events, tickets]
-  );
+  const groups = useMemo(() => groupSwitcherEvents(state.events, tickets), [state.events, tickets]);
 
-  // A current event that has dropped off the list (it just ended) still
-  // leaves somewhere else to go.
+  // More than one entry, ended events included. A current event missing from
+  // every group (access removed) still leaves somewhere else to go.
   const currentId = state.currentEvent?.id;
-  const currentListed = !currentId || groups.organising.some((event) => event.id === currentId);
-  const canSwitch = canSwitchEvents(groups)
-    || (!currentListed && groups.organising.length + groups.attending.length > 0);
+  const currentListed = !currentId
+    || groups.organising.some((event) => event.id === currentId)
+    || groups.past.some((entry) => entry.kind === 'organising' && entry.event.id === currentId);
+  const canSwitch = canSwitchEvents(groups) || (!currentListed && switcherEventCount(groups) > 0);
 
   return {
     groups,
