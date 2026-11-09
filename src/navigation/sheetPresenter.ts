@@ -20,8 +20,8 @@ export const COMPOSE_SHEETS = Platform.OS === 'android';
 
 /** What SheetHost gives each drawer it shows (Android). */
 export interface PresentedSheet {
-  /** Animates the drawer away, then unmounts it. */
-  close: () => void;
+  /** Animates the drawer away, then unmounts it and calls `then`. */
+  close: (then?: () => void) => void;
 }
 
 export const PresentedSheetContext = createContext<PresentedSheet | null>(null);
@@ -47,6 +47,49 @@ export function useCloseSheet(): () => void {
     else if (navigation.canGoBack()) navigation.goBack();
   }, [navigation, presented]);
 }
+
+/**
+ * Leaves this drawer for somewhere else: `go` resets the root, replaces the
+ * screen or signs out. `go` only runs once the drawer has gone, so the
+ * navigation never races its dismissal (which left the app not taking
+ * touches). Android: once the Material sheet has animated away and
+ * unmounted. iOS: once the form sheet's route has finished closing.
+ */
+export function useLeaveSheet(): (go: () => void) => void {
+  const presented = useContext(PresentedSheetContext);
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  return useCallback(
+    (go: () => void) => {
+      if (presented) {
+        presented.close(go);
+        return;
+      }
+      let done = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const unsubscribe = navigation.addListener('transitionEnd', (event) => {
+        if (event.data.closing) finish();
+      });
+      function finish() {
+        if (done) return;
+        done = true;
+        unsubscribe();
+        if (timer) clearTimeout(timer);
+        go();
+      }
+      if (!navigation.canGoBack()) {
+        finish();
+        return;
+      }
+      // In case the closing transition's event never arrives.
+      timer = setTimeout(finish, LEAVE_SHEET_FALLBACK_MS);
+      navigation.goBack();
+    },
+    [navigation, presented]
+  );
+}
+
+/** A form sheet's dismissal is well under this. */
+const LEAVE_SHEET_FALLBACK_MS = 800;
 
 /**
  * Whether this is inside a Material bottom sheet (Android), which draws its

@@ -100,3 +100,16 @@ export function ticketBadge(
   if (!ticket.confirmed) return { label: 'Registration incomplete', color: 'grey' };
   return null;
 }
+
+/**
+ * What picking an entry in the switcher does: the entry that's already
+ * current (the event, or the pass it was opened from) only closes it; any
+ * other switches, resetting the root once the switcher has gone.
+ */
+export function switcherPick(
+  picked: { kind: 'event' | 'ticket'; id: string },
+  current: { eventId?: string; ticketId?: string }
+): 'close' | 'switch' {
+  const currentId = picked.kind === 'ticket' ? current.ticketId : current.ticketId ? undefined : current.eventId;
+  return currentId !== undefined && picked.id === currentId ? 'close' : 'switch';
+}

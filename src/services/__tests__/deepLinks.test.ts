@@ -13,7 +13,7 @@ describe('homeRouteName', () => {
 
 describe('fallbackToRegisteredRoute', () => {
   it('keeps links to registered routes', () => {
-    expect(fallbackToRegisteredRoute(scan, ['Main', 'SwitchEvent'])).toBe(scan);
+    expect(fallbackToRegisteredRoute(scan, ['Main', 'SwitchEventSheet'])).toBe(scan);
     expect(fallbackToRegisteredRoute(tickets, ['Main', 'ParticipantMain'])).toBe(tickets);
   });
 
@@ -22,7 +22,7 @@ describe('fallbackToRegisteredRoute', () => {
   });
 
   it('sends an organizer-only user from My tickets to the event tabs', () => {
-    expect(fallbackToRegisteredRoute(tickets, ['Main', 'SwitchEvent'])).toEqual({ routes: [{ name: 'Main' }] });
+    expect(fallbackToRegisteredRoute(tickets, ['Main', 'SwitchEventSheet'])).toEqual({ routes: [{ name: 'Main' }] });
   });
 
   it('drops the link when the user has no home (signed out)', () => {
@@ -78,7 +78,7 @@ describe('preferOrganizerTabs', () => {
   };
 
   it("opens an organizer's incident report link on the Overview", () => {
-    expect(preferOrganizerTabs(report, ['Main', 'SwitchEvent', 'ParticipantMain'])).toEqual({
+    expect(preferOrganizerTabs(report, ['Main', 'SwitchEventSheet', 'ParticipantMain'])).toEqual({
       routes: [
         {
           name: 'Main',

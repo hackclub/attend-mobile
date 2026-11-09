@@ -17,6 +17,8 @@ import { MaterialHost } from './ui/MaterialHost';
 
 // Material's drag handle: a 4dp bar with 22dp above and below.
 const DRAG_HANDLE_HEIGHT = 48;
+// Material's hide animation is well under this.
+const HIDE_FALLBACK_MS = 700;
 
 /**
  * Android's drawers: each open sheet (navigation/sheetStack) as a Material 3
@@ -51,12 +53,24 @@ function ComposeSheet({ sheet }: { sheet: OpenSheet }) {
 
   const presented = useMemo<PresentedSheet>(
     () => ({
-      close: () => {
+      close: (then) => {
         if (closing.current) return;
         closing.current = true;
+        // Removed (and `then` run) once, when the hide animation settles,
+        // or after HIDE_FALLBACK_MS if it never does: a sheet left in the
+        // stack keeps its window over the app, taking every touch.
+        let done = false;
+        const gone = () => {
+          if (done) return;
+          done = true;
+          clearTimeout(fallback);
+          sheetStack.remove(sheet.id);
+          then?.();
+        };
+        const fallback = setTimeout(gone, HIDE_FALLBACK_MS);
         const hidden = ref.current?.hide();
-        if (hidden) void hidden.finally(() => sheetStack.remove(sheet.id));
-        else sheetStack.remove(sheet.id);
+        if (hidden) void hidden.finally(gone);
+        else gone();
       },
     }),
     [sheet.id]

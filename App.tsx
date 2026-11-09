@@ -23,7 +23,6 @@ import { AppProvider, useApp } from './src/context/AppContext';
 import { useEventAccess } from './src/hooks/useEventAccess';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { EventHome } from './src/screens/EventHome';
-import { SwitchEventScreen } from './src/screens/SwitchEventScreen';
 import { RoleRestricted } from './src/components/RoleRestricted';
 import { ScannerScreen } from './src/screens/ScannerScreen';
 
@@ -336,13 +335,6 @@ function RootNavigator() {
       {state.auth.isAuthenticated ? (
         <>
           {isOrganizer && <Stack.Screen name="Main" component={MainTabs} />}
-          {isOrganizer && (
-            <Stack.Screen
-              name="SwitchEvent"
-              component={SwitchEventScreen}
-              options={{ presentation: 'modal' }}
-            />
-          )}
           <Stack.Screen name="ParticipantMain" component={PassStackNavigator} />
           {user?.global_admin ? (
             <Stack.Screen

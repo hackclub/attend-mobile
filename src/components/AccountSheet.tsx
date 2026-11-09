@@ -3,7 +3,7 @@ import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useApp } from '../context/AppContext';
 import { haptics } from '../services/haptics';
 import { useOpenLink } from '../hooks/useOpenLink';
-import { useCloseSheet, useOpenSheet } from '../navigation/sheetPresenter';
+import { useLeaveSheet, useOpenSheet } from '../navigation/sheetPresenter';
 import { biometricService } from '../services/biometric';
 import { notificationService } from '../services/notifications';
 import { overlayTokens, useTheme, useThemePreference, withAlpha, type ThemePreference } from '../theme';
@@ -101,7 +101,7 @@ function useBiometricRemaining() {
 export function AccountSheet() {
   const { tokens, type, spacing } = useTheme();
   const openLink = useOpenLink();
-  const onClose = useCloseSheet();
+  const leave = useLeaveSheet();
   const { state, logout, flushBeforeSignOut } = useApp();
   const [signingOut, setSigningOut] = useState(false);
   const { preference, setPreference } = useThemePreference();
@@ -168,13 +168,11 @@ export function AccountSheet() {
       {
         text: confirmLabel,
         style: 'destructive',
-        onPress: () => {
-          onClose();
-          void logout();
-        },
+        // Signs out once the drawer has gone, not under it.
+        onPress: () => leave(() => void logout()),
       },
     ]);
-  }, [flushBeforeSignOut, logout, onClose, signingOut, state.sync.pendingScans]);
+  }, [flushBeforeSignOut, leave, logout, signingOut, state.sync.pendingScans]);
 
   const roles = [
     user?.global_admin ? 'Global Admin' : null,

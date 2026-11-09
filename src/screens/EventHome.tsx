@@ -51,7 +51,9 @@ import {
 import { radii, useTheme } from '../theme';
 import { travelClock, travelWeekday } from '../services/travelTimes';
 import type { Event, MainTabParamList, AppStackParamList, TravelCalendarEntry } from '../types';
-import { SwitchEventList } from './SwitchEventScreen';
+import { SwitchEventList } from '../components/EventSwitcher';
+import { switchEventSheet, type SwitchEventSheetData } from '../navigation/sheetData';
+import { useOpenSheet } from '../navigation/sheetPresenter';
 
 type Navigation = NavigationProp<AppStackParamList & MainTabParamList>;
 
@@ -101,9 +103,12 @@ export function EventHome() {
     if (onlyEvent) void selectEvent(onlyEvent);
   }, [onlyEvent, selectEvent]);
 
-  if (!event) return <SwitchEventList embedded switcher={switcher} />;
+  if (!event) return <SwitchEventList switcher={switcher} />;
   return <Overview event={event} canSwitch={canSwitch} onRefreshEvents={refreshSwitcher} />;
 }
+
+// The Overview's switcher has the event, not a pass, as current.
+const NO_TICKET: SwitchEventSheetData = {};
 
 function Overview({
   event,
@@ -125,6 +130,12 @@ function Overview({
   const access = useEventAccess();
   const { contexts } = useEventScanContexts(event.id);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const openSheet = useOpenSheet();
+  const claimSwitcher = switchEventSheet.useOpener(NO_TICKET);
+  const openSwitcher = () => {
+    claimSwitcher();
+    openSheet('SwitchEventSheet');
+  };
 
   const participants = state.participants;
   const stats = useMemo(() => computeEventStats(participants, contexts), [participants, contexts]);
@@ -385,7 +396,7 @@ function Overview({
             eyebrowIcon={banner.eyebrowIcon}
             meta={banner.meta}
             topInset={insets.top + topTabInset}
-            onPress={canSwitch ? () => navigation.navigate('SwitchEvent') : undefined}
+            onPress={canSwitch ? openSwitcher : undefined}
             accessory={<AccountButton onBanner />}
           />
         </View>

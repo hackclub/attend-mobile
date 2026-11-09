@@ -478,14 +478,12 @@ type ParticipantDetailParams =
 
 /**
  * The root stack: the homes (the organizer tabs, and the attendee's tickets
- * and passes) and whatever is presented over every tab: the switcher, the
- * ID check, kiosk mode and the form sheets.
+ * and passes) and whatever is presented over every tab: the ID check, kiosk
+ * mode and the form sheets (the switcher among them).
  */
 export type RootStackParamList = {
   Login: undefined;
   Main: NavigatorScreenParams<MainTabParamList> | undefined;
-  /** `currentTicketId`: the pass the switcher was opened from, marked as current. */
-  SwitchEvent: { currentTicketId?: string } | undefined;
   ParticipantMain: NavigatorScreenParams<PassStackParamList> | undefined;
   IdCheck: { participant: Participant; eventId: string };
   KioskSetup: { scanContextId?: string; scanContextName?: string };
@@ -497,6 +495,7 @@ export type RootStackParamList = {
   };
   // Form sheets (navigation/sheets). Their data comes through a sheet
   // channel, not params.
+  SwitchEventSheet: undefined;
   AccountSheet: undefined;
   ScanContextSheet: undefined;
   ScannerSearchSheet: undefined;

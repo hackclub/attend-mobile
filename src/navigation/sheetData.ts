@@ -6,11 +6,25 @@ import type {
   SavedView,
   SortRule,
 } from '../services/participantFilters';
+import type { SwitcherGroups } from '../services/eventSwitcher';
 import type { Participant, ScanContext } from '../types';
 import { createSheetChannel } from './sheetChannel';
 
 // The data each form-sheet route reads, kept apart from the sheets' own
 // modules so a screen can open one without loading it.
+
+/** The event switcher. */
+export interface SwitchEventSheetData {
+  /** The pass it was opened from, marked as current (rather than the event). */
+  currentTicketId?: string;
+  /**
+   * The dev gallery's sample events, shown instead of the user's; picking
+   * one calls `onPick` with its name, once the sheet has gone, rather than
+   * switching.
+   */
+  preview?: { groups: SwitcherGroups; currentEventId?: string; onPick: (name: string) => void };
+}
+export const switchEventSheet = createSheetChannel<SwitchEventSheetData>();
 
 /** The one scan-context picker, for the scanner and for kiosk setup. */
 export interface ScanContextSheetData {

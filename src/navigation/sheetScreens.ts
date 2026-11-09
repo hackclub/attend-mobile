@@ -19,6 +19,10 @@ export interface SheetConfig {
 
 /** Each sheet's screen, loaded on its first open, and its resting heights. */
 export const SHEETS: Record<SheetRouteName, SheetConfig> = {
+  SwitchEventSheet: {
+    getComponent: () => require('../screens/sheets/SwitchEventSheet').SwitchEventSheet,
+    detents: 'fitToContents',
+  },
   AccountSheet: {
     getComponent: () => require('../components/AccountSheet').AccountSheet,
     detents: [0.6, 0.95],

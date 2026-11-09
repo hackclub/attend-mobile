@@ -5,6 +5,7 @@ import {
   groupTickets,
   pastEntryEvent,
   switcherEventCount,
+  switcherPick,
   ticketBadge,
 } from '../eventSwitcher';
 import type { Event, Ticket } from '../../types';
@@ -116,5 +117,27 @@ describe('ticketBadge', () => {
 
   it('has nothing to say about a confirmed ticket not yet used', () => {
     expect(ticketBadge({ confirmed: true, checked_in: false })).toBeNull();
+  });
+});
+
+describe('switcherPick', () => {
+  it('only closes for the current event', () => {
+    expect(switcherPick({ kind: 'event', id: 'a' }, { eventId: 'a' })).toBe('close');
+    expect(switcherPick({ kind: 'event', id: 'b' }, { eventId: 'a' })).toBe('switch');
+  });
+
+  it('only closes for the pass it was opened from', () => {
+    expect(switcherPick({ kind: 'ticket', id: 't1' }, { eventId: 'a', ticketId: 't1' })).toBe('close');
+    expect(switcherPick({ kind: 'ticket', id: 't2' }, { ticketId: 't1' })).toBe('switch');
+  });
+
+  it('switches to the selected organized event from a pass', () => {
+    // Opened from a pass, the pass is current, not the event selected under it.
+    expect(switcherPick({ kind: 'event', id: 'a' }, { eventId: 'a', ticketId: 't1' })).toBe('switch');
+  });
+
+  it('switches when nothing is current', () => {
+    expect(switcherPick({ kind: 'event', id: 'a' }, {})).toBe('switch');
+    expect(switcherPick({ kind: 'ticket', id: 't1' }, {})).toBe('switch');
   });
 });
