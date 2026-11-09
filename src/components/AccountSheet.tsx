@@ -34,14 +34,15 @@ const APPEARANCE_OPTIONS = [
   { value: 'dark', label: 'Dark' },
 ] as const;
 
-/** The signed-in user's avatar, which opens the Account sheet. */
+/**
+ * The signed-in user's avatar. Wherever it is (an event's banner, the
+ * switcher drawer, the tickets list, a pass home) it opens the Account
+ * drawer, stacked over any drawer it's in; never a screen.
+ */
 export function AccountButton({
-  onPress,
   size = 40,
   onBanner = false,
 }: {
-  /** Defaults to opening the Account sheet. */
-  onPress?: () => void;
   size?: number;
   /** A white ring so it reads on a coloured banner or photo. */
   onBanner?: boolean;
@@ -58,7 +59,7 @@ export function AccountButton({
     : ripple(tokens.text, { alpha: STATE_LAYER_ALPHA, borderless: true, radius: size / 2 + 4 });
   return (
     <Pressable
-      onPress={onPress ?? (() => openSheet('AccountSheet'))}
+      onPress={() => openSheet('AccountSheet')}
       hitSlop={4}
       android_ripple={rippleConfig}
       style={({ pressed }) => [
