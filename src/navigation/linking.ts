@@ -29,7 +29,9 @@ export const linkingConfig: LinkingOptions<RootStackParamList>['config'] = {
           screens: {
             EventHome: { path: 'overview', alias: ['events'] },
             IncidentList: 'incidents',
+            IncidentDetail: 'incidents/:incidentId',
             MessageList: 'event-messages',
+            MessageDetail: 'event-messages/:messageId',
           },
         }),
         Scanner: { screens: { ScannerHome: { path: 'scanner', alias: ['scan'] } } },

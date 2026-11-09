@@ -44,7 +44,7 @@ import type {
 import * as Sentry from '@sentry/react-native';
 import { scrubIdCheckBreadcrumb, scrubIdCheckEvent } from './src/services/idCheck/sentryScrub';
 import { stripHttpBreadcrumbQuery } from './src/services/breadcrumbScrub';
-import { fallbackToRegisteredRoute, preferOrganizerTabs } from './src/services/deepLinks';
+import { fallbackToRegisteredRoute, limitLinkParams, preferOrganizerTabs } from './src/services/deepLinks';
 import { ROOT_NAVIGATOR } from './src/navigation/routes';
 import { linkingConfig } from './src/navigation/linking';
 import { lazyScreens } from './src/navigation/lazyScreens';
@@ -360,15 +360,33 @@ const navigationRef = createNavigationContainerRef<RootStackParamList>();
 const rootRouteNames = () =>
   navigationRef.isReady() ? navigationRef.getRootState()?.routeNames : undefined;
 
+// The routes each mounted root navigator registers (Main's tabs: Travel only
+// for an event with travel).
+const childRouteNames = () => {
+  if (!navigationRef.isReady()) return {};
+  const names: Record<string, string[]> = {};
+  for (const route of navigationRef.getRootState()?.routes ?? []) {
+    if (route.state && 'routeNames' in route.state && route.state.routeNames) {
+      names[route.name] = [...route.state.routeNames];
+    }
+  }
+  return names;
+};
+
 const linking: LinkingOptions<RootStackParamList> = {
   prefixes: [Linking.createURL('/'), 'attend://'],
   config: linkingConfig,
-  // Scan and People live in Main (organizers only); a link to a route this
-  // user doesn't have opens their home instead of doing nothing.
+  // Scan and People live in Main (organizers only), and Travel only for an
+  // event with travel; a link to a route this user doesn't have opens their
+  // home instead of doing nothing.
   getStateFromPath: (path, options) => {
     const routeNames = rootRouteNames();
     return preferOrganizerTabs(
-      fallbackToRegisteredRoute(defaultGetStateFromPath(path, options), routeNames),
+      fallbackToRegisteredRoute(
+        limitLinkParams(defaultGetStateFromPath(path, options)),
+        routeNames,
+        childRouteNames()
+      ),
       routeNames
     );
   },

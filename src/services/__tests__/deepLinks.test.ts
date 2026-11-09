@@ -1,4 +1,4 @@
-import { fallbackToRegisteredRoute, homeRouteName, participantDetailTarget, preferOrganizerTabs } from '../deepLinks';
+import { fallbackToRegisteredRoute, homeRouteName, limitLinkParams, participantDetailTarget, preferOrganizerTabs } from '../deepLinks';
 
 const scan = { routes: [{ name: 'Main', state: { routes: [{ name: 'Scanner', state: { routes: [{ name: 'ScannerHome' }] } }] } }] };
 const tickets = { routes: [{ name: 'ParticipantMain' }] };
@@ -27,6 +27,17 @@ describe('fallbackToRegisteredRoute', () => {
 
   it('drops the link when the user has no home (signed out)', () => {
     expect(fallbackToRegisteredRoute(scan, ['Login'])).toBeUndefined();
+  });
+
+  it('sends a link to a tab this event lacks (Travel) to the user\'s home', () => {
+    const travel = { routes: [{ name: 'Main', state: { routes: [{ name: 'Travel', state: { routes: [{ name: 'TravelHome' }] } }] } }] };
+    const tabs = { Main: ['Overview', 'Scanner', 'Search'] };
+    expect(fallbackToRegisteredRoute(travel, ['Main', 'ParticipantMain'], tabs)).toEqual({ routes: [{ name: 'Main' }] });
+    expect(fallbackToRegisteredRoute(travel, ['Main'], { Main: [...tabs.Main, 'Travel'] })).toBe(travel);
+  });
+
+  it('keeps a tab link while the tabs aren\'t mounted yet', () => {
+    expect(fallbackToRegisteredRoute(scan, ['Main'], {})).toBe(scan);
   });
 
   it('passes through before the navigator has mounted', () => {
@@ -92,5 +103,24 @@ describe('preferOrganizerTabs', () => {
   it('passes through without a state or route names', () => {
     expect(preferOrganizerTabs(undefined, ['Main'])).toBeUndefined();
     expect(preferOrganizerTabs(report, undefined)).toBe(report);
+  });
+});
+
+describe('limitLinkParams', () => {
+  const overview = (leaf: { name: string; params?: object }) => ({
+    routes: [{ name: 'Main', state: { routes: [{ name: 'Overview', state: { index: 1, routes: [{ name: 'EventHome' }, leaf] } }] } }],
+  });
+
+  it('drops params a link may not set, such as a message notice', () => {
+    expect(limitLinkParams(overview({ name: 'MessageDetail', params: { messageId: 'm1', notice: 'Sent' } })))
+      .toEqual(overview({ name: 'MessageDetail', params: { messageId: 'm1' } }));
+    expect(limitLinkParams(overview({ name: 'IncidentDetail', params: { incidentId: 'i1', extra: 'x' } })))
+      .toEqual(overview({ name: 'IncidentDetail', params: { incidentId: 'i1' } }));
+  });
+
+  it('leaves other screens alone', () => {
+    const state = overview({ name: 'IncidentList' });
+    expect(limitLinkParams(state)).toEqual(state);
+    expect(limitLinkParams(undefined)).toBeUndefined();
   });
 });

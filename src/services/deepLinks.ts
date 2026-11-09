@@ -28,15 +28,56 @@ export function homeRouteName(routeNames: readonly string[]): string | undefined
  * the login screen). Without `routeNames` (navigator not mounted yet) the
  * state passes through: initial state is rehydrated by the navigator, which
  * already drops unknown routes and falls back to its first screen.
+ *
+ * `childRouteNames` holds the routes registered in each mounted root
+ * navigator (Main's tabs, say). Some depend on the event, as the Travel tab
+ * does, so a link into a tab this event doesn't have opens home too. A root
+ * route missing from it (not mounted yet) isn't checked.
  */
 export function fallbackToRegisteredRoute<T extends StateLike>(
   state: T | undefined,
-  routeNames: readonly string[] | undefined
+  routeNames: readonly string[] | undefined,
+  childRouteNames: Readonly<Record<string, readonly string[] | undefined>> = {}
 ): T | undefined {
   if (!state || !routeNames || routeNames.length === 0) return state;
-  if (state.routes.every((route) => routeNames.includes(route.name))) return state;
+  const registered = state.routes.every((route) => {
+    if (!routeNames.includes(route.name)) return false;
+    const children = childRouteNames[route.name];
+    if (!children || !route.state) return true;
+    return route.state.routes.every((child) => children.includes(child.name));
+  });
+  if (registered) return state;
   const home = homeRouteName(routeNames);
   return home ? ({ routes: [{ name: home }] } as unknown as T) : undefined;
+}
+
+// The params a link may set on each screen. Anything else in the query
+// string is dropped: MessageDetail's `notice`, for one, is a confirmation
+// the app shows as a success flash, and a link mustn't be able to fake it.
+const LINK_PARAMS: Record<string, readonly string[]> = {
+  IncidentDetail: ['incidentId'],
+  MessageDetail: ['messageId'],
+};
+
+function withLinkParams<R extends RouteLike>(route: R): R {
+  const allowed = LINK_PARAMS[route.name];
+  let next = route;
+  if (allowed && route.params) {
+    const params = Object.fromEntries(
+      Object.entries(route.params).filter(([key]) => allowed.includes(key))
+    );
+    next = { ...next, params };
+  }
+  if (route.state) {
+    next = { ...next, state: { ...route.state, routes: route.state.routes.map(withLinkParams) } };
+  }
+  return next;
+}
+
+/** `state` with each linked screen's params limited to what a link may set. */
+export function limitLinkParams<T extends StateLike>(state: T | undefined): T | undefined {
+  if (!state) return state;
+  return { ...state, routes: state.routes.map(withLinkParams) };
 }
 
 // A path can only name one screen, so screens that both the attendee stack
