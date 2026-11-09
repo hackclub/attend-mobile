@@ -3,6 +3,7 @@ import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
+import { haptics } from '../services/haptics';
 import { useOpenLink } from '../hooks/useOpenLink';
 import { biometricService } from '../services/biometric';
 import { notificationService } from '../services/notifications';
@@ -163,6 +164,8 @@ export function AccountSheet() {
       }
     }
     const { title, message, confirmLabel } = signOutConfirmation(unsent);
+    // A destructive confirm: the warning tick says it matters.
+    haptics.warning();
     Alert.alert(title, message, [
       { text: 'Cancel', style: 'cancel' },
       {

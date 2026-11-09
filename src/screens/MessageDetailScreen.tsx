@@ -112,11 +112,13 @@ export function MessageDetailScreen() {
     onConfirm: () => void,
     destructive = false,
     dismissLabel = 'Cancel',
-  ) =>
+  ) => {
+    if (destructive) haptics.warning();
     Alert.alert(title, body, [
       { text: dismissLabel, style: 'cancel' },
       { text: title, style: destructive ? 'destructive' : 'default', onPress: onConfirm },
     ]);
+  };
 
   const remove = () =>
     confirm(

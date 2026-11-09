@@ -14,6 +14,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Sentry from '@sentry/react-native';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
+import { haptics } from '../services/haptics';
 import { nfcService } from '../services/nfc';
 import { isExpired, matchDateOfBirth, matchName } from '../services/idCheck/match';
 import { validateManualAccess, type MrzAccessFields } from '../services/idCheck/mrz';
@@ -181,7 +182,9 @@ function IdCheckFlow({ route, navigation }: Props) {
         dobMatch: matchDateOfBirth(result.dateOfBirth, attendDob),
         expired: isExpired(result.dateOfExpiry),
       };
-      setStep({ kind: 'result', result, input, outcome: verdict(input) });
+      const outcome = verdict(input);
+      haptics.notify(outcome === 'green' ? 'success' : outcome === 'amber' ? 'warning' : 'error');
+      setStep({ kind: 'result', result, input, outcome });
     } catch (error) {
       if (stepRef.current.kind !== 'reading') return; // reset while reading
       if (error instanceof MrtdError && error.isCancelled) {

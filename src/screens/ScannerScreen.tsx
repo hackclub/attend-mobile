@@ -35,6 +35,7 @@ import {
 import { scanContextSheet, scannerSearchSheet } from '../navigation/sheetData';
 import { useIsUnderSheet } from '../navigation/useIsUnderSheet';
 import { api } from '../services/api';
+import { haptics } from '../services/haptics';
 import { computeEventStats } from '../services/eventStats';
 import { participantAfterUndo } from '../services/scanUndo';
 import { overlayTokens, useTheme } from '../theme';
@@ -236,8 +237,10 @@ export function ScannerScreen() {
       const contextId = lastScan.scanContext?.id;
       await api.undoCheckIn(eventId, participant.participant_event_id, contextId);
       updateParticipant(participantAfterUndo(participant, contextId));
+      haptics.success();
       clearLastScan();
     } catch {
+      haptics.error();
       Alert.alert('Error', 'Failed to undo check-in');
     } finally {
       setUndoing(false);
