@@ -194,7 +194,7 @@ export function AccountSheet() {
             <View style={styles.identityText}>
               <Text style={[type.h2, { color: tokens.textH }]}>{name}</Text>
               {user?.email && user.email !== name ? (
-                <Text style={[type.body, { color: tokens.text2 }]} selectable>{user.email}</Text>
+                <Text style={[type.body, { color: tokens.text2 }]}>{user.email}</Text>
               ) : null}
               {roles.length > 0 ? (
                 <View style={styles.badges}>
@@ -257,12 +257,7 @@ export function AccountSheet() {
           <ListRow title="Version" value={appVersionLabel()} divider={false} />
         </Container>
 
-        <View style={{ gap: spacing.sm }}>
-          <Button title="Sign out" fullWidth loading={signingOut} onPress={() => void signOut()} />
-          <Text style={[type.small, styles.center, { color: tokens.muted }]}>
-            Signs you out of Attend on this device and stops its notifications.
-          </Text>
-        </View>
+        <Button title="Sign out" fullWidth loading={signingOut} onPress={() => void signOut()} />
     </Sheet>
   );
 }
@@ -272,5 +267,4 @@ const styles = StyleSheet.create({
   identity: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 20, paddingVertical: 16 },
   identityText: { flex: 1, minWidth: 0 },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
-  center: { textAlign: 'center' },
 });
