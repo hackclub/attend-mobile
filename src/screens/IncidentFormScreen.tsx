@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
@@ -19,7 +19,8 @@ import {
   SwitchRow,
   TextField,
 } from '../components/forms';
-import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
+import { Button as KitButton, Container } from '../components/ui';
+import { useThemedStyles, type Theme, type ThemeColors } from '../theme';
 import type {
   IncidentFormOptions,
   IncidentInput,
@@ -36,7 +37,6 @@ let medicationKey = 0;
 const blankMedication = (): MedicationRow => ({ key: `new-${medicationKey++}`, name: '', dose: '', notes: '' });
 
 export function IncidentFormScreen() {
-  const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<Nav>();
   const { params } = useRoute<Route>();
@@ -224,10 +224,19 @@ export function IncidentFormScreen() {
           <Field label="Location" optional description="For example: Main Hall, Room 204">
             <TextField value={location} onChangeText={setLocation} placeholder="Location" />
           </Field>
-          <TouchableOpacity onPress={() => setShowChart(v => !v)}>
-            <Text style={styles.link}>{showChart ? 'Hide the triage chart' : 'Which level? The triage chart'}</Text>
-          </TouchableOpacity>
-          {showChart ? <LevelChart levels={options.levels} /> : null}
+          <KitButton
+            title={showChart ? 'Hide the triage chart' : 'Which level? The triage chart'}
+            variant="link"
+            icon={showChart ? 'chevron-up' : 'chevron-down'}
+            iconPosition="end"
+            onPress={() => setShowChart(v => !v)}
+            style={styles.chartToggle}
+          />
+          {showChart ? (
+            <Container>
+              <LevelChart levels={options.levels} />
+            </Container>
+          ) : null}
         </Section>
 
         <Section title="People involved">
@@ -336,35 +345,46 @@ export function IncidentFormScreen() {
         {errors.length ? (
           <Notice tone="error">
             {errors.map(message => (
-              <Text key={message} style={[styles.errorText, { color: colors.status.error }]}>{message}</Text>
+              <Text key={message} style={styles.errorText}>{message}</Text>
             ))}
           </Notice>
         ) : null}
 
         <View style={styles.actions}>
-          <Button title="Cancel" variant="link" onPress={() => navigation.goBack()} />
           <Button title={editing ? 'Update incident' : 'Create incident'} variant="primary" onPress={submit} loading={saving} />
+          <Button title="Cancel" variant="link" onPress={() => navigation.goBack()} />
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  flex: { flex: 1 },
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { paddingBottom: 40 },
-  link: { fontSize: 14, fontWeight: '600', color: colors.text.accent },
-  hint: { fontSize: 13, color: colors.gray[600] },
-  medication: {
-    gap: 10,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.gray[200],
-  },
-  medicationHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  medicationTitle: { fontSize: 14, fontWeight: '700', color: colors.gray[800] },
-  errorText: { fontSize: 14 },
-  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, paddingHorizontal: 16, paddingTop: 18 },
-});
+const makeStyles = (_colors: ThemeColors, theme: Theme) => {
+  const { tokens: t, type, spacing, radii } = theme;
+  return StyleSheet.create({
+    flex: { flex: 1 },
+    container: { flex: 1, backgroundColor: t.bg },
+    content: { paddingBottom: 40 },
+    chartToggle: { alignSelf: 'flex-start', paddingHorizontal: 0 },
+    hint: { ...type.body, color: t.text2 },
+    medication: {
+      gap: spacing.md,
+      padding: spacing.md,
+      borderRadius: radii.item,
+      borderWidth: 1,
+      borderColor: t.div2,
+      backgroundColor: t.shaded,
+    },
+    medicationHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    medicationTitle: { ...type.label, color: t.textH },
+    errorText: { ...type.body, color: t.error },
+    actions: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.xl,
+    },
+  });
+};
