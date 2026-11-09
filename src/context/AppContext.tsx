@@ -8,6 +8,8 @@ import { mergeParticipant, type ParticipantUpdate } from '../services/participan
 import { forbiddenParticipants } from '../services/eventAccess';
 import { clearHeadshotCache, prefetchHeadshots } from '../services/headshotCache';
 import { activeParticipants } from '../services/participantStatus';
+import { biometricService } from '../services/biometric';
+import { PrivacyCover } from '../components/PrivacyCover';
 import type { User, Event, Participant, AuthState, SyncState } from '../types';
 
 // Withdrawn and rejected registrations are still in the synced roster but are
@@ -271,8 +273,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return false;
   }, []);
 
+  // The UI signs out at once. authService.logout talks to the server
+  // (best-effort, time-limited) before wiping the token, and ends the
+  // biometric unlock; the local caches are cleared alongside it.
   const logout = useCallback(async (): Promise<void> => {
     eventSelectionGenerationRef.current += 1;
+    biometricService.clearSession();
     dispatch({ type: 'CLEAR_AUTH' });
     const results = await Promise.allSettled([
       authService.logout(),
@@ -413,7 +419,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     stopLiveActivity,
   };
 
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+  return (
+    <AppContext.Provider value={value}>
+      {children}
+      <PrivacyCover />
+    </AppContext.Provider>
+  );
 }
 
 export function useApp(): AppContextValue {

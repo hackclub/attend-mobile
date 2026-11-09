@@ -2,7 +2,22 @@ import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { secureStorage, KeychainLockedError } from './storage';
 import { api } from './api';
+import { biometricService } from './biometric';
+import { notificationService } from './notifications';
 import type { User } from '../types';
+
+// Sign-out waits at most this long for the server before clearing locally.
+export const LOGOUT_NETWORK_TIMEOUT_MS = 3_000;
+
+// Settles with the promise, or rejects once `ms` has passed. The promise
+// itself keeps running; its result is just no longer waited for.
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('Timed out')), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -125,8 +140,8 @@ export const authService = {
       try {
         const isValid = await api.validateToken();
         if (!isValid) {
-          // Token is explicitly invalid (401), logout
-          await this.logout();
+          // Token is explicitly invalid (401): nothing left to revoke.
+          await this.logout({ revoke: false });
           return { success: false, error: 'Session expired' };
         }
         
@@ -156,7 +171,31 @@ export const authService = {
     }
   },
 
-  async logout(): Promise<void> {
+  /**
+   * Signs out of this device.
+   *
+   * Ends the biometric unlock straight away. With `revoke` (the default) it
+   * then tells the server, best-effort: removes this device's push token and
+   * revokes the bearer token. Those calls need the token, so they run before
+   * it's cleared, but each is capped at LOGOUT_NETWORK_TIMEOUT_MS and any
+   * failure is ignored: being offline must never keep someone signed in.
+   * Last, it wipes the stored token and user.
+   */
+  async logout({ revoke = true }: { revoke?: boolean } = {}): Promise<void> {
+    biometricService.clearSession();
+    if (revoke) {
+      const signedOutToken = await secureStorage.getToken().catch(() => null);
+      if (signedOutToken) {
+        await Promise.allSettled([
+          withTimeout(notificationService.unregisterToken(LOGOUT_NETWORK_TIMEOUT_MS), LOGOUT_NETWORK_TIMEOUT_MS),
+          withTimeout(api.deleteSession(LOGOUT_NETWORK_TIMEOUT_MS), LOGOUT_NETWORK_TIMEOUT_MS),
+        ]);
+        // Someone signed straight back in while we waited: their new token
+        // isn't ours to wipe.
+        const current = await secureStorage.getToken().catch(() => null);
+        if (current && current !== signedOutToken) return;
+      }
+    }
     await secureStorage.clear();
   },
 

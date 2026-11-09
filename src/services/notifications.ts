@@ -13,6 +13,12 @@ Notifications.setNotificationHandler({
   }),
 });
 
+const EXPO_PROJECT_ID = '1eae2e71-70e1-49b2-8b6a-6aeda7e22b93';
+
+// The token this install last registered, so sign-out can remove it without
+// asking Expo for it again.
+let registeredToken: string | null = null;
+
 export const notificationService = {
   async registerForPushNotifications(): Promise<string | null> {
     if (!Device.isDevice) {
@@ -43,7 +49,7 @@ export const notificationService = {
     }
 
     const token = await Notifications.getExpoPushTokenAsync({
-      projectId: '1eae2e71-70e1-49b2-8b6a-6aeda7e22b93',
+      projectId: EXPO_PROJECT_ID,
     });
 
     return token.data;
@@ -54,13 +60,12 @@ export const notificationService = {
       const token = await this.registerForPushNotifications();
       if (!token) return false;
 
+      registeredToken = token;
       await api.registerPushToken(token);
-      console.log('Push token registered with server');
       return true;
     } catch (error) {
       // 422 "Token has already been taken" means it's already registered - treat as success
       if (error instanceof ApiError && error.status === 422) {
-        console.log('Push token already registered');
         return true;
       }
       console.error('Failed to register push token:', error);
@@ -68,15 +73,20 @@ export const notificationService = {
     }
   },
 
-  async unregisterToken(): Promise<void> {
-    try {
-      const token = await Notifications.getExpoPushTokenAsync({
-        projectId: '1eae2e71-70e1-49b2-8b6a-6aeda7e22b93',
-      });
-      await api.unregisterPushToken(token.data);
-    } catch (error) {
-      console.error('Failed to unregister push token:', error);
+  // Removes this device's push token from the signed-in account, so a
+  // signed-out phone stops getting that user's messages. Throws on failure;
+  // the caller decides whether that matters.
+  async unregisterToken(timeoutMs?: number): Promise<void> {
+    let token = registeredToken;
+    if (!token) {
+      // Never registered this launch. Only look the token up if we could
+      // have registered it, so sign-out never triggers a permission prompt.
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== 'granted' || !Device.isDevice) return;
+      token = (await Notifications.getExpoPushTokenAsync({ projectId: EXPO_PROJECT_ID })).data;
     }
+    await api.unregisterPushToken(token, timeoutMs);
+    registeredToken = null;
   },
 
   addNotificationReceivedListener(

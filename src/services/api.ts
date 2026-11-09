@@ -195,6 +195,11 @@ class ApiClient {
     });
   }
 
+  // Revokes the bearer token on the server (`resource :session` destroy).
+  async deleteSession(timeoutMs?: number): Promise<void> {
+    await this.request('/api/v1/session', { method: 'DELETE' }, timeoutMs);
+  }
+
   async getCurrentUser(): Promise<User> {
     // /api/v1/me returns the user fields at the top level (not wrapped in
     // `data`). Tolerate a legacy `{ data }` shape just in case.
@@ -371,11 +376,14 @@ class ApiClient {
     });
   }
 
-  async unregisterPushToken(token: string): Promise<void> {
-    await this.request(`/api/v1/push_tokens`, {
-      method: 'DELETE',
-      body: JSON.stringify({ token }),
-    });
+  // The server route is `resources :push_tokens, param: :token`, so the
+  // token goes in the path; a DELETE to the bare collection has no route.
+  async unregisterPushToken(token: string, timeoutMs?: number): Promise<void> {
+    await this.request(
+      `/api/v1/push_tokens/${encodeURIComponent(token)}`,
+      { method: 'DELETE' },
+      timeoutMs
+    );
   }
 
   async getParticipantNotes(eventId: string, participantEventId: string): Promise<ParticipantNote[]> {
