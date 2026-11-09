@@ -13,6 +13,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
 import type { AppleIcon } from 'react-native-bottom-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { StatusBar } from 'expo-status-bar';
 import * as Linking from 'expo-linking';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -118,6 +119,8 @@ const PassStack = createNativeStackNavigator<PassStackParamList>();
 // Pushed screens draw their own back link and title (components/ui/Screen),
 // so no stack shows a native header.
 const STACK_OPTIONS = { headerShown: false } as const;
+// Forms that create or compose open modally, with Cancel and Save in their bar.
+const FORM_MODAL_OPTIONS = { presentation: 'modal' } as const;
 
 function useNavigationTheme() {
   const { colors, isDark } = useTheme();
@@ -169,12 +172,13 @@ function OverviewTab() {
       <OverviewStack.Screen name="EventHome" component={EventHome} />
       <OverviewStack.Screen name="IncidentList" getComponent={lazyScreens.IncidentList} />
       <OverviewStack.Screen name="IncidentDetail" getComponent={lazyScreens.IncidentDetail} />
-      <OverviewStack.Screen name="IncidentForm" getComponent={lazyScreens.IncidentForm} />
-      <OverviewStack.Screen name="IncidentReport" getComponent={lazyScreens.IncidentReport} />
+      <OverviewStack.Screen name="IncidentForm" getComponent={lazyScreens.IncidentForm} options={FORM_MODAL_OPTIONS} />
+      <OverviewStack.Screen name="IncidentReport" getComponent={lazyScreens.IncidentReport} options={FORM_MODAL_OPTIONS} />
       <OverviewStack.Screen name="MessageList" getComponent={lazyScreens.MessageList} />
       <OverviewStack.Screen name="MessageDetail" getComponent={lazyScreens.MessageDetail} />
-      <OverviewStack.Screen name="MessageCompose" getComponent={lazyScreens.MessageCompose} />
-      <OverviewStack.Screen name="MessagePreview" getComponent={lazyScreens.MessagePreview} />
+      <OverviewStack.Screen name="MessageCompose" getComponent={lazyScreens.MessageCompose} options={FORM_MODAL_OPTIONS} />
+      {/* Over the composer: a pushed screen would go under its modal on iOS. */}
+      <OverviewStack.Screen name="MessagePreview" getComponent={lazyScreens.MessagePreview} options={FORM_MODAL_OPTIONS} />
     </OverviewStack.Navigator>
   );
 }
@@ -224,7 +228,7 @@ function PassStackNavigator() {
       <PassStack.Screen name="TicketDetail" component={TicketDetailScreen} />
       <PassStack.Screen name="Inbox" getComponent={lazyScreens.Inbox} />
       <PassStack.Screen name="InboxMessage" getComponent={lazyScreens.InboxMessage} />
-      <PassStack.Screen name="IncidentReport" getComponent={lazyScreens.IncidentReport} />
+      <PassStack.Screen name="IncidentReport" getComponent={lazyScreens.IncidentReport} options={FORM_MODAL_OPTIONS} />
     </PassStack.Navigator>
   );
 }
@@ -378,11 +382,13 @@ const isScannerLink = (url: string) => /^attend:\/\/(--\/)?scan(ner)?(\/|\?|$)/.
 export default Sentry.wrap(function App() {
   return (
     <SafeAreaProvider>
-      <ThemeProvider>
-        <AppProvider>
-          <AppNavigation />
-        </AppProvider>
-      </ThemeProvider>
+      <KeyboardProvider>
+        <ThemeProvider>
+          <AppProvider>
+            <AppNavigation />
+          </AppProvider>
+        </ThemeProvider>
+      </KeyboardProvider>
     </SafeAreaProvider>
   );
 });

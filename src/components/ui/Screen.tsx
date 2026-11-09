@@ -11,9 +11,11 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { useNavigation, useNavigationState } from '@react-navigation/native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useTheme } from '../../theme';
 import { useScreenInsets } from '../../hooks/useScreenInsets';
 import { backLabelFor, previousRoute } from '../../navigation/backLabels';
+import { Button } from './Button';
 import { Icon } from './Icon';
 import { PressableSurface } from './PressableSurface';
 
@@ -33,6 +35,12 @@ export interface ScreenHeadingProps {
   onBack?: () => void;
   /** Inline action: beside the title, or on the back link's row without one. */
   action?: ReactNode;
+  /**
+   * A modal form's bar in place of the back link: Cancel on the left (going
+   * back, which a discard guard can stop) and `confirm`, e.g. Save, on the
+   * right.
+   */
+  modalBar?: { confirm?: ReactNode; cancelLabel?: string; onCancel?: () => void };
 }
 
 /** The back link's label, or null when this screen is the bottom of every stack. */
@@ -44,10 +52,35 @@ function useBackLabel(back: ScreenHeadingProps['back']): string | null {
 }
 
 /** The scaffold's top: an accent "‹ Label" back link, the title, and an action. */
-export function ScreenHeading({ title, back, onBack, action }: ScreenHeadingProps) {
+export function ScreenHeading({ title, back, onBack, action, modalBar }: ScreenHeadingProps) {
   const { tokens, type, hitTarget } = useTheme();
   const navigation = useNavigation();
-  const backLabel = useBackLabel(back);
+  const backLabel = useBackLabel(modalBar ? false : back);
+
+  if (modalBar) {
+    return (
+      <View style={styles.heading}>
+        <View style={styles.row}>
+          <Button
+            variant="link"
+            title={modalBar.cancelLabel ?? 'Cancel'}
+            onPress={modalBar.onCancel ?? (() => navigation.goBack())}
+            style={styles.cancel}
+          />
+          <View style={styles.fill} />
+          {modalBar.confirm}
+        </View>
+        {title ? (
+          <View style={styles.row}>
+            <Text style={[type.h1, styles.fill, { color: tokens.textH }]} accessibilityRole="header">
+              {title}
+            </Text>
+            {action}
+          </View>
+        ) : null}
+      </View>
+    );
+  }
 
   const backLink = backLabel ? (
     <PressableSurface
@@ -107,6 +140,13 @@ export interface ScreenProps extends ScreenHeadingProps {
   scrollViewProps?: Omit<ScrollViewProps, 'contentContainerStyle' | 'refreshControl' | 'children'>;
   /** Background: the page (default) or the shaded variant. */
   shaded?: boolean;
+  /** Scroll the focused field clear of the keyboard (forms). */
+  keyboardAware?: boolean;
+  /**
+   * Presented modally: iOS draws it as a page sheet below the status bar, so
+   * it needs no top inset there.
+   */
+  modal?: boolean;
 }
 
 /**
@@ -124,10 +164,13 @@ export function Screen({
   contentContainerStyle,
   scrollViewProps,
   shaded = false,
+  keyboardAware = false,
+  modal = false,
   ...heading
 }: ScreenProps) {
   const { tokens, spacing } = useTheme();
-  const insets = useScreenInsets();
+  const screenInsets = useScreenInsets();
+  const insets = modal && Platform.OS === 'ios' ? { ...screenInsets, top: spacing.md } : screenInsets;
   const background = { backgroundColor: shaded ? tokens.shaded : tokens.bg };
 
   if (!scroll) {
@@ -141,8 +184,10 @@ export function Screen({
     );
   }
 
+  const Scroller = keyboardAware ? KeyboardAwareScrollView : ScrollView;
   return (
-    <ScrollView
+    <Scroller
+      bottomOffset={keyboardAware ? spacing.xxl : undefined}
       style={[styles.screen, background]}
       contentInsetAdjustmentBehavior="never"
       {...scrollViewProps}
@@ -166,7 +211,7 @@ export function Screen({
     >
       <ScreenHeading {...heading} />
       {children}
-    </ScrollView>
+    </Scroller>
   );
 }
 
@@ -178,5 +223,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   fill: { flex: 1 },
   back: { alignSelf: 'flex-start', borderRadius: 8, marginLeft: -4 },
+  cancel: { marginLeft: -12 },
   backContent: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingRight: 8, paddingLeft: 2 },
 });

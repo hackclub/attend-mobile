@@ -42,7 +42,7 @@ export function MessagePreviewScreen() {
 
   if (!event || !preview) {
     return (
-      <Screen title={TITLE} scroll={false}>
+      <Screen modal title={TITLE} scroll={false}>
         {!event ? (
           <ErrorView message="Pick an event on the Overview tab first." />
         ) : error ? (
@@ -98,7 +98,7 @@ export function MessagePreviewScreen() {
   const more = preview.total_count - shown.length;
 
   return (
-    <Screen title={TITLE}>
+    <Screen modal title={TITLE}>
       <Text style={[type.body, { color: tokens.muted }]}>Step 2 of 2 — Review and send your message</Text>
 
       <Container title={`Audience: ${preview.audience_label}`} bodyStyle={styles.section}>
