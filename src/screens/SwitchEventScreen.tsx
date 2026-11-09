@@ -103,7 +103,13 @@ export function SwitchEventList({
           { paddingTop: topPad, paddingBottom: insets.bottom + spacing.xxl, gap: spacing.md },
         ]}
         refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={tokens.accent} />
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={onRefresh}
+            tintColor={tokens.accent}
+            colors={[tokens.accent]}
+            progressBackgroundColor={tokens.bg}
+          />
         }
       >
         <View style={styles.header}>
