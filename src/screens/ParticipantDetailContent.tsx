@@ -16,6 +16,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { EmergencyContactCard } from '../components/EmergencyContactCard';
+import { ParticipantWebLink } from '../components/ParticipantWebLink';
 import {
   Avatar,
   Badge,
@@ -24,6 +25,7 @@ import {
   Divider,
   Icon,
   KeyValue,
+  PressableSurface,
   StatusGlyph,
   TextField,
   type BadgeColor,
@@ -37,6 +39,7 @@ import { api } from '../services/api';
 import { buildPhoneActions } from '../services/contactLinks';
 import { checkInDetail, participantDetailLine } from '../services/participantCheckIn';
 import { isWithdrawn } from '../services/participantStatus';
+import { travelDayTime } from '../services/travelTimes';
 import { useTheme } from '../theme';
 import { BiometricGate } from '../components/BiometricGate';
 import { optionsSheet } from '../navigation/sheetData';
@@ -53,6 +56,11 @@ interface ParticipantDetailContentProps {
   underHeader?: boolean;
   /** Extra styles for the scrolling column, e.g. a pushed screen's max width. */
   contentContainerStyle?: StyleProp<ViewStyle>;
+  /**
+   * Show the "View on attend.hackclub.com" icon beside the name. A pushed
+   * screen turns it off and puts it in its header instead.
+   */
+  webLink?: boolean;
 }
 
 /**
@@ -75,6 +83,7 @@ function ParticipantDetailBody({
   bottomInset = 32,
   underHeader = false,
   contentContainerStyle,
+  webLink = true,
 }: ParticipantDetailContentProps) {
   const { tokens, type } = useTheme();
   const { state, updateParticipant } = useApp();
@@ -369,14 +378,6 @@ function ParticipantDetailBody({
     navigation.navigate('IdCheck', { participant: currentParticipant, eventId: state.currentEvent.id });
   };
 
-  const handleOpenInBrowser = () => {
-    if (!state.currentEvent) return;
-    const url = `https://attend.hackclub.com/admin/events/${state.currentEvent.slug}/participants/${currentParticipant.participant_event_id}`;
-    Linking.openURL(url).catch(() => {
-      Alert.alert('Error', 'Unable to open browser');
-    });
-  };
-
   const handleWriteBadge = async () => {
     if (isWritingBadge) return;
 
@@ -457,6 +458,7 @@ function ParticipantDetailBody({
               <Text style={[type.body, styles.statusText, { color: status.color }]}>{status.text}</Text>
             </View>
           </View>
+          {webLink && <ParticipantWebLink participantEventId={currentParticipant.participant_event_id} />}
         </View>
 
         {safetyItems.length > 0 && (
@@ -465,7 +467,7 @@ function ParticipantDetailBody({
               <View key={item.title} style={styles.safetyItem} accessible accessibilityLabel={[item.title, item.detail].filter(Boolean).join(': ')}>
                 <Icon name={item.icon} size={20} color={item.color} />
                 <View style={styles.safetyText}>
-                  <Text style={[type.label, { color: item.color }]}>{item.title}</Text>
+                  <Text style={[type.label, { color: tokens.textH }]}>{item.title}</Text>
                   {item.detail ? (
                     <Text style={[type.body, { color: tokens.text2 }]}>{item.detail}</Text>
                   ) : null}
@@ -502,14 +504,6 @@ function ParticipantDetailBody({
               style={styles.actionButton}
             />
           )}
-          <Button
-            title="View on attend.hackclub.com"
-            icon="external-link"
-            iconPosition="end"
-            variant="link"
-            onPress={handleOpenInBrowser}
-            style={styles.fullAction}
-          />
         </View>
 
         <Section title="Contact Information">
@@ -533,22 +527,22 @@ function ParticipantDetailBody({
         {(currentParticipant.allergies || currentParticipant.medical_conditions || currentParticipant.medications || currentParticipant.medical_detail) && (
           <Section title="Medical Information">
             {currentParticipant.allergies && (
-              <InfoRow label="Allergies" value={currentParticipant.allergies} highlight />
+              <InfoRow label="Allergies" value={currentParticipant.allergies} />
             )}
             {currentParticipant.medical_detail?.allergy_severity && (
-              <InfoRow label="Allergy Severity" value={currentParticipant.medical_detail.allergy_severity} highlight />
+              <InfoRow label="Allergy Severity" value={currentParticipant.medical_detail.allergy_severity} />
             )}
             {currentParticipant.medical_conditions && (
-              <InfoRow label="Medical Conditions" value={currentParticipant.medical_conditions} highlight />
+              <InfoRow label="Medical Conditions" value={currentParticipant.medical_conditions} />
             )}
             {currentParticipant.medications && (
               <InfoRow label="Medications" value={currentParticipant.medications} />
             )}
             {currentParticipant.requires_refrigeration && (
-              <InfoRow label="Refrigeration Required" value="Yes" highlight />
+              <InfoRow label="Refrigeration Required" value="Yes" />
             )}
             {currentParticipant.medical_detail?.emergency_action_plan && (
-              <InfoRow label="Emergency Action Plan" value={currentParticipant.medical_detail.emergency_action_plan} highlight />
+              <InfoRow label="Emergency Action Plan" value={currentParticipant.medical_detail.emergency_action_plan} />
             )}
             {currentParticipant.medical_detail?.additional_notes && (
               <InfoRow label="Additional Notes" value={currentParticipant.medical_detail.additional_notes} />
@@ -562,10 +556,10 @@ function ParticipantDetailBody({
               <InfoRow label="Diet Type" value={currentParticipant.diet_type} />
             )}
             {currentParticipant.life_threatening_allergies && (
-              <InfoRow label="Life-Threatening Allergies" value={currentParticipant.life_threatening_allergies} highlight />
+              <InfoRow label="Life-Threatening Allergies" value={currentParticipant.life_threatening_allergies} />
             )}
             {currentParticipant.cross_contamination_risk && (
-              <InfoRow label="Cross Contamination Risk" value="Yes" highlight />
+              <InfoRow label="Cross Contamination Risk" value="Yes" />
             )}
             {currentParticipant.dietary_detail?.intolerances && (
               <InfoRow label="Intolerances" value={currentParticipant.dietary_detail.intolerances} />
@@ -592,7 +586,7 @@ function ParticipantDetailBody({
           <InfoRow label="High Support Needs" value={currentParticipant.high_support_flag ? 'Yes' : 'No'} />
           <InfoRow label="Can Leave Unaccompanied" value={currentParticipant.can_leave_unaccompanied ? 'Yes' : 'No'} />
           {currentParticipant.safeguarding_detail?.high_support_notes && (
-            <InfoRow label="High Support Notes" value={currentParticipant.safeguarding_detail.high_support_notes} highlight />
+            <InfoRow label="High Support Notes" value={currentParticipant.safeguarding_detail.high_support_notes} />
           )}
           {currentParticipant.safeguarding_detail?.authorized_pickup_adults && (
             <InfoRow label="Authorized for Pickup" value={currentParticipant.safeguarding_detail.authorized_pickup_adults} />
@@ -664,6 +658,7 @@ function ParticipantDetailBody({
             title="Inbound Travel"
             travel={currentParticipant.travel_inbound}
             canViewPii={canViewParticipantPii}
+            timeZone={state.currentEvent?.timezone}
           />
         )}
         {currentParticipant.travel_outbound && (
@@ -671,6 +666,7 @@ function ParticipantDetailBody({
             title="Outbound Travel"
             travel={currentParticipant.travel_outbound}
             canViewPii={canViewParticipantPii}
+            timeZone={state.currentEvent?.timezone}
           />
         )}
 
@@ -861,7 +857,7 @@ function AccommodationSection({ accommodation: a }: { accommodation: Accommodati
         <InfoRow label="Preferred Roommate Genders" value={a.preferred_roommate_genders.join(', ').replace(/_/g, ' ')} />
       ) : null}
       {a.roommate_preferences && <InfoRow label="Roommate Preferences" value={a.roommate_preferences} />}
-      {a.roommate_exclusions && <InfoRow label="Roommate Exclusions" value={a.roommate_exclusions} highlight />}
+      {a.roommate_exclusions && <InfoRow label="Roommate Exclusions" value={a.roommate_exclusions} />}
       {a.room_type_preference && <InfoRow label="Room Type" value={a.room_type_preference} />}
       {a.quiet_room_preference && <InfoRow label="Quiet Room" value="Yes" />}
       {a.accessibility_needs && <InfoRow label="Accessibility Needs" value={a.accessibility_needs} />}
@@ -1027,91 +1023,152 @@ function Section({ title, actions, children }: { title: string; actions?: React.
   );
 }
 
+const TRAVEL_MODE_LABELS: Record<string, string> = {
+  plane: 'Flight',
+  train: 'Train',
+  car: 'Car',
+  bus: 'Bus',
+  other: 'Other',
+};
+
+function legStatusColor(status?: string): BadgeColor {
+  switch (status?.toLowerCase()) {
+    case 'arrived': return 'green';
+    case 'departed':
+    case 'enroute': return 'blue';
+    case 'delayed':
+    case 'diverted': return 'yellow';
+    case 'cancelled': return 'red';
+    default: return 'grey';
+  }
+}
+
+/** "Sat 14 Nov, 10:30 AM" in the event's timezone, for a leg's details. */
+function formatTravelDateTime(iso: string | undefined, timeZone?: string): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  const options: Intl.DateTimeFormatOptions = {
+    weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
+  };
+  try {
+    return date.toLocaleString(undefined, { ...options, timeZone });
+  } catch {
+    return date.toLocaleString(undefined, options);
+  }
+}
+
+interface TravelLegSummary {
+  key: string;
+  /** "QF1401", "Train" */
+  title: string;
+  /** "Sat 10:30 AM · Sydney → Canberra" */
+  summary: string;
+  status?: string;
+  /** When the airport pickup collected them, formatted. */
+  pickedUpAt?: string;
+  details: { label: string; value: string }[];
+}
+
+// One row per leg: each flight leg, or the whole journey for the other modes.
+function travelLegs(travel: Travel, canViewPii: boolean, timeZone?: string): TravelLegSummary[] {
+  const mode = TRAVEL_MODE_LABELS[travel.mode || ''] || 'Unknown';
+  const at = (iso?: string) => travelDayTime(iso, timeZone);
+  const full = (iso?: string) => formatTravelDateTime(iso, timeZone);
+  const route = (from?: string, to?: string) => (from || to ? `${from || '---'} → ${to || '---'}` : null);
+  const join = (...bits: (string | null | undefined)[]) => bits.filter(Boolean).join(' · ');
+  const rows = (pairs: [string, string | null | undefined][]) =>
+    pairs.filter((pair): pair is [string, string] => !!pair[1]).map(([label, value]) => ({ label, value }));
+
+  if (travel.mode === 'plane' && travel.legs?.length) {
+    return travel.legs.map((leg) => {
+      const departs = leg.live_departure_time || leg.departure_time;
+      const arrives = leg.live_arrival_time || leg.arrival_time;
+      return {
+        key: leg.id,
+        title: leg.flight_code || 'Flight',
+        summary: join(at(departs), route(leg.departure_airport, leg.arrival_airport)),
+        status: leg.live_status,
+        pickedUpAt: full(leg.airport_picked_up_at) ?? undefined,
+        details: rows([
+          ['From', leg.departure_airport],
+          ['To', leg.arrival_airport],
+          ['Depart', full(departs) || 'N/A'],
+          ['Arrive', full(arrives) || 'N/A'],
+        ]),
+      };
+    });
+  }
+
+  if (travel.mode === 'train' || travel.mode === 'bus') {
+    const from = travel.mode === 'train'
+      ? travel.train_departure_station || travel.departure_station
+      : travel.bus_departure_location;
+    const to = travel.mode === 'train'
+      ? travel.train_arrival_station || travel.arrival_station
+      : travel.bus_arrival_location;
+    const train = travel.mode === 'train';
+    return [{
+      key: travel.id,
+      title: mode,
+      summary: join(at(travel.departure_time), route(from, to)),
+      details: rows([
+        [train ? 'Departure Station' : 'From', from],
+        [train ? 'Arrival Station' : 'To', to],
+        ['Departure', full(travel.departure_time)],
+        ['Arrival', full(travel.arrival_time)],
+      ]),
+    }];
+  }
+
+  if (travel.mode === 'car') {
+    // The pickup address for a car journey is the participant's doorstep,
+    // and it isn't in the payload for this role at all.
+    const from = travel.origin_address || (!canViewPii ? 'Address hidden for your role' : undefined);
+    return [{
+      key: travel.id,
+      title: mode,
+      summary: join(at(travel.expected_arrival_time), travel.origin_address),
+      details: rows([
+        ['From', from],
+        ['Expected Arrival', full(travel.expected_arrival_time)],
+      ]),
+    }];
+  }
+
+  return [{
+    key: travel.id,
+    title: mode,
+    summary: travel.mode === 'other' ? travel.other_details ?? '' : '',
+    details: rows([['Details', travel.mode === 'other' ? travel.other_details : undefined]]),
+  }];
+}
+
 function TravelSection({
   title,
   travel,
   canViewPii,
+  timeZone,
 }: {
   title: string;
   travel: Travel;
   canViewPii: boolean;
+  timeZone?: string;
 }) {
   const { tokens, type } = useTheme();
-  const getModeLabel = (mode?: string) => {
-    const modes: Record<string, string> = {
-      plane: 'Flight',
-      train: 'Train',
-      car: 'Car',
-      bus: 'Bus',
-      other: 'Other',
-    };
-    return modes[mode || ''] || 'Unknown';
-  };
-
-  const getStatusColor = (status?: string): BadgeColor => {
-    switch (status?.toLowerCase()) {
-      case 'arrived': return 'green';
-      case 'departed':
-      case 'enroute': return 'blue';
-      case 'delayed':
-      case 'diverted': return 'yellow';
-      case 'cancelled': return 'red';
-      default: return 'grey';
-    }
-  };
-
-  const formatDateTime = (dateString?: string) => {
-    if (!dateString) return null;
-    return new Date(dateString).toLocaleString();
-  };
+  const legs = travelLegs(travel, canViewPii, timeZone);
 
   return (
     <Section
       title={title}
       actions={travel.is_unaccompanied_minor ? <Badge label="UM" color="yellow" /> : undefined}
     >
-      <InfoRow label="Mode" value={getModeLabel(travel.mode)} />
-
-      {travel.mode === 'train' && (
-        <>
-          {(travel.train_departure_station || travel.departure_station) && (
-            <InfoRow label="Departure Station" value={(travel.train_departure_station || travel.departure_station)!} />
-          )}
-          {(travel.train_arrival_station || travel.arrival_station) && (
-            <InfoRow label="Arrival Station" value={(travel.train_arrival_station || travel.arrival_station)!} />
-          )}
-          {travel.departure_time && <InfoRow label="Departure" value={formatDateTime(travel.departure_time)!} />}
-          {travel.arrival_time && <InfoRow label="Arrival" value={formatDateTime(travel.arrival_time)!} />}
-        </>
-      )}
-
-      {travel.mode === 'car' && (
-        <>
-          {travel.origin_address ? (
-            <InfoRow label="From" value={travel.origin_address} />
-          ) : !canViewPii ? (
-            // The pickup address for a car journey is the participant's
-            // doorstep, and it isn't in the payload for this role at all.
-            <InfoRow label="From" value="Address hidden for your role" />
-          ) : null}
-          {travel.expected_arrival_time && (
-            <InfoRow label="Expected Arrival" value={formatDateTime(travel.expected_arrival_time)!} />
-          )}
-        </>
-      )}
-
-      {travel.mode === 'bus' && (
-        <>
-          {travel.bus_departure_location && <InfoRow label="From" value={travel.bus_departure_location} />}
-          {travel.bus_arrival_location && <InfoRow label="To" value={travel.bus_arrival_location} />}
-          {travel.departure_time && <InfoRow label="Departure" value={formatDateTime(travel.departure_time)!} />}
-          {travel.arrival_time && <InfoRow label="Arrival" value={formatDateTime(travel.arrival_time)!} />}
-        </>
-      )}
-
-      {travel.mode === 'other' && travel.other_details && (
-        <InfoRow label="Details" value={travel.other_details} />
-      )}
+      {legs.map((leg, index) => (
+        <React.Fragment key={leg.key}>
+          {index > 0 && <Divider />}
+          <TravelLegRow leg={leg} />
+        </React.Fragment>
+      ))}
 
       {travel.notes && <InfoRow label="Notes" value={travel.notes} />}
 
@@ -1124,30 +1181,55 @@ function TravelSection({
           {travel.visa_number && <InfoRow label="Number" value={travel.visa_number} />}
         </View>
       )}
+    </Section>
+  );
+}
 
-      {travel.legs && travel.legs.length > 0 && travel.legs.map((leg) => (
-        <View key={leg.id} style={styles.subsection}>
-          <Divider style={styles.legDivider} />
-          <View style={styles.personHeader}>
-            <Text style={[type.h3, styles.personName, { color: tokens.textH }]}>{leg.flight_code || 'N/A'}</Text>
-            {leg.live_status && <Badge label={capitalize(leg.live_status)} color={getStatusColor(leg.live_status)} />}
-          </View>
-          <Text style={[type.label, { color: tokens.text }]}>
-            {`${leg.departure_airport || '---'} → ${leg.arrival_airport || '---'}`}
-          </Text>
-          <InfoRow label="Depart" value={formatDateTime(leg.live_departure_time || leg.departure_time) || 'N/A'} />
-          <InfoRow label="Arrive" value={formatDateTime(leg.live_arrival_time || leg.arrival_time) || 'N/A'} />
-          {leg.airport_picked_up_at && (
+/** "QF1401 · Sat 10:30 AM · Sydney → Canberra"; tapping it opens the leg's details. */
+function TravelLegRow({ leg }: { leg: TravelLegSummary }) {
+  const { tokens, type, hitTarget } = useTheme();
+  const [open, setOpen] = useState(false);
+  const expandable = leg.details.length > 0 || !!leg.pickedUpAt;
+  const line = (
+    <View style={[styles.legRow, { minHeight: hitTarget }]}>
+      <Text style={[type.body, styles.legLine, { color: tokens.text2 }]} numberOfLines={open ? undefined : 1}>
+        <Text style={[type.label, { color: tokens.textH }]}>{leg.title}</Text>
+        {leg.summary ? ` · ${leg.summary}` : ''}
+      </Text>
+      {leg.status ? <Badge label={capitalize(leg.status)} color={legStatusColor(leg.status)} /> : null}
+      {leg.pickedUpAt ? <Icon name="check-circle" size={16} color={tokens.success} /> : null}
+      {expandable ? <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} color={tokens.muted} /> : null}
+    </View>
+  );
+
+  return (
+    <View>
+      {expandable ? (
+        <PressableSurface
+          onPress={() => setOpen((value) => !value)}
+          rippleColor={tokens.text}
+          rippleAlpha={0.1}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open }}
+          accessibilityHint={open ? 'Hides the leg details' : 'Shows the leg details'}
+        >
+          {line}
+        </PressableSurface>
+      ) : line}
+      {open && (
+        <View style={styles.legDetails}>
+          {leg.details.map((d) => <InfoRow key={d.label} label={d.label} value={d.value} />)}
+          {leg.pickedUpAt && (
             <View style={styles.pickedUp}>
               <Icon name="check-circle" size={16} color={tokens.success} />
               <Text style={[type.body, { color: tokens.success }]}>
-                Picked up {formatDateTime(leg.airport_picked_up_at)}
+                Picked up {leg.pickedUpAt}
               </Text>
             </View>
           )}
         </View>
-      ))}
-    </Section>
+      )}
+    </View>
   );
 }
 
@@ -1170,14 +1252,12 @@ interface InfoRowProps {
   label: string;
   value: string;
   onPress?: () => void;
-  highlight?: boolean;
   valueColor?: string;
   selectable?: boolean;
   accessibilityHint?: string;
 }
 
-function InfoRow({ label, value, onPress, highlight, valueColor, selectable, accessibilityHint }: InfoRowProps) {
-  const { tokens } = useTheme();
+function InfoRow({ label, value, onPress, valueColor, selectable, accessibilityHint }: InfoRowProps) {
   if (onPress) {
     return (
       <KeyValue
@@ -1190,7 +1270,7 @@ function InfoRow({ label, value, onPress, highlight, valueColor, selectable, acc
     <KeyValue
       label={label}
       value={value}
-      valueColor={valueColor ?? (highlight ? tokens.error : undefined)}
+      valueColor={valueColor}
       selectable={selectable}
     />
   );
@@ -1239,14 +1319,8 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexBasis: '40%',
   },
-  fullAction: {
-    flexBasis: '100%',
-  },
   itemDivider: {
     marginVertical: 8,
-  },
-  legDivider: {
-    marginBottom: 8,
   },
   personHeader: {
     flexDirection: 'row',
@@ -1277,6 +1351,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
+  },
+  legRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+  },
+  legLine: {
+    flex: 1,
+    minWidth: 0,
+  },
+  legDetails: {
+    paddingBottom: 6,
   },
   pickedUp: {
     flexDirection: 'row',

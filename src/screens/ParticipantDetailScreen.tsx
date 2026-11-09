@@ -4,6 +4,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
 import { BiometricGate } from '../components/BiometricGate';
+import { ParticipantWebLink } from '../components/ParticipantWebLink';
 import { Screen } from '../components/ui';
 import { useScreenInsets } from '../hooks/useScreenInsets';
 import { useTheme } from '../theme';
@@ -22,9 +23,16 @@ type Props = NativeStackScreenProps<AppStackParamList, 'ParticipantDetail'>;
 export function ParticipantDetailScreen({ route }: Props) {
   // Deep link params are untyped strings, whatever the route type says.
   const target = participantDetailTarget<Participant>(route.params);
+  const { state } = useApp();
+  // The web page's id: the pushed participant's, or a deep link's once the
+  // roster has them (the link carries no details, so it sits outside the gate).
+  const webId = 'participant' in target
+    ? target.participant.participant_event_id
+    : state.participants.find((p) => p.participant_event_id === target.id || p.participant_id === target.id)
+      ?.participant_event_id;
 
   return (
-    <Screen scroll={false}>
+    <Screen scroll={false} action={webId ? <ParticipantWebLink participantEventId={webId} /> : undefined}>
       {'participant' in target ? (
         <PushedParticipantDetail participant={target.participant} />
       ) : (
@@ -46,6 +54,7 @@ function PushedParticipantDetail({ participant }: { participant: Participant }) 
       topInset={0}
       bottomInset={bottom + 24}
       contentContainerStyle={styles.column}
+      webLink={false}
     />
   );
 }
