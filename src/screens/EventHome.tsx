@@ -31,7 +31,6 @@ import {
 import { useApp } from '../context/AppContext';
 import { useEventAccess } from '../hooks/useEventAccess';
 import { useEventScanContexts } from '../hooks/useEventScanContexts';
-import { scanContextSheet } from '../navigation/sheetData';
 import { useSwitcherEvents } from '../hooks/useSwitcherEvents';
 import { useTabBarInset, useTopTabBarInset } from '../hooks/useTabBarInset';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
@@ -41,7 +40,6 @@ import { eventDays } from '../services/eventDates';
 import { eventRoleLabel } from '../services/eventRoles';
 import { computeEventStats, formatPercent } from '../services/eventStats';
 import { liveActivityService } from '../services/liveActivity';
-import { kioskContextChoice } from '../services/scannerCore';
 import {
   inboundSummary,
   isCheckInLive,
@@ -54,7 +52,7 @@ import {
   type OverviewSection,
 } from '../services/overview';
 import { useTheme } from '../theme';
-import type { Event, MainTabParamList, AppStackParamList, ScanContext, TravelCalendarEntry } from '../types';
+import type { Event, MainTabParamList, AppStackParamList, TravelCalendarEntry } from '../types';
 import { SwitchEventList } from './SwitchEventScreen';
 
 type Navigation = NavigationProp<AppStackParamList & MainTabParamList>;
@@ -144,7 +142,7 @@ function Overview({
   const navigation = useNavigation<Navigation>();
   const { state, refreshParticipants, syncNow } = useApp();
   const access = useEventAccess();
-  const { contexts, isLoading: contextsLoading } = useEventScanContexts(event.id);
+  const { contexts } = useEventScanContexts(event.id);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const participants = state.participants;
@@ -191,26 +189,6 @@ function Overview({
 
   const openPeople = () => navigation.navigate('Search');
 
-  // Kiosk setup opens the way the scanner's More sheet opens it, with the
-  // same context rule: when the event has several contexts, staff pick one.
-  const startKiosk = (context?: ScanContext) =>
-    navigation.navigate('KioskSetup', { scanContextId: context?.id, scanContextName: context?.name });
-  const kioskChoice = kioskContextChoice(contexts);
-  const claimKioskContextSheet = scanContextSheet.useOpener({
-    title: 'Kiosk context',
-    eventName: event.name,
-    contexts: kioskChoice.kind === 'choose' ? kioskChoice.contexts : [],
-    onSelect: startKiosk,
-  });
-  const openKiosk = () => {
-    if (kioskChoice.kind === 'start') {
-      startKiosk(kioskChoice.context);
-      return;
-    }
-    claimKioskContextSheet();
-    navigation.navigate('ScanContextSheet');
-  };
-  const kioskReady = !(contextsLoading && contexts.length === 0);
   const twoColumns = width >= TWO_COLUMN_MIN_WIDTH;
   const days = eventDays(event);
   const running = !!days && days.untilStart <= 0 && days.untilEnd >= 0;
@@ -327,14 +305,6 @@ function Overview({
           subLabel={messagesLabel(messages, access.roleLabel)}
           disabled={messages.state === 'forbidden'}
           onPress={() => navigation.navigate('MessageList')}
-        />
-        <QuickActionTile
-          icon="lock-closed"
-          tint="red"
-          label="Kiosk"
-          subLabel={kioskReady ? 'Self-serve check-in' : 'Loading contexts'}
-          disabled={!kioskReady}
-          onPress={openKiosk}
         />
       </View>
     ),
