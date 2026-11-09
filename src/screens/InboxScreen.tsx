@@ -4,14 +4,17 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { api } from '../services/api';
 import {
+  EmptyState,
+  ErrorView,
+  isAndroid,
+  LoadingView,
   PressableSurface,
+  ripple,
   ROW_STATE_LAYER_ALPHA,
   Screen,
   TextField,
-  isAndroid,
-  ripple,
 } from '../components/ui';
-import { EmptyState, ErrorView, LoadingView, formatDateTime } from '../components/forms';
+import { formatDateTime } from '../components/forms';
 import { channelList } from '../components/messageStatus';
 import { spacing, useTheme } from '../theme';
 import type { InboxPage, AppStackParamList } from '../types';

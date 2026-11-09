@@ -7,13 +7,21 @@ import { useDiscardGuard } from '../hooks/useDiscardGuard';
 import { api } from '../services/api';
 import { hasUnsupportedFormatting, htmlToMarkup, markupToHtml } from '../services/richText';
 import { MarkupEditor, RichText } from '../components/RichText';
-import { Button, Container, Flashbar, Screen, StatusIndicator, TextField, Toggle } from '../components/ui';
+import {
+  Button,
+  Container,
+  ErrorView,
+  Flashbar,
+  LoadingView,
+  Screen,
+  StatusIndicator,
+  TextField,
+  Toggle,
+} from '../components/ui';
 import {
   CheckboxRow,
   DateTimeField,
-  ErrorView,
   Field,
-  LoadingView,
   MultiSelectField,
   SelectField,
 } from '../components/forms';

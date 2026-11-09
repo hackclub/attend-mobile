@@ -4,8 +4,8 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { api } from '../services/api';
 import { RichText } from '../components/RichText';
-import { ErrorView, LoadingView, formatDateTime } from '../components/forms';
-import { Badge, Button, Container, Screen } from '../components/ui';
+import { formatDateTime } from '../components/forms';
+import { Badge, Button, Container, ErrorView, LoadingView, Screen } from '../components/ui';
 import { CHANNEL_LABELS } from '../services/statusDisplay';
 import { spacing, useTheme } from '../theme';
 import type { InboxMessage, AppStackParamList } from '../types';

@@ -604,38 +604,6 @@ export function Notice({
   );
 }
 
-export function LoadingView() {
-  const { tokens } = useTheme();
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.center}>
-      <ActivityIndicator size="large" color={tokens.accent} />
-    </View>
-  );
-}
-
-export function ErrorView({ message, onRetry }: { message: string; onRetry?: () => void }) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.center}>
-      <Text style={styles.emptyTitle}>Couldn’t load this</Text>
-      <Text style={styles.emptyText}>{message}</Text>
-      {onRetry ? <Button title="Try again" onPress={onRetry} /> : null}
-    </View>
-  );
-}
-
-export function EmptyState({ title, message, action }: { title: string; message?: string; action?: ReactNode }) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.empty}>
-      <Text style={styles.emptyTitle}>{title}</Text>
-      {message ? <Text style={styles.emptyText}>{message}</Text> : null}
-      {action}
-    </View>
-  );
-}
-
 // "28 Oct 2026, 14:05" in the device's locale and zone.
 export function formatDateTime(iso?: string | null): string {
   if (!iso) return '';
@@ -678,7 +646,6 @@ function makeStyles(theme: Theme) {
   const { tokens: t, type, radii, spacing, hitTarget } = theme;
   return StyleSheet.create({
     flex: { flex: 1 },
-    center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.md, padding: spacing.xxl, backgroundColor: t.bg },
     section: { marginHorizontal: spacing.lg, marginTop: spacing.lg },
     sectionBody: { gap: spacing.lg },
     field: { gap: spacing.xs + 2 },
@@ -758,8 +725,5 @@ function makeStyles(theme: Theme) {
     },
     noticeIcon: { paddingTop: 2 },
     noticeText: { ...type.body, color: t.text },
-    empty: { alignItems: 'center', gap: spacing.sm, padding: spacing.xxxl },
-    emptyTitle: { ...type.h3, color: t.textH, textAlign: 'center' },
-    emptyText: { ...type.body, color: t.text2, textAlign: 'center' },
   });
 }

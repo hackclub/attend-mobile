@@ -19,16 +19,22 @@ import { api } from '../services/api';
 import {
   Button,
   CheckboxRow,
-  ErrorView,
   Field,
   LevelChart,
-  LoadingView,
   Notice,
   Section,
   SelectField,
   TextField,
 } from '../components/forms';
-import { Button as KitButton, Container, Icon, Screen, pressedStyle } from '../components/ui';
+import {
+  Button as KitButton,
+  Container,
+  ErrorView,
+  Icon,
+  LoadingView,
+  pressedStyle,
+  Screen,
+} from '../components/ui';
 import { useTheme, useThemedStyles, type Theme } from '../theme';
 import type { IncidentReportOptions, ReportAttachment, AppStackParamList } from '../types';
 
