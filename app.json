@@ -149,6 +149,7 @@
       "./plugins/withScannerOrientationFix",
       "./plugins/withKotlinJvmTargetFix",
       "./plugins/withAppShortcuts",
+      "./plugins/withKeepRuntimeResources",
       [
         "expo-build-properties",
         {
