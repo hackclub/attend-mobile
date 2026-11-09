@@ -1,11 +1,16 @@
-// Two token sets with an identical shape: `light` reproduces the original
-// palette exactly, `dark` re-points every token at the same *role* on a dark
-// page. Because the shapes match, a themed style block reads the same in both
-// schemes — `colors.gray[200]` is "hairline border" either way.
+// Legacy colour API, kept so screens that predate the redesign still compile
+// and run. Every role here is now aliased onto the console tokens in
+// ./tokens.ts, so old screens pick up the new palette; new code should read
+// `theme.tokens` (see ThemeProvider) instead of these names.
+//
+// Two token sets with an identical shape: a themed style block reads the same
+// in both schemes — `colors.gray[200]` is "hairline border" either way.
 //
 // The gray ramp is role-ordered, not lightness-ordered: 50 is the quietest
 // fill against the page, 900 is primary text. Dark mode runs that ramp the
 // other way round so existing call sites keep their meaning.
+
+import { darkTokens as dk, lightTokens as lt } from './tokens';
 
 // Brand hues. These are the same in both schemes: they are used as fills with
 // white text on top, and a Hack Club red that shifted with the system theme
@@ -29,23 +34,23 @@ export const lightColors = {
   ...brand,
 
   gray: {
-    50: '#F8FAFC',
-    100: '#F1F5F9',
-    200: '#E2E8F0',
-    300: '#CBD5E1',
-    400: '#94A3B8',
-    500: '#64748B',
-    600: '#475569',
-    700: '#334155',
-    800: '#1E293B',
-    900: '#0F172A',
+    50: lt.shaded,
+    100: lt.shaded,
+    200: lt.div2,
+    300: lt.div,
+    400: lt.disabled,
+    500: lt.muted,
+    600: lt.text2,
+    700: lt.text2,
+    800: lt.text,
+    900: lt.textH,
   },
 
   // The page itself, and the card material that sits on it.
-  background: '#F8FAFC',
-  surface: '#FFFFFF',
+  background: lt.shaded,
+  surface: lt.bg,
   // One step above `surface`, for a card nested inside another card.
-  surfaceRaised: '#FFFFFF',
+  surfaceRaised: lt.bg,
 
   glass: {
     light: 'rgba(255, 255, 255, 0.72)',
@@ -56,21 +61,20 @@ export const lightColors = {
   },
 
   text: {
-    primary: '#0F172A',
-    secondary: '#475569',
-    muted: '#94A3B8',
+    primary: lt.textH,
+    secondary: lt.text2,
+    muted: lt.muted,
     inverse: '#FFFFFF',
     // Red used as type or an icon rather than as a fill.
-    accent: '#EC3750',
+    accent: lt.accent,
   },
 
-  // Signal colors as foreground. Tuned per scheme so they stay legible
-  // against the page; the matching fills come from the brand hues above.
+  // Signal colors as foreground, legible against the page.
   status: {
-    success: '#33D6A6',
-    warning: '#FF8C37',
-    error: '#EC3750',
-    info: '#338EDA',
+    success: lt.success,
+    warning: lt.warning,
+    error: lt.error,
+    info: lt.info,
   },
 
   alert: {
@@ -90,29 +94,28 @@ export const darkColors: ThemeColors = {
   ...brand,
 
   // The light ramp read backwards by role: quiet fills at the bottom,
-  // primary text at the top. Values are hand-picked rather than mirrored so
-  // each step keeps roughly the contrast its light counterpart had.
+  // primary text at the top.
   gray: {
-    50: '#131C2A',
-    100: '#1A2435',
-    200: '#27344A',
-    300: '#374763',
-    400: '#8A9AB3',
-    500: '#9FAFC6',
-    600: '#B4C1D4',
-    700: '#CBD5E3',
-    800: '#E2E8F1',
-    900: '#F2F6FB',
+    50: dk.shaded,
+    100: dk.shaded,
+    200: dk.div2,
+    300: dk.div,
+    400: dk.disabled,
+    500: dk.muted,
+    600: dk.text2,
+    700: dk.text2,
+    800: dk.text,
+    900: dk.textH,
   },
 
-  background: '#0B1220',
-  surface: '#151E2E',
-  surfaceRaised: '#1C2739',
+  background: dk.bg,
+  surface: dk.shaded,
+  surfaceRaised: dk.div2,
 
   glass: {
-    light: 'rgba(21, 30, 46, 0.72)',
-    medium: 'rgba(21, 30, 46, 0.85)',
-    dark: 'rgba(21, 30, 46, 0.95)',
+    light: 'rgba(27, 35, 45, 0.72)',
+    medium: 'rgba(27, 35, 45, 0.85)',
+    dark: 'rgba(27, 35, 45, 0.95)',
     // A faint light ring, which is what gives a dark card its edge once the
     // shadow is gone.
     border: 'rgba(255, 255, 255, 0.10)',
@@ -120,19 +123,19 @@ export const darkColors: ThemeColors = {
   },
 
   text: {
-    primary: '#F2F6FB',
-    secondary: '#B4C1D4',
-    muted: '#8A9AB3',
+    primary: dk.textH,
+    secondary: dk.text2,
+    muted: dk.muted,
     // On dark, an "inverse" surface is a light one, so its text goes dark.
-    inverse: '#0B1220',
-    accent: '#FF667D',
+    inverse: dk.bg,
+    accent: dk.accent,
   },
 
   status: {
-    success: '#45E0B4',
-    warning: '#FFA259',
-    error: '#FF667D',
-    info: '#5BA8F5',
+    success: dk.success,
+    warning: dk.warning,
+    error: dk.error,
+    info: dk.info,
   },
 
   alert: {
