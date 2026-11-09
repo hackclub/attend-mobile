@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Linking, Modal, StyleSheet, Text, TouchableOpacity, View, type TextStyle } from 'react-native';
+import { Linking, Modal, Platform, Pressable, StyleSheet, Text, View, type TextStyle } from 'react-native';
+import { pressedStyle, ripple } from './ui/pressFeedback';
 import { Ionicons } from '@expo/vector-icons';
 import { parseHtml, type Block, type Inline } from '../services/richText';
 import { Button, TextField } from './forms';
-import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
+import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
 
 /** Renders a message body's HTML natively. */
 export function RichText({ html, size = 15 }: { html: string | null | undefined; size?: number }) {
@@ -104,7 +105,7 @@ export function MarkupEditor({
   onChangeText: (text: string) => void;
   placeholder?: string;
 }) {
-  const { colors } = useTheme();
+  const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const [selection, setSelection] = useState<Selection>({ start: value.length, end: value.length });
   const [linkOpen, setLinkOpen] = useState(false);
@@ -150,15 +151,16 @@ export function MarkupEditor({
     <View style={styles.editor}>
       <View style={styles.toolbar}>
         {tools.map(tool => (
-          <TouchableOpacity
+          <Pressable
             key={tool.label}
-            style={styles.tool}
+            style={({ pressed }) => [styles.tool, pressedStyle(pressed)]}
+            android_ripple={ripple(tokens.pressed, { foreground: true })}
             onPress={tool.onPress}
             accessibilityRole="button"
             accessibilityLabel={tool.label}
           >
             {tool.icon ? (
-              <Ionicons name={tool.icon} size={18} color={colors.gray[700]} />
+              <Ionicons name={tool.icon} size={18} color={tokens.text2} />
             ) : (
               <Text
                 style={[
@@ -170,7 +172,7 @@ export function MarkupEditor({
                 {tool.text}
               </Text>
             )}
-          </TouchableOpacity>
+          </Pressable>
         ))}
       </View>
       <TextField
@@ -205,35 +207,38 @@ export function MarkupEditor({
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+const makeStyles = (_colors: ThemeColors, { tokens }: Theme) => StyleSheet.create({
   flex: { flex: 1 },
   blocks: { gap: 10 },
-  text: { color: colors.gray[800] },
-  heading: { fontWeight: '700', color: colors.gray[900] },
+  text: { color: tokens.text },
+  heading: { fontWeight: '700', color: tokens.textH },
   bold: { fontWeight: '700' },
   italic: { fontStyle: 'italic' },
-  mono: { fontFamily: 'Menlo', backgroundColor: colors.gray[100] },
-  link: { color: colors.text.accent },
+  mono: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', backgroundColor: tokens.shaded },
+  link: { color: tokens.accent, textDecorationLine: 'underline' },
   list: { gap: 4 },
   listItem: { flexDirection: 'row', gap: 8 },
-  marker: { minWidth: 16, color: colors.gray[600] },
-  quote: { borderLeftWidth: 3, borderLeftColor: colors.gray[300], paddingLeft: 12, gap: 8 },
-  pre: { backgroundColor: colors.gray[100], borderRadius: 8, padding: 10 },
-  rule: { height: StyleSheet.hairlineWidth, backgroundColor: colors.gray[300] },
+  marker: { minWidth: 16, color: tokens.muted },
+  quote: { borderLeftWidth: 3, borderLeftColor: tokens.div, paddingLeft: 12, gap: 8 },
+  pre: { backgroundColor: tokens.shaded, borderRadius: 8, padding: 10 },
+  rule: { height: 1, backgroundColor: tokens.div2 },
   editor: { gap: 8 },
   toolbar: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   tool: {
     width: 38,
     height: 34,
     borderRadius: 8,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.gray[100],
+    borderWidth: 1,
+    borderColor: tokens.input,
+    backgroundColor: tokens.bg,
   },
-  toolText: { fontSize: 16, fontWeight: '800', color: colors.gray[700] },
+  toolText: { fontSize: 16, fontWeight: '800', color: tokens.text2 },
   editorInput: { minHeight: 180 },
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 },
-  dialog: { backgroundColor: colors.surface, borderRadius: 16, padding: 18, gap: 12 },
-  dialogTitle: { fontSize: 17, fontWeight: '700', color: colors.gray[900] },
+  backdrop: { flex: 1, backgroundColor: tokens.overlay, justifyContent: 'center', padding: 24 },
+  dialog: { backgroundColor: tokens.bg, borderRadius: 16, padding: 18, gap: 12 },
+  dialogTitle: { fontSize: 18, lineHeight: 22, fontWeight: '700', color: tokens.textH },
   dialogActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
 });
