@@ -377,15 +377,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return scheduleHeadshotPrefetch(state.participants);
   }, [state.participants]);
 
+  // Signed out there's no status worth reading; beginSession reads it once
+  // the scan queue belongs to the signed-in user, and changes arrive here.
   useEffect(() => {
-    const unsubscribe = syncService.subscribe((status) => {
+    return syncService.subscribe((status) => {
       dispatch({ type: 'SET_SYNC_STATUS', payload: status });
     });
-
-    refreshSyncStatus();
-
-    return unsubscribe;
-  }, [refreshSyncStatus]);
+  }, []);
 
   const login = useCallback(async (): Promise<boolean> => {
     const result = await authService.authenticate();
