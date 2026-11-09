@@ -18,6 +18,7 @@
       "**/*"
     ],
     "ios": {
+      "icon": "./assets/Attend.icon",
       "supportsTablet": true,
       "bundleIdentifier": "com.hackclub.attend",
       "entitlements": {
