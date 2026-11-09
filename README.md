@@ -13,17 +13,18 @@ Built with Expo / React Native, with native Swift modules for Live Activities an
 - **Offline-first** — scans queue locally when offline and sync automatically when connectivity returns
 - **Participant search & filtering** — Airtable-style filtering across the participant list, with medical alerts (anaphylaxis risk, high support needs) surfaced prominently
 - **Emergency contacts** — tap-to-call from a participant's detail view
-- **Airport mode** — live view of participants in transit: flight legs, arrival status, and unaccompanied-minor pickup tracking
-- **Kiosk mode** — PIN-locked self-serve check-in station for a spare iPad at the door
-- **Biometric lock** — Face ID / Touch ID gate on sensitive participant information
+- **Travel** — arrivals and departures by plane, train, bus or car, with unaccompanied-minor pickup tracking
+- **Kiosk mode** — self-serve check-in station on a spare device at the door, unlocked by staff with biometrics or a PIN
+- **Biometric lock** — full participant details, wherever they appear (including the iPad split view and ID checks), need the device's biometrics or passcode; an unlock lasts five minutes and ends when the app goes to the background or you sign out. The app is covered in the app switcher, and on Android screenshots are blocked while details are on screen
 - **Incident log** — log, edit, comment on and escalate event incidents to Hack Club HQ, with the same role-based visibility as the web
 - **Messages** — compose, preview, schedule and send email / SMS / Slack / push broadcasts, and follow each delivery
+- **Live Activities** — the event's check-in count on the Lock Screen and Dynamic Island (iOS)
 
 **For participants:**
 
 - **My tickets** — view event tickets with QR codes
-- **Apple Wallet** — add tickets as Wallet passes
-- **Live Activities** — event-day status on the Lock Screen and Dynamic Island
+- **Apple Wallet & Google Wallet** — add tickets as wallet passes
+- **Live Activities** — event-day ticket status on the Lock Screen and Dynamic Island (iOS)
 - **Push notifications** — event updates from organizers
 - **Inbox** — every organizer message, searchable by event, opened straight from its push notification
 - **Incident reports** — the confidential report to Hack Club HQ, with photo and file attachments
@@ -32,7 +33,7 @@ Built with Expo / React Native, with native Swift modules for Live Activities an
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 22.13+ or 24.3+ (what Expo SDK 58 and React Native 0.88 require)
 - Xcode (for iOS) or Android Studio (for Android)
 - Ruby with Bundler, for iOS — CocoaPods and its dependencies are pinned in the [Gemfile](Gemfile)
 - An [Attend](https://attend.hackclub.com) account
@@ -80,8 +81,8 @@ npm run typecheck  # tsc --noEmit
 
 ```
 src/
-  screens/     one file per screen (scanner, kiosk, airport mode, tickets, ...)
-  services/    api client, auth, offline sync, NFC, notifications, storage
+  screens/     one file per screen (scanner, kiosk, travel, tickets, ...)
+  services/    api client, auth, participant and scan sync, biometric lock, NFC, notifications, storage
   hooks/       useScanner, useParticipants, useNFC, useAuth, ...
   components/  shared UI
 modules/

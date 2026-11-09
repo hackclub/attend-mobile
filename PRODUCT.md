@@ -45,6 +45,7 @@ Attend is not positioned as a general event product for other organizations.
 - Offline state must be explicit. Cached data may remain available, but a disconnected device must not claim that an attendance mutation succeeded.
 - Context-specific attendance must remain distinct from general event check-in.
 - Medical, safeguarding, incident, and note data is sensitive, role-scoped product data. Scanner feedback may surface only the minimum safety information staff need at that checkpoint.
+- Full participant details always sit behind device authentication (biometrics or passcode), lock again when the app leaves the foreground, and are hidden from app-switcher snapshots.
 
 ## Brand Commitments
 
@@ -54,8 +55,8 @@ Attend is not positioned as a general event product for other organizations.
 
 ## Evidence on Hand
 
-- The parent product authority is `/Users/leo/Code/attend/PRODUCT.md`.
-- Existing organizer, participant, scanner, airport, kiosk, ticket, and participant-detail flows under `src/`.
+- The parent product authority is [`PRODUCT.md` in hackclub/attend](https://github.com/hackclub/attend/blob/main/PRODUCT.md).
+- Existing organizer, participant, scanner, travel, kiosk, ticket, and participant-detail flows under `src/`.
 - Existing Hack Club color tokens in `src/theme/colors.ts` and product assets under `assets/`.
 - Participant records already expose `headshot_url`, operational alerts, and per-context scan summaries.
 - The repository contains no approved performance benchmark, throughput claim, testimonial, or third-party customer evidence. Future work must not fabricate them.
