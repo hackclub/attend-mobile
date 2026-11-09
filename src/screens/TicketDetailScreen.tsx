@@ -14,9 +14,10 @@ import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BottomTabBarHeightContext } from 'react-native-bottom-tabs';
 import { setStatusBarStyle } from 'expo-status-bar';
-import QRCode from 'react-native-qrcode-svg';
 import { AccountButton } from '../components/AccountSheet';
 import { EventBanner, eventBannerText } from '../components/EventBanner';
+import { EventStatusCard } from '../components/EventStatusCard';
+import { TicketPass } from '../components/TicketPass';
 import { WalletButtons } from '../components/WalletButtons';
 import { rootNavigation } from '../navigation/rootNavigation';
 import {
@@ -26,15 +27,14 @@ import {
   openLiveUpdateSettings,
 } from '../../modules/activity-controller/src';
 import { api } from '../services/api';
+import { eventStatus } from '../services/eventStatus';
 import { resolveTabBarInset } from '../hooks/useTabBarInset';
 import { useTheme } from '../theme';
 import {
   Button,
   Container,
-  Icon,
-  KeyValue,
   ListRow,
-  StatusIndicator,
+  QuickActionTile,
   Toggle,
 } from '../components/ui';
 import type { AppStackParamList, Ticket } from '../types';
@@ -45,50 +45,11 @@ type Nav = NativeStackNavigationProp<AppStackParamList, 'TicketDetail'>;
 const HOTLINE = '+18556254225';
 const HOTLINE_DISPLAY = '+1 (855) 625 4225';
 
-// Times are shown in the event's timezone (not the device's) so a 9:30 AM
-// Pacific event reads as 9:30 AM wherever you open the app.
-function formatStart(iso?: string, timezone?: string): { date: string; time: string } {
-  if (!iso) return { date: '', time: '' };
-  try {
-    const d = new Date(iso);
-    const timeZone = timezone || undefined;
-    return {
-      date: d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone }),
-      time: d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZone }),
-    };
-  } catch {
-    // Invalid timezone identifiers throw — fall back to device-local.
-    try {
-      const d = new Date(iso);
-      return {
-        date: d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
-        time: d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
-      };
-    } catch {
-      return { date: '', time: '' };
-    }
-  }
-}
-
 function formatFlightWhen(iso?: string): string {
   if (!iso) return '';
   try {
     return new Date(iso).toLocaleString(undefined, {
       weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-  } catch {
-    return '';
-  }
-}
-
-function formatMessageWhen(iso?: string | null): string {
-  if (!iso) return '';
-  try {
-    return new Date(iso).toLocaleString(undefined, {
       month: 'short',
       day: 'numeric',
       hour: 'numeric',
@@ -137,12 +98,22 @@ export function TicketDetailScreen() {
     }, [barStyle]),
   );
 
+  // "Now" for the status card and banner, moved on whenever the pass comes
+  // back into view. The unread count on the Messages tile refreshes then too
+  // (reading a message clears it).
+  const [now, setNow] = useState(() => new Date());
+  const [unread, setUnread] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      setNow(new Date());
+      api.getInbox().then((page) => setUnread(page.unread_count)).catch(() => {});
+    }, []),
+  );
+
   const event = ticket.event;
-  const start = formatStart(event.starts_at, event.timezone);
-  const banner = eventBannerText(event, 'Attendee');
+  const banner = eventBannerText(event, 'Attendee', now);
   const venue = event.location_address || event.location_city || event.location_country || 'TBA';
-  const venueValue =
-    event.location_address && event.location_city ? `${event.location_address}, ${event.location_city}` : venue;
+  const ended = eventStatus(event, { now })?.phase === 'ended';
   // Pushed from the ticket list it has a way back; as an event's home (an
   // event the user only attends) it has the account avatar instead.
   const canGoBack = navigation.canGoBack();
@@ -224,7 +195,19 @@ export function TicketDetailScreen() {
         />
 
         <View style={[{ padding: spacing.lg, gap: spacing.lg }]}>
-          <AttendeePass ticket={ticket} />
+          <TicketPass ticket={ticket} pageColor={tokens.shaded} />
+          {ticket.confirmed ? <WalletButtons ticket={ticket} /> : null}
+
+          <EventStatusCard
+            event={event}
+            checkedIn={ticket.checked_in}
+            now={now}
+            footer={
+              hasDestination && !ended ? (
+                <Button title="Get directions" icon="location" onPress={openDirections} fullWidth />
+              ) : null
+            }
+          />
 
           {ticket.confirmed && liveActivitySupported ? (
             <Container flush>
@@ -243,23 +226,28 @@ export function TicketDetailScreen() {
             </Container>
           ) : null}
 
-          <View style={styles.infoRow}>
-            <InfoBox label="Venue" value={venueValue} />
-            <InfoBox label="Starts" value={[start.date, start.time].filter(Boolean).join(' · ') || 'TBA'} />
-          </View>
-          {hasDestination ? (
-            <Button title="Get directions" icon="location" onPress={openDirections} fullWidth />
-          ) : null}
-
-          <TravelCard travel={ticket.travel_inbound} />
-          <MessagesCard messages={ticket.messages} />
-
-          <Container title="Safety" flush>
-            <ListRow
+          {/* Messages and incident reports live in this stack, so they push
+              over the pass whether it's a ticket from the list or an event's
+              home (an organizer's attended event resets to this stack). */}
+          <View style={styles.quickActions}>
+            <QuickActionTile
+              icon="mail"
+              tint="sky"
+              label="Messages"
+              subLabel={unread > 0 ? `${unread} unread` : undefined}
+              onPress={() => navigation.navigate('Inbox')}
+            />
+            <QuickActionTile
               icon="shield-exclamation"
-              title="Report an incident"
+              tint="red"
+              label="Report an incident"
               onPress={() => navigation.navigate('IncidentReport')}
             />
+          </View>
+
+          <TravelCard travel={ticket.travel_inbound} />
+
+          <Container title="Safety" flush>
             <ListRow
               icon="device-mobile"
               title="24/7 event hotline"
@@ -271,65 +259,6 @@ export function TicketDetailScreen() {
           </Container>
         </View>
       </ScrollView>
-    </View>
-  );
-}
-
-function AttendeePass({ ticket }: { ticket: Ticket }) {
-  const { tokens, type, radii, spacing } = useTheme();
-  return (
-    <View
-      style={[
-        styles.pass,
-        { backgroundColor: tokens.bg, borderColor: tokens.box, borderRadius: radii.container, gap: spacing.md },
-      ]}
-    >
-      <View style={styles.passTopRow}>
-        <Text style={[styles.passLabel, { color: tokens.muted }]}>ATTENDEE PASS</Text>
-        <Text style={[type.label, styles.passCode, { color: tokens.text2 }]} selectable>
-          {ticket.short_code}
-        </Text>
-      </View>
-      <Text style={[type.h1, styles.center, { color: tokens.textH }]}>{ticket.attendee_name}</Text>
-      {ticket.checked_in ? <StatusIndicator type="success" label="Checked in" /> : null}
-
-      {ticket.confirmed ? (
-        <>
-          <View
-            style={[styles.qrBox, { borderColor: tokens.div2 }]}
-            accessible
-            accessibilityRole="image"
-            accessibilityLabel="Check-in QR code"
-          >
-            {/* Always dark on white: scanners need the contrast in dark mode too. */}
-            <QRCode value={ticket.qr_payload} size={188} backgroundColor="#ffffff" color="#0f141a" />
-          </View>
-          <Text style={[type.body, { color: tokens.text2 }]}>Show this at check-in</Text>
-          <WalletButtons ticket={ticket} />
-        </>
-      ) : (
-        <View style={[styles.pending, { gap: spacing.md }]}>
-          <Icon name="clock" size={28} color={tokens.muted} />
-          <Text style={[type.body, styles.center, { color: tokens.text2 }]}>
-            Your pass unlocks once you finish registration.
-          </Text>
-          <Button
-            title="Complete registration"
-            variant="primary"
-            fullWidth
-            onPress={() => Linking.openURL(ticket.onboarding_url).catch(() => {})}
-          />
-        </View>
-      )}
-    </View>
-  );
-}
-
-function InfoBox({ label, value }: { label: string; value: string }) {
-  const { tokens, radii } = useTheme();
-  return (
-    <View style={[styles.infoBox, { backgroundColor: tokens.bg, borderColor: tokens.box, borderRadius: radii.container }]}>
-      <KeyValue label={label} value={value} layout="stacked" style={styles.infoKv} />
     </View>
   );
 }
@@ -373,49 +302,9 @@ function TravelCard({ travel }: { travel?: Ticket['travel_inbound'] }) {
   );
 }
 
-function MessagesCard({ messages }: { messages?: Ticket['messages'] }) {
-  const { tokens, type, spacing } = useTheme();
-  if (!messages || messages.length === 0) return null;
-
-  return (
-    <Container title="Messages">
-      <View style={{ gap: spacing.lg }}>
-        {messages.map((m) => {
-          const when = formatMessageWhen(m.delivered_at);
-          return (
-            <View key={m.id} style={styles.message}>
-              {m.subject ? <Text style={[type.label, { color: tokens.textH }]}>{m.subject}</Text> : null}
-              <Text style={[type.body, { color: tokens.text2 }]}>{m.body}</Text>
-              <Text style={[type.body, { color: tokens.muted }]}>
-                {[m.sender_name || 'Event team', when].filter(Boolean).join(' · ')}
-              </Text>
-            </View>
-          );
-        })}
-      </View>
-    </Container>
-  );
-}
-
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  pass: {
-    borderWidth: 1,
-    paddingTop: 16,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    alignItems: 'center',
-  },
-  passTopRow: { alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center' },
-  passLabel: { flex: 1, fontSize: 12, lineHeight: 20, fontWeight: '700', letterSpacing: 1 },
-  passCode: { fontVariant: ['tabular-nums'] },
-  center: { textAlign: 'center' },
-  qrBox: { backgroundColor: '#ffffff', padding: 12, borderRadius: 12, borderWidth: 1 },
-  pending: { alignSelf: 'stretch', alignItems: 'center', paddingVertical: 8 },
-  infoRow: { flexDirection: 'row', gap: 12 },
-  infoBox: { flex: 1, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 6 },
-  infoKv: { flex: 1 },
+  quickActions: { flexDirection: 'row', gap: 12 },
   stack: { gap: 12 },
   bold: { fontWeight: '700' },
-  message: { gap: 4 },
 });
