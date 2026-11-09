@@ -1,25 +1,32 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  RefreshControl,
-  Alert,
-  ImageBackground,
-  Image,
   ActivityIndicator,
+  Alert,
+  FlatList,
+  Image,
   Linking,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
 import { VersionFooter } from '../components/VersionFooter';
-import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
+import { useTheme } from '../theme';
+import {
+  Badge,
+  Button,
+  Icon,
+  QuickActionTile,
+  StatusIndicator,
+  pressedStyle,
+  ripple,
+} from '../components/ui';
 import type { RootStackParamList, Ticket } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ParticipantMain'>;
@@ -28,7 +35,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Participant
 // doesn't shift for travellers.
 function formatDate(dateString?: string, timezone?: string) {
   if (!dateString) return '';
-  const opts = { month: 'short', day: 'numeric', year: 'numeric' } as const;
+  const opts = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' } as const;
   try {
     return new Date(dateString).toLocaleDateString(undefined, {
       ...opts,
@@ -44,8 +51,7 @@ function formatDate(dateString?: string, timezone?: string) {
 }
 
 export function MyTicketsScreen() {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
+  const { tokens, type, spacing } = useTheme();
   const navigation = useNavigation<NavigationProp>();
   const { state, logout } = useApp();
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -74,8 +80,8 @@ export function MyTicketsScreen() {
   const [unread, setUnread] = useState(0);
   useFocusEffect(
     useCallback(() => {
-      api.getInbox().then(page => setUnread(page.unread_count)).catch(() => {});
-    }, [])
+      api.getInbox().then((page) => setUnread(page.unread_count)).catch(() => {});
+    }, []),
   );
 
   const handleRefresh = useCallback(async () => {
@@ -91,161 +97,89 @@ export function MyTicketsScreen() {
     ]);
   };
 
-  const renderTicket = ({ item }: { item: Ticket }) => {
-    const event = item.event;
-    const hasBanner = !!event.banner_url;
-    const startDate = formatDate(event.starts_at, event.timezone);
-
-    const content = (
-      <>
-        <View style={styles.cardHeader}>
-          {event.logo_url ? (
-            <Image
-              source={{ uri: event.logo_url }}
-              style={[styles.logo, hasBanner && styles.logoOnBanner]}
-              resizeMode="cover"
-            />
-          ) : null}
-          <Text style={[styles.eventName, hasBanner && styles.textOnBanner]}>{event.name}</Text>
-        </View>
-
-        {startDate ? (
-          <Text style={[styles.meta, hasBanner && styles.subTextOnBanner]}>{startDate}</Text>
-        ) : null}
-        {event.location_city ? (
-          <Text style={[styles.meta, hasBanner && styles.subTextOnBanner]}>{event.location_city}</Text>
-        ) : null}
-
-        <View style={styles.badgeRow}>
-          {item.checked_in ? (
-            <View style={[styles.pill, styles.pillCheckedIn]}>
-              <Text style={styles.pillCheckedInText}>Checked in</Text>
-            </View>
-          ) : (
-            <View style={[styles.pill, hasBanner ? styles.pillOnBanner : styles.pillNeutral]}>
-              <Text style={[styles.pillText, hasBanner && styles.textOnBanner]}>
-                {item.display_status}
-              </Text>
-            </View>
-          )}
-          {/* Unconfirmed tickets prompt the attendee to finish registration. */}
-          {!item.confirmed && (
-            <View style={styles.finishHint}>
-              <Text style={[styles.finishHintText, hasBanner && styles.subTextOnBanner]}>
-                Tap to finish registration
-              </Text>
-              <Ionicons
-                name="arrow-forward"
-                size={13}
-                color={hasBanner ? 'rgba(255,255,255,0.9)' : colors.text.muted}
-              />
-            </View>
-          )}
-        </View>
-      </>
-    );
-
-    // Confirmed → open the native ticket. Unconfirmed → send them to the
-    // onboarding website to complete their registration.
-    const handlePress = () => {
-      if (item.confirmed) {
-        navigation.navigate('TicketDetail', { ticket: item });
-      } else {
-        Linking.openURL(item.onboarding_url).catch(() => {
-          Alert.alert('Something went wrong', 'Could not open registration. Please try again.');
-        });
-      }
-    };
-
-    return (
-      <TouchableOpacity style={styles.cardWrapper} activeOpacity={0.75} onPress={handlePress}>
-        {hasBanner ? (
-          <ImageBackground
-            source={{ uri: event.banner_url }}
-            style={styles.card}
-            imageStyle={styles.cardImage}
-          >
-            <View style={styles.bannerScrim} />
-            {content}
-          </ImageBackground>
-        ) : (
-          <View style={[styles.card, styles.cardPlain]}>{content}</View>
-        )}
-      </TouchableOpacity>
-    );
+  // Confirmed → open the native ticket. Unconfirmed → send them to the
+  // onboarding website to complete their registration.
+  const openTicket = (item: Ticket) => {
+    if (item.confirmed) {
+      navigation.navigate('TicketDetail', { ticket: item });
+    } else {
+      Linking.openURL(item.onboarding_url).catch(() => {
+        Alert.alert('Something went wrong', 'Could not open registration. Please try again.');
+      });
+    }
   };
 
-  return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          {/* Staff reach this screen by pushing onto the stack, so offer a way
-              back to the scanner app. Participant-only users land here as the
-              root and have nothing to go back to. */}
-          {navigation.canGoBack() && (
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={styles.backButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityLabel="Back"
-            >
-              <Ionicons name="chevron-back" size={26} color={colors.text.accent} />
-            </TouchableOpacity>
-          )}
-          <View>
-            <Text style={styles.headerTitle}>Hack Club Attend</Text>
-            <Text style={styles.headerSubtitle}>
-              {state.auth.user?.name || state.auth.user?.email}
-            </Text>
-          </View>
-        </View>
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-          <Text style={styles.logoutText}>Sign Out</Text>
-        </TouchableOpacity>
-      </View>
-
+  const header = (
+    <View style={{ gap: spacing.lg, paddingBottom: spacing.lg }}>
       <View style={styles.quickActions}>
-        <TouchableOpacity
-          style={styles.quickAction}
+        <QuickActionTile
+          icon="mail"
+          tint="sky"
+          label="Messages"
+          subLabel={unread > 0 ? `${unread} unread` : undefined}
           onPress={() => navigation.navigate('Inbox')}
-          accessibilityRole="button"
-          accessibilityLabel={unread ? `Messages, ${unread} unread` : 'Messages'}
-        >
-          <Ionicons name="mail-outline" size={16} color={colors.gray[700]} />
-          <Text style={styles.quickActionText}>Messages</Text>
-          {unread > 0 ? (
-            <View style={styles.unreadBadge}>
-              <Text style={styles.unreadText}>{unread}</Text>
-            </View>
-          ) : null}
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.quickAction}
+        />
+        <QuickActionTile
+          icon="shield-exclamation"
+          tint="red"
+          label="Report an incident"
           onPress={() => navigation.navigate('IncidentReport')}
-          accessibilityRole="button"
-        >
-          <Ionicons name="alert-circle-outline" size={16} color={colors.gray[700]} />
-          <Text style={styles.quickActionText}>Report an incident</Text>
-        </TouchableOpacity>
+        />
+      </View>
+      {tickets.length > 0 ? <Text style={[type.h2, { color: tokens.textH }]}>Tickets</Text> : null}
+    </View>
+  );
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: tokens.shaded }]} edges={['top', 'left', 'right']}>
+      <View style={[styles.header, { paddingHorizontal: spacing.lg }]}>
+        {/* Staff reach this screen by pushing onto the stack, so offer a way
+            back to the scanner app. Participant-only users land here as the
+            root and have nothing to go back to. */}
+        {navigation.canGoBack() ? (
+          <Button
+            title="Back"
+            variant="icon"
+            icon="chevron-left"
+            onPress={() => navigation.goBack()}
+            style={styles.back}
+          />
+        ) : null}
+        <View style={styles.headerText}>
+          <Text style={[type.h1, { color: tokens.textH }]} accessibilityRole="header">
+            Hack Club Attend
+          </Text>
+          <Text style={[type.body, { color: tokens.text2 }]} numberOfLines={1}>
+            {state.auth.user?.name || state.auth.user?.email}
+          </Text>
+        </View>
+        <Button title="Sign Out" variant="link" onPress={handleLogout} />
       </View>
 
       <FlatList
         data={tickets}
-        renderItem={renderTicket}
+        renderItem={({ item }) => <TicketCard ticket={item} onPress={() => openTicket(item)} />}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { padding: spacing.lg, gap: spacing.md }]}
+        ListHeaderComponent={header}
         refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.text.accent} />
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={tokens.accent}
+            colors={[tokens.accent]}
+          />
         }
         ListFooterComponent={<VersionFooter />}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
+          <View style={styles.empty}>
             {isLoading ? (
-              <ActivityIndicator color={colors.text.accent} />
+              <ActivityIndicator color={tokens.accent} />
             ) : (
               <>
-                <Text style={styles.emptyTitle}>No tickets yet</Text>
-                <Text style={styles.emptyText}>
+                <Icon name="ticket" size={32} color={tokens.muted} />
+                <Text style={[type.h3, { color: tokens.textH }]}>No tickets yet</Text>
+                <Text style={[type.body, styles.center, { color: tokens.text2 }]}>
                   When you register for an event, your ticket will appear here.
                 </Text>
               </>
@@ -257,94 +191,78 @@ export function MyTicketsScreen() {
   );
 }
 
-const makeStyles = (colors: ThemeColors, theme: Theme) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    backgroundColor: colors.glass.medium,
-  },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  backButton: { marginRight: 6, marginLeft: -6 },
-  headerTitle: { fontSize: 24, fontWeight: 'bold', color: colors.text.primary },
-  headerSubtitle: { fontSize: 14, color: colors.text.secondary, marginTop: 2 },
-  logoutButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: colors.glass.light,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.glass.border,
-  },
-  logoutText: { fontSize: 14, color: colors.text.accent, fontWeight: '500' },
-  quickActions: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
-  quickAction: {
-    minHeight: 38,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.gray[200],
-  },
-  quickActionText: { fontSize: 14, fontWeight: '600', color: colors.gray[700] },
-  unreadBadge: {
-    minWidth: 20,
-    paddingHorizontal: 6,
-    borderRadius: 999,
-    alignItems: 'center',
-    backgroundColor: colors.red,
-  },
-  unreadText: { fontSize: 12, fontWeight: '700', color: colors.white },
-  list: { padding: 16, paddingBottom: 100 },
-  cardWrapper: {
-    borderRadius: 16,
-    marginBottom: 12,
-    overflow: 'hidden',
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08 * theme.shadowOpacity,
-    shadowRadius: 12,
-    elevation: 3 * theme.elevation,
-    borderWidth: 1,
-    borderColor: colors.glass.border,
-  },
-  card: { padding: 16 },
-  cardPlain: { backgroundColor: colors.glass.dark },
-  cardImage: { borderRadius: 16 },
-  bannerScrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.5)' },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  logo: { width: 36, height: 36, borderRadius: 8, marginRight: 10, backgroundColor: colors.white },
-  logoOnBanner: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.6)' },
-  eventName: { fontSize: 18, fontWeight: '600', color: colors.text.primary, flex: 1 },
-  meta: { fontSize: 14, color: colors.text.secondary, marginBottom: 2 },
-  textOnBanner: {
-    color: colors.white,
-    textShadowColor: 'rgba(0,0,0,0.6)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  subTextOnBanner: {
-    color: 'rgba(255,255,255,0.9)',
-    textShadowColor: 'rgba(0,0,0,0.6)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  badgeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
-  finishHint: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 10 },
-  finishHintText: { fontSize: 12, fontWeight: '500', color: colors.text.muted },
-  pill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
-  pillNeutral: { backgroundColor: colors.gray[100] },
-  pillOnBanner: { backgroundColor: 'rgba(255,255,255,0.2)' },
-  pillText: { fontSize: 12, fontWeight: '600', color: colors.text.secondary },
-  pillCheckedIn: { backgroundColor: colors.green },
-  pillCheckedInText: { fontSize: 12, fontWeight: '700', color: colors.white },
-  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 64, paddingHorizontal: 32 },
-  emptyTitle: { fontSize: 18, fontWeight: '600', color: colors.text.primary, marginBottom: 6 },
-  emptyText: { fontSize: 14, color: colors.text.secondary, textAlign: 'center', lineHeight: 20 },
+function TicketCard({ ticket, onPress }: { ticket: Ticket; onPress: () => void }) {
+  const { tokens, type, radii } = useTheme();
+  const event = ticket.event;
+  const meta = [formatDate(event.starts_at, event.timezone), event.location_city].filter(Boolean).join(' · ');
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole={ticket.confirmed ? 'button' : 'link'}
+      accessibilityLabel={[event.name, meta, ticket.checked_in ? 'Checked in' : ticket.display_status]
+        .filter(Boolean)
+        .join(', ')}
+      accessibilityHint={ticket.confirmed ? 'Opens your pass' : 'Opens registration in the browser'}
+      android_ripple={ripple(tokens.pressed, { foreground: true })}
+      style={({ pressed }) => [
+        styles.card,
+        { backgroundColor: tokens.bg, borderColor: tokens.box, borderRadius: radii.container },
+        pressedStyle(pressed, 0.7),
+      ]}
+    >
+      {event.banner_url ? (
+        <View style={[styles.banner, { backgroundColor: tokens.div2 }]}>
+          <Image source={{ uri: event.banner_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        </View>
+      ) : null}
+      <View style={styles.cardBody}>
+        <View style={styles.cardTitleRow}>
+          {event.logo_url ? (
+            <Image
+              source={{ uri: event.logo_url }}
+              style={[styles.logo, { borderColor: tokens.div2 }]}
+              resizeMode="cover"
+            />
+          ) : null}
+          <View style={styles.cardTitleText}>
+            <Text style={[type.h2, { color: tokens.textH }]} numberOfLines={2}>
+              {event.name}
+            </Text>
+            {meta ? <Text style={[type.body, { color: tokens.text2 }]}>{meta}</Text> : null}
+          </View>
+          <Icon name={ticket.confirmed ? 'chevron-right' : 'external-link'} size={16} color={tokens.muted} />
+        </View>
+        <View style={styles.badgeRow}>
+          {ticket.checked_in ? (
+            <StatusIndicator type="success" label="Checked in" />
+          ) : (
+            <Badge label={ticket.display_status} color={ticket.confirmed ? 'blue' : 'grey'} />
+          )}
+          {/* Unconfirmed tickets prompt the attendee to finish registration. */}
+          {!ticket.confirmed ? (
+            <Text style={[type.body, { color: tokens.accent }]}>Tap to finish registration</Text>
+          ) : null}
+        </View>
+      </View>
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 12, paddingBottom: 4 },
+  back: { marginLeft: -10 },
+  headerText: { flex: 1, minWidth: 0 },
+  quickActions: { flexDirection: 'row', gap: 12 },
+  list: { paddingBottom: 100 },
+  card: { borderWidth: 1, overflow: 'hidden' },
+  banner: { height: 96 },
+  cardBody: { paddingHorizontal: 20, paddingVertical: 16, gap: 12 },
+  cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  cardTitleText: { flex: 1, minWidth: 0, gap: 2 },
+  logo: { width: 40, height: 40, borderRadius: 8, borderWidth: 1, backgroundColor: '#ffffff' },
+  badgeRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12 },
+  empty: { alignItems: 'center', gap: 8, paddingVertical: 64, paddingHorizontal: 32 },
+  center: { textAlign: 'center' },
 });
