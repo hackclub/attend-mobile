@@ -14,8 +14,12 @@ jest.mock('../../context/AppContext', () => ({
 jest.mock('../../services/api', () => ({
   api: { getEvents: jest.fn(), getMyTickets: jest.fn() },
 }));
+let mockCacheGeneration = 1;
 jest.mock('../../services/sync', () => ({
-  syncService: { getCacheGeneration: () => 1, cacheEvents: jest.fn().mockResolvedValue(undefined) },
+  syncService: {
+    getCacheGeneration: () => mockCacheGeneration,
+    cacheEvents: jest.fn().mockResolvedValue(undefined),
+  },
 }));
 jest.mock('../../services/eventSwitcher', () => ({
   canSwitchEvents: () => false,
@@ -43,6 +47,7 @@ async function mount(out: { refresh?: () => Promise<void>; isLoading?: boolean }
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockCacheGeneration = 1;
   resetSwitcherEventsCache();
   jest.mocked(api.getEvents).mockResolvedValue([]);
   jest.mocked(api.getMyTickets).mockResolvedValue([]);
@@ -82,5 +87,37 @@ describe('useSwitcherEvents', () => {
     await mount();
     expect(api.getEvents).toHaveBeenCalledTimes(2);
     now.mockRestore();
+  });
+
+  it('fetches again after a reset (sign-out) even within the minute', async () => {
+    (await mount()).unmount();
+    resetSwitcherEventsCache();
+    await mount();
+    expect(api.getEvents).toHaveBeenCalledTimes(2);
+    expect(api.getMyTickets).toHaveBeenCalledTimes(2);
+  });
+
+  it('drops events that arrive after the sync cache was cleared', async () => {
+    let resolveEvents: (events: never[]) => void = () => {};
+    jest.mocked(api.getEvents).mockReturnValue(new Promise((resolve) => { resolveEvents = resolve; }));
+    await mount();
+    mockCacheGeneration = 2;
+    await act(async () => {
+      resolveEvents([]);
+    });
+    expect(mockSetEvents).not.toHaveBeenCalled();
+  });
+
+  it('does not keep a load that was in flight across a reset', async () => {
+    let resolveEvents: (events: never[]) => void = () => {};
+    jest.mocked(api.getEvents).mockReturnValueOnce(new Promise((resolve) => { resolveEvents = resolve; }));
+    const first = await mount();
+    resetSwitcherEventsCache();
+    await act(async () => {
+      resolveEvents([]);
+    });
+    first.unmount();
+    await mount();
+    expect(api.getEvents).toHaveBeenCalledTimes(2);
   });
 });

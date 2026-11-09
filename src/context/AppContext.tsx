@@ -11,6 +11,7 @@ import { forbiddenParticipants } from '../services/eventAccess';
 import { scheduleHeadshotPrefetch } from '../services/headshotCache';
 import { activeParticipants } from '../services/participantStatus';
 import { biometricService } from '../services/biometric';
+import { resetSwitcherEventsCache } from '../hooks/switcherEventsCache';
 import { PrivacyCover } from '../components/PrivacyCover';
 import type { User, Event, Participant, AuthState, SyncState } from '../types';
 
@@ -361,6 +362,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               // authService already ran the full sign-out cleanup.
               eventSelectionGenerationRef.current += 1;
               authTokenRef.current = null;
+              resetSwitcherEventsCache();
               dispatch({ type: 'CLEAR_AUTH' });
             }
           });
@@ -455,6 +457,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     eventSelectionGenerationRef.current += 1;
     biometricService.clearSession();
     authTokenRef.current = null;
+    resetSwitcherEventsCache();
     dispatch({ type: 'CLEAR_AUTH' });
     try {
       await authService.logout();
