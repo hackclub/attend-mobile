@@ -176,7 +176,7 @@ function FilterSheetBody({
   const pickerContent = picker ? (
     <Sheet
       title={PICKER_TITLES[picker.kind]}
-      action={<Button variant="link" title="Back" icon="chevron-left" onPress={() => setPicker(null)} />}
+      action={<Button variant="link" title="Back" icon="back" onPress={() => setPicker(null)} />}
       contentContainerStyle={styles.pickerList}
     >
       {pickerOptions.length === 0 ? (

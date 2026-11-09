@@ -137,7 +137,7 @@ export function EventBanner({
       )}
       {onBack ? (
         <OverlayIconButton
-          icon="chevron-left"
+          icon="back"
           accessibilityLabel="Back"
           onPress={onBack}
           hitSlop={4}

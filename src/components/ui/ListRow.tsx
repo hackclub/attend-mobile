@@ -19,7 +19,10 @@ export interface ListRowProps {
   /** Muted trailing text, e.g. a version number or count. */
   value?: string;
   onPress?: () => void;
-  /** Show a chevron. Defaults to true when the row is pressable without `trailing`. */
+  /**
+   * Show a disclosure chevron (iOS only: Material rows have none). Defaults
+   * to true when the row is pressable without `trailing`.
+   */
   chevron?: boolean;
   /** Use an external-link glyph instead of a chevron. */
   external?: boolean;
@@ -52,7 +55,7 @@ export function ListRow({
   testID,
 }: ListRowProps) {
   const { tokens, type } = useTheme();
-  const showChevron = !toggle && (chevron ?? (Boolean(onPress) && !trailing));
+  const showChevron = !isAndroid && !toggle && (chevron ?? (Boolean(onPress) && !trailing));
   const titleColor = destructive ? tokens.error : subtitle ? tokens.textH : tokens.text;
 
   const content = (

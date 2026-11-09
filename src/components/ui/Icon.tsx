@@ -133,6 +133,8 @@ export const icons = {
   search: SearchIcon,
   'chevron-left': ChevronLeftIcon,
   'arrow-left': ArrowLeftIcon,
+  // The platform's back glyph: iOS's chevron, Material's arrow.
+  back: Platform.OS === 'android' ? ArrowLeftIcon : ChevronLeftIcon,
   // Each platform's own share glyph: iOS's box-and-arrow, Android's nodes.
   share: Platform.OS === 'ios' ? UploadIcon : ShareIcon,
   'chevron-right': ChevronRightIcon,

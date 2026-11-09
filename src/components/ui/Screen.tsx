@@ -92,7 +92,7 @@ export function ScreenHeading({ title, back, onBack, action, modalBar }: ScreenH
       accessibilityRole="button"
       accessibilityLabel={`Back to ${backLabel}`}
     >
-      <Icon name="chevron-left" size={18} color={tokens.accent} />
+      <Icon name="back" size={18} color={tokens.accent} />
       <Text style={[type.label, { color: tokens.accent }]} numberOfLines={1}>
         {backLabel}
       </Text>
