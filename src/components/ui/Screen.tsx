@@ -41,6 +41,11 @@ export interface ScreenHeadingProps {
    * right.
    */
   modalBar?: { confirm?: ReactNode; cancelLabel?: string; onCancel?: () => void };
+  /**
+   * A modal without a form: a plain "x" after the action, in place of the
+   * back link, as on a sheet. `true` goes back; a function replaces that.
+   */
+  close?: boolean | (() => void);
 }
 
 /** The back link's label, or null when this screen is the bottom of every stack. */
@@ -52,10 +57,24 @@ function useBackLabel(back: ScreenHeadingProps['back']): string | null {
 }
 
 /** The scaffold's top: an accent "‹ Label" back link, the title, and an action. */
-export function ScreenHeading({ title, back, onBack, action, modalBar }: ScreenHeadingProps) {
+export function ScreenHeading({ title, back, onBack, action: extraAction, modalBar, close }: ScreenHeadingProps) {
   const { tokens, type, hitTarget } = useTheme();
   const navigation = useNavigation();
-  const backLabel = useBackLabel(modalBar ? false : back);
+  const backLabel = useBackLabel(modalBar || close ? false : back);
+  const action = close ? (
+    <>
+      {extraAction}
+      <Button
+        variant="plain-icon"
+        icon="x"
+        title="Close"
+        onPress={typeof close === 'function' ? close : () => navigation.goBack()}
+        style={styles.close}
+      />
+    </>
+  ) : (
+    extraAction
+  );
 
   if (modalBar) {
     return (
@@ -228,5 +247,7 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   back: { alignSelf: 'flex-start', borderRadius: 8, marginLeft: -4 },
   cancel: { marginLeft: -12 },
+  // The glyph's edge, not its 44pt target, lines up with the content.
+  close: { marginRight: -12 },
   backContent: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingRight: 8, paddingLeft: 2 },
 });

@@ -1,13 +1,12 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { eventHomeState, passHomeState } from '../navigation/routes';
 import { resetRoot } from '../navigation/rootNavigation';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AccountButton } from '../components/AccountSheet';
 import { EventCard } from '../components/EventBanner';
-import { Button, TextField } from '../components/ui';
+import { Button, EmptyState, ErrorView, LoadingView, Screen, TextField } from '../components/ui';
 import { useApp } from '../context/AppContext';
 import { useSwitcherEvents } from '../hooks/useSwitcherEvents';
 import { eventPhaseLabel } from '../services/eventDates';
@@ -21,8 +20,6 @@ import { useTheme } from '../theme';
 import type { Event, AppStackParamList, Ticket } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<AppStackParamList>;
-
-const CONTENT_MAX_WIDTH = 620;
 
 const joinMeta = (...parts: (string | null | undefined)[]) => parts.filter(Boolean).join(' · ');
 
@@ -52,7 +49,6 @@ export function SwitchEventList({
   switcher: ReturnType<typeof useSwitcherEvents>;
 }) {
   const { tokens, type, spacing } = useTheme();
-  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute();
   const { state, selectEvent } = useApp();
@@ -92,168 +88,130 @@ export function SwitchEventList({
   const showPast = pastOpen || searching;
   const empty = switcherEventCount(allGroups) === 0;
   const noMatches = !empty && switcherEventCount(groups) === 0;
-  // A modal sheet on iOS starts below the status bar; full screen elsewhere.
-  const topPad = embedded ? insets.top + spacing.lg : spacing.xl;
-
   return (
-    <View style={[styles.screen, { backgroundColor: tokens.bg }]}>
-      <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          { paddingTop: topPad, paddingBottom: insets.bottom + spacing.xxl, gap: spacing.md },
-        ]}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={onRefresh}
-            tintColor={tokens.accent}
-            colors={[tokens.accent]}
-            progressBackgroundColor={tokens.bg}
-          />
-        }
-      >
-        <View style={styles.header}>
-          <Text style={[type.h1, styles.title, { color: tokens.textH }]} accessibilityRole="header">
-            {embedded ? 'Choose an event' : 'Switch event'}
+    <Screen
+      title={embedded ? 'Choose an event' : 'Switch event'}
+      back={false}
+      modal={!embedded}
+      close={!embedded}
+      action={<AccountButton size={44} />}
+      refreshing={isRefreshing}
+      onRefresh={onRefresh}
+      contentContainerStyle={{ gap: spacing.md }}
+    >
+      {searchable ? (
+        <TextField
+          icon="search"
+          placeholder="Search events"
+          value={query}
+          onChangeText={setQuery}
+          clearable
+          autoCorrect={false}
+          autoCapitalize="none"
+          returnKeyType="search"
+          accessibilityLabel="Search events"
+        />
+      ) : null}
+
+      {groups.organising.length > 0 ? (
+        <>
+          <Text style={[type.label, styles.groupLabel, { color: tokens.text2 }]} accessibilityRole="header">
+            Organizing
           </Text>
-          <AccountButton size={44} />
-          {embedded ? null : (
-            <Button variant="icon" icon="x" title="Close" onPress={() => navigation.goBack()} />
-          )}
-        </View>
-
-        {searchable ? (
-          <TextField
-            icon="search"
-            placeholder="Search events"
-            value={query}
-            onChangeText={setQuery}
-            clearable
-            autoCorrect={false}
-            autoCapitalize="none"
-            returnKeyType="search"
-            accessibilityLabel="Search events"
-          />
-        ) : null}
-
-        {groups.organising.length > 0 ? (
-          <>
-            <Text style={[type.label, styles.groupLabel, { color: tokens.text2 }]} accessibilityRole="header">
-              Organizing
-            </Text>
-            {groups.organising.map((event) => (
-              <EventCard
-                key={event.id}
-                event={event}
-                meta={joinMeta(eventPhaseLabel(event, undefined, 'in'), eventRoleLabel(event.role))}
-                selected={event.id === currentId}
-                onPress={() => pickEvent(event)}
-              />
-            ))}
-          </>
-        ) : null}
-
-        {groups.attending.length > 0 ? (
-          <>
-            <Text style={[type.label, styles.groupLabel, { color: tokens.text2 }]} accessibilityRole="header">
-              Attending
-            </Text>
-            {groups.attending.map((ticket) => (
-              <EventCard
-                key={ticket.id}
-                event={ticket.event}
-                meta={joinMeta(eventPhaseLabel(ticket.event, undefined, 'in'), 'Attendee')}
-                selected={ticket.id === currentTicketId}
-                onPress={() => pickTicket(ticket)}
-                accessibilityHint="Opens your ticket"
-              />
-            ))}
-          </>
-        ) : null}
-
-        {groups.past.length > 0 ? (
-          showPast ? (
-            <>
-              <View style={[styles.groupHeader, styles.groupLabel]}>
-                <Text style={[type.label, styles.title, { color: tokens.text2 }]} accessibilityRole="header">
-                  Past
-                </Text>
-                {searching ? null : (
-                  <Button title="Hide" variant="link" onPress={() => setPastOpen(false)} />
-                )}
-              </View>
-              {groups.past.map((entry) =>
-                entry.kind === 'organising' ? (
-                  <EventCard
-                    key={`event-${entry.event.id}`}
-                    event={entry.event}
-                    meta={joinMeta(eventPhaseLabel(entry.event, undefined, 'in'), eventRoleLabel(entry.event.role))}
-                    selected={entry.event.id === currentId}
-                    onPress={() => pickEvent(entry.event)}
-                  />
-                ) : (
-                  <EventCard
-                    key={`ticket-${entry.ticket.id}`}
-                    event={entry.ticket.event}
-                    meta={joinMeta(eventPhaseLabel(entry.ticket.event, undefined, 'in'), 'Attendee')}
-                    selected={entry.ticket.id === currentTicketId}
-                    onPress={() => pickTicket(entry.ticket)}
-                    accessibilityHint="Opens your ticket"
-                  />
-                )
-              )}
-            </>
-          ) : (
-            <Button
-              title={`Past (${groups.past.length})`}
-              variant="link"
-              icon="chevron-down"
-              iconPosition="end"
-              onPress={() => setPastOpen(true)}
-              style={styles.groupLabel}
+          {groups.organising.map((event) => (
+            <EventCard
+              key={event.id}
+              event={event}
+              meta={joinMeta(eventPhaseLabel(event, undefined, 'in'), eventRoleLabel(event.role))}
+              selected={event.id === currentId}
+              onPress={() => pickEvent(event)}
             />
-          )
-        ) : null}
+          ))}
+        </>
+      ) : null}
 
-        {noMatches ? (
-          <View style={styles.empty}>
-            <Text style={[type.body, { color: tokens.text2 }]}>No events match “{query.trim()}”</Text>
-          </View>
-        ) : null}
+      {groups.attending.length > 0 ? (
+        <>
+          <Text style={[type.label, styles.groupLabel, { color: tokens.text2 }]} accessibilityRole="header">
+            Attending
+          </Text>
+          {groups.attending.map((ticket) => (
+            <EventCard
+              key={ticket.id}
+              event={ticket.event}
+              meta={joinMeta(eventPhaseLabel(ticket.event, undefined, 'in'), 'Attendee')}
+              selected={ticket.id === currentTicketId}
+              onPress={() => pickTicket(ticket)}
+              accessibilityHint="Opens your ticket"
+            />
+          ))}
+        </>
+      ) : null}
 
-        {empty ? (
-          <View style={styles.empty}>
-            {isLoading ? <ActivityIndicator color={tokens.accent} /> : null}
-            {/* A failed load is not an empty list: say so and offer a retry. */}
-            <Text style={[type.body, styles.center, { color: tokens.text2 }]}>
-              {isLoading
-                ? 'Loading events...'
-                : loadFailed
-                  ? 'Couldn’t load your events. Check your connection and try again.'
-                  : 'No events available'}
-            </Text>
-            {!isLoading && loadFailed ? (
-              <Button title="Retry" variant="normal" onPress={() => void refresh()} />
-            ) : null}
-          </View>
-        ) : null}
-      </ScrollView>
-    </View>
+      {groups.past.length > 0 ? (
+        showPast ? (
+          <>
+            <View style={[styles.groupHeader, styles.groupLabel]}>
+              <Text style={[type.label, styles.title, { color: tokens.text2 }]} accessibilityRole="header">
+                Past
+              </Text>
+              {searching ? null : (
+                <Button title="Hide" variant="link" onPress={() => setPastOpen(false)} />
+              )}
+            </View>
+            {groups.past.map((entry) =>
+              entry.kind === 'organising' ? (
+                <EventCard
+                  key={`event-${entry.event.id}`}
+                  event={entry.event}
+                  meta={joinMeta(eventPhaseLabel(entry.event, undefined, 'in'), eventRoleLabel(entry.event.role))}
+                  selected={entry.event.id === currentId}
+                  onPress={() => pickEvent(entry.event)}
+                />
+              ) : (
+                <EventCard
+                  key={`ticket-${entry.ticket.id}`}
+                  event={entry.ticket.event}
+                  meta={joinMeta(eventPhaseLabel(entry.ticket.event, undefined, 'in'), 'Attendee')}
+                  selected={entry.ticket.id === currentTicketId}
+                  onPress={() => pickTicket(entry.ticket)}
+                  accessibilityHint="Opens your ticket"
+                />
+              )
+            )}
+          </>
+        ) : (
+          <Button
+            title={`Past (${groups.past.length})`}
+            variant="link"
+            icon="chevron-down"
+            iconPosition="end"
+            onPress={() => setPastOpen(true)}
+            style={styles.groupLabel}
+          />
+        )
+      ) : null}
+
+      {noMatches ? <EmptyState title={`No events match “${query.trim()}”`} /> : null}
+
+      {!empty ? null : isLoading ? (
+        <LoadingView />
+      ) : loadFailed ? (
+        // A failed load is not an empty list: say so and offer a retry.
+        <ErrorView
+          title="Couldn’t load your events"
+          message="Check your connection and try again."
+          onRetry={() => void refresh()}
+        />
+      ) : (
+        <EmptyState title="No events available" />
+      )}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  content: {
-    paddingHorizontal: 16,
-    width: '100%',
-    maxWidth: CONTENT_MAX_WIDTH,
-    alignSelf: 'center',
-  },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   title: { flex: 1 },
   groupLabel: { marginTop: 8 },
   groupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  empty: { alignItems: 'center', gap: 12, paddingVertical: 48 },
-  center: { textAlign: 'center' },
 });
