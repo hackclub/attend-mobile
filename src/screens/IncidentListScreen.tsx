@@ -193,30 +193,27 @@ export function IncidentListScreen() {
     );
   }
 
-  const header = (
-    <View style={styles.header}>
-      <Text style={styles.description}>
-        Private to your event team. Turn on “Escalate to Hack Club HQ” on a new incident, or escalate an
-        existing one from its page, to involve HQ’s safeguarding team.
-      </Text>
-      {showChart && levels.length ? (
-        <Container title="Which level? The triage chart">
-          <LevelChart levels={levels} />
-        </Container>
-      ) : null}
-      {incidents.length ? (
-        <TextField
-          icon="search"
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Find incidents"
-          clearable
-          autoCorrect={false}
-          returnKeyType="search"
-        />
-      ) : null}
+  // Search sits pinned under the title; the triage chart, when shown,
+  // scrolls with the list.
+  const search = incidents.length ? (
+    <View style={styles.search}>
+      <TextField
+        icon="search"
+        value={query}
+        onChangeText={setQuery}
+        placeholder="Find incidents"
+        accessibilityLabel="Find incidents"
+        clearable
+        autoCorrect={false}
+        returnKeyType="search"
+      />
     </View>
-  );
+  ) : null;
+  const header = showChart && levels.length ? (
+    <Container title="Which level? The triage chart" style={styles.chart}>
+      <LevelChart levels={levels} />
+    </Container>
+  ) : undefined;
 
   return (
     <Screen
@@ -239,6 +236,7 @@ export function IncidentListScreen() {
         </View>
       }
     >
+      {search}
       <SectionList
         style={styles.container}
         sections={sections}
@@ -302,8 +300,8 @@ const makeStyles = (_colors: ThemeColors, theme: Theme) => {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: t.bg },
     list: { paddingHorizontal: spacing.lg, width: '100%', maxWidth: 620, alignSelf: 'center' },
-    header: { gap: spacing.md },
-    description: { ...type.body, color: t.text2 },
+    search: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm, width: '100%', maxWidth: 620, alignSelf: 'center' },
+    chart: { marginBottom: spacing.sm },
     headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     sectionHeader: {
       flexDirection: 'row',

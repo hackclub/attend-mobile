@@ -21,19 +21,18 @@ import {
   Screen,
   StatusGlyph,
   StatusIndicator,
-  statusColor,
   type MenuAction,
 } from '../components/ui';
 import {
   CheckboxRow,
   ErrorView,
   Field,
-  LevelBadge,
   LevelChart,
   LoadingView,
   SelectField,
   TextField,
   formatDateTime,
+  levelBadgeColor,
   statusType,
 } from '../components/forms';
 import { INCIDENT_STATUS_TONES, humanize } from '../services/statusDisplay';
@@ -249,7 +248,11 @@ export function IncidentDetailScreen() {
       <View style={styles.intro}>
         <View style={styles.badges}>
           <Badge label={humanize(incident.category)} />
-          <LevelBadge level={level} code={incident.severity} name />
+          {/* One badge for the level, its name inside: "S1 · Moderate priority". */}
+          <Badge
+            label={level ? `${level.code} · ${level.name}` : incident.severity.toUpperCase()}
+            color={levelBadgeColor(level)}
+          />
           <StatusIndicator type={statusType(statusTone)} label={humanize(incident.status)} style={styles.status} />
         </View>
         <Text style={[styles.title, !incident.summary && styles.titleEmpty]} accessibilityRole="header">
@@ -323,13 +326,7 @@ export function IncidentDetailScreen() {
         <KeyValue
           label="Visible to"
           labelWidth={120}
-          value={
-            <View style={styles.tokens}>
-              {incident.visible_to_roles.map(role => (
-                <Badge key={role} label={humanize(role)} />
-              ))}
-            </View>
-          }
+          value={incident.visible_to_roles.map(role => humanize(role)).join(', ') || 'No roles'}
         />
       </Container>
 
@@ -357,15 +354,9 @@ export function IncidentDetailScreen() {
       {incident.permissions.view_casework ? (
         <Container title="Timeline" bodyStyle={styles.containerBody}>
           {incident.timeline.map(item => {
-            const dot =
-              item.type === 'comment' && item.new_status
-                ? statusColor(statusType(INCIDENT_STATUS_TONES[item.new_status] ?? 'info'), tokens)
-                : item.type === 'change' && item.action === 'created'
-                  ? tokens.success
-                  : tokens.div;
             return (
               <View key={`${item.type}-${item.id}`} style={styles.step}>
-                <View style={[styles.dot, { backgroundColor: dot }]} />
+                <View style={styles.dot} />
                 <View style={styles.flex}>
                   {item.type === 'comment' ? (
                     <>
@@ -439,13 +430,12 @@ const makeStyles = (_colors: ThemeColors, theme: Theme) => {
     value: { ...type.body, color: t.text },
     muted: { ...type.body, color: t.muted },
     link: { color: t.accent, fontWeight: '700' },
-    tokens: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
     medication: { gap: 2, paddingTop: spacing.sm },
     divider: { borderTopWidth: 1, borderTopColor: t.div2 },
     actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
     form: { gap: spacing.md, marginTop: spacing.xs },
     step: { flexDirection: 'row', gap: 10 },
-    dot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
+    dot: { width: 8, height: 8, borderRadius: 4, marginTop: 6, backgroundColor: t.div },
     commentBody: { marginTop: 6, padding: 10, borderRadius: radii.item, backgroundColor: t.shaded },
   });
 };
