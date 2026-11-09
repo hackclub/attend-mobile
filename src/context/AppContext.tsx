@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo, useRef, ReactNode } from 'react';
 import { AppState as RNAppState } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import { authService } from '../services/auth';
@@ -22,6 +22,33 @@ function checkInCounts(participants: Participant[]): { checkedInCount: number; t
     checkedInCount: active.filter(p => p.checked_in_at).length,
     totalCount: active.length,
   };
+}
+
+// Structural equality for the plain JSON data the reducer holds (events,
+// participants, users), so a refresh that changed nothing keeps the previous
+// state and re-renders no consumer.
+export function isSameData(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) {
+    return false;
+  }
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b) || a.length !== b.length) return false;
+    for (let index = 0; index < a.length; index += 1) {
+      if (!isSameData(a[index], b[index])) return false;
+    }
+    return true;
+  }
+  if (Array.isArray(b)) return false;
+  const aRecord = a as Record<string, unknown>;
+  const bRecord = b as Record<string, unknown>;
+  const aKeys = Object.keys(aRecord);
+  if (aKeys.length !== Object.keys(bRecord).length) return false;
+  for (const key of aKeys) {
+    if (!Object.prototype.hasOwnProperty.call(bRecord, key)) return false;
+    if (!isSameData(aRecord[key], bRecord[key])) return false;
+  }
+  return true;
 }
 
 export interface AppState {
@@ -73,6 +100,14 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         auth: { ...state.auth, isLoading: action.payload },
       };
     case 'SET_AUTH':
+      if (
+        state.auth.isAuthenticated
+        && !state.auth.isLoading
+        && state.auth.token === action.payload.token
+        && isSameData(state.auth.user, action.payload.user)
+      ) {
+        return state;
+      }
       return {
         ...state,
         auth: {
@@ -96,6 +131,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         participants: [],
       };
     case 'SET_EVENTS': {
+      if (isSameData(state.events, action.payload)) return state;
       // Carry the fresh copy of the selected event across too: it holds the
       // caller's role on that event, which decides what the app offers.
       const refreshed = state.currentEvent
@@ -111,10 +147,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       // A different event's roster must never show under the new one, not
       // even for the render before its own roster loads.
       if (action.payload?.id === state.currentEvent?.id) {
+        if (isSameData(state.currentEvent, action.payload)) return state;
         return { ...state, currentEvent: action.payload };
       }
       return { ...state, currentEvent: action.payload, participants: [] };
     case 'SET_PARTICIPANTS':
+      if (isSameData(state.participants, action.payload)) return state;
       return { ...state, participants: action.payload };
     case 'UPDATE_PARTICIPANT':
       if (!state.participants.some(
@@ -134,6 +172,14 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         ),
       };
     case 'SET_SYNC_STATUS':
+      if (
+        state.sync.lastSyncAt === action.payload.lastSyncAt
+        && state.sync.pendingScans === action.payload.pendingScans
+        && state.sync.isSyncing === action.payload.isSyncing
+        && state.sync.isOnline === action.payload.isOnline
+      ) {
+        return state;
+      }
       return {
         ...state,
         sync: {
@@ -497,7 +543,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.participants, state.currentEvent]);
 
-  const value: AppContextValue = {
+  // A new value only when the state or an action changes, so consumers
+  // don't re-render whenever the provider's parent does.
+  const value = useMemo<AppContextValue>(() => ({
     state,
     login,
     devLogin,
@@ -511,7 +559,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     flushBeforeSignOut,
     startLiveActivity,
     stopLiveActivity,
-  };
+  }), [
+    state,
+    login,
+    devLogin,
+    logout,
+    selectEvent,
+    setEvents,
+    refreshParticipants,
+    updateParticipant,
+    confirmParticipant,
+    syncNow,
+    flushBeforeSignOut,
+    startLiveActivity,
+    stopLiveActivity,
+  ]);
 
   return (
     <AppContext.Provider value={value}>
