@@ -1,12 +1,12 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
 import { hasUnsupportedFormatting, htmlToMarkup, markupToHtml } from '../services/richText';
 import { MarkupEditor, RichText } from '../components/RichText';
-import { Button, Container, Flashbar, StatusIndicator, TextField, Toggle } from '../components/ui';
+import { Button, Container, Flashbar, Screen, StatusIndicator, TextField, Toggle } from '../components/ui';
 import {
   CheckboxRow,
   DateTimeField,
@@ -18,18 +18,16 @@ import {
 } from '../components/forms';
 import { titleize } from '../services/statusDisplay';
 import { spacing, useTheme } from '../theme';
-import type { MessageFormOptions, MessageInput, RootStackParamList } from '../types';
-import { useAndroidBottomInset, withBottomInset } from '../hooks/useAndroidBottomInset';
+import type { MessageFormOptions, MessageInput, AppStackParamList } from '../types';
 
-type Nav = NativeStackNavigationProp<RootStackParamList, 'MessageCompose'>;
-type Route = RouteProp<RootStackParamList, 'MessageCompose'>;
+type Nav = NativeStackNavigationProp<AppStackParamList, 'MessageCompose'>;
+type Route = RouteProp<AppStackParamList, 'MessageCompose'>;
 
 /**
  * Step 1 of 2: write the message. Saving keeps it a draft and moves on to
  * the preview, where it is sent or scheduled, as in the web composer.
  */
 export function MessageComposeScreen() {
-  const bottomInset = useAndroidBottomInset();
   const { tokens, type, radii } = useTheme();
   const navigation = useNavigation<Nav>();
   const { params } = useRoute<Route>();
@@ -85,15 +83,21 @@ export function MessageComposeScreen() {
     load();
   }, [load]);
 
-  useLayoutEffect(() => {
-    navigation.setOptions({ headerTitle: 'Compose message' });
-  }, [navigation]);
-
   const bodyHtml = useMemo(() => markupToHtml(body), [body]);
 
-  if (!event) return <ErrorView message="Pick an event on the Overview tab first." />;
-  if (loadError) return <ErrorView message={loadError} onRetry={load} />;
-  if (!options) return <LoadingView />;
+  if (!event || loadError || !options) {
+    return (
+      <Screen title="Compose message" scroll={false}>
+        {!event ? (
+          <ErrorView message="Pick an event on the Overview tab first." />
+        ) : loadError ? (
+          <ErrorView message={loadError} onRetry={load} />
+        ) : (
+          <LoadingView />
+        )}
+      </Screen>
+    );
+  }
 
   const toggleChannel = (value: string, on: boolean) =>
     setChannels(list => (on ? [...list, value] : list.filter(c => c !== value)));
@@ -134,12 +138,7 @@ export function MessageComposeScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView
-        style={{ flex: 1, backgroundColor: tokens.bg }}
-        contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={withBottomInset(styles.content, bottomInset)}
-        keyboardShouldPersistTaps="handled"
-      >
+      <Screen title="Compose message" scrollViewProps={{ keyboardShouldPersistTaps: 'handled' }}>
         <Text style={[type.body, { color: tokens.muted }]}>Step 1 of 2 — Write your message</Text>
 
         <Container title="Recipients" bodyStyle={styles.section}>
@@ -275,14 +274,13 @@ export function MessageComposeScreen() {
             loading={saving}
           />
         </View>
-      </ScrollView>
+      </Screen>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  content: { padding: spacing.lg, paddingBottom: spacing.xxxl + spacing.sm, gap: spacing.lg },
   section: { gap: spacing.lg },
   linkButton: { alignSelf: 'flex-start', paddingHorizontal: 0 },
   preview: { padding: spacing.md, borderWidth: 1 },

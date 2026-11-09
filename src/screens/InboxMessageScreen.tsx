@@ -1,17 +1,17 @@
-import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { api } from '../services/api';
 import { RichText } from '../components/RichText';
 import { ErrorView, LoadingView, formatDateTime } from '../components/forms';
-import { Badge, Button, Container } from '../components/ui';
+import { Badge, Button, Container, Screen } from '../components/ui';
 import { CHANNEL_LABELS } from '../services/statusDisplay';
 import { spacing, useTheme } from '../theme';
-import type { InboxMessage, RootStackParamList } from '../types';
+import type { InboxMessage, AppStackParamList } from '../types';
 
-type Nav = NativeStackNavigationProp<RootStackParamList, 'InboxMessage'>;
-type Route = RouteProp<RootStackParamList, 'InboxMessage'>;
+type Nav = NativeStackNavigationProp<AppStackParamList, 'InboxMessage'>;
+type Route = RouteProp<AppStackParamList, 'InboxMessage'>;
 
 /** One organizer message. Opening it marks it read, as on the web. */
 export function InboxMessageScreen() {
@@ -34,12 +34,14 @@ export function InboxMessageScreen() {
     load();
   }, [load]);
 
-  useLayoutEffect(() => {
-    navigation.setOptions({ headerTitle: message?.event.name ?? 'Message' });
-  }, [navigation, message]);
-
-  if (error && !message) return <ErrorView message={error} onRetry={load} />;
-  if (!message) return <LoadingView />;
+  // The subject is the page's heading once the message has loaded.
+  if (!message) {
+    return (
+      <Screen title="Message" scroll={false}>
+        {error ? <ErrorView message={error} onRetry={load} /> : <LoadingView />}
+      </Screen>
+    );
+  }
 
   const openTicket = async () => {
     if (!message.ticket_id) return;
@@ -47,16 +49,12 @@ export function InboxMessageScreen() {
       const ticket = await api.getMyTicket(message.ticket_id);
       navigation.navigate('TicketDetail', { ticket });
     } catch {
-      navigation.navigate('ParticipantMain');
+      navigation.navigate('MyTickets');
     }
   };
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: tokens.bg }}
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={styles.content}
-    >
+    <Screen>
       <View style={styles.header}>
         <Text style={[type.h1, { color: tokens.textH }]} accessibilityRole="header" selectable>
           {message.subject || `Message from ${message.event.name}`}
@@ -84,12 +82,11 @@ export function InboxMessageScreen() {
       {message.ticket_id ? (
         <Button title="View event" variant="primary" icon="ticket" onPress={openTicket} fullWidth />
       ) : null}
-    </ScrollView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  content: { padding: spacing.lg, paddingBottom: spacing.xxxl + spacing.sm, gap: spacing.lg },
   header: { gap: spacing.sm },
   channels: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
 });

@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
@@ -19,18 +19,17 @@ import {
   SwitchRow,
   TextField,
 } from '../components/forms';
-import { Button as KitButton, Container } from '../components/ui';
+import { Button as KitButton, Container, Screen } from '../components/ui';
 import { useThemedStyles, type Theme, type ThemeColors } from '../theme';
 import type {
   IncidentFormOptions,
   IncidentInput,
   IncidentMedication,
-  RootStackParamList,
+  AppStackParamList,
 } from '../types';
-import { useAndroidBottomInset, withBottomInset } from '../hooks/useAndroidBottomInset';
 
-type Nav = NativeStackNavigationProp<RootStackParamList, 'IncidentForm'>;
-type Route = RouteProp<RootStackParamList, 'IncidentForm'>;
+type Nav = NativeStackNavigationProp<AppStackParamList, 'IncidentForm'>;
+type Route = RouteProp<AppStackParamList, 'IncidentForm'>;
 
 type MedicationRow = IncidentMedication & { key: string; _destroy?: boolean };
 
@@ -38,7 +37,6 @@ let medicationKey = 0;
 const blankMedication = (): MedicationRow => ({ key: `new-${medicationKey++}`, name: '', dose: '', notes: '' });
 
 export function IncidentFormScreen() {
-  const bottomInset = useAndroidBottomInset();
   const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<Nav>();
   const { params } = useRoute<Route>();
@@ -109,10 +107,6 @@ export function IncidentFormScreen() {
   useEffect(() => {
     load();
   }, [load]);
-
-  useLayoutEffect(() => {
-    navigation.setOptions({ headerTitle: editing ? 'Edit incident' : 'New incident' });
-  }, [navigation, editing]);
 
   const medical = category === 'medical';
   const liveMedications = medications.filter(m => !m._destroy);
@@ -190,9 +184,21 @@ export function IncidentFormScreen() {
     }
   };
 
-  if (!event) return <ErrorView message="Pick an event on the Overview tab first." />;
-  if (loadError) return <ErrorView message={loadError} onRetry={load} />;
-  if (!options) return <LoadingView />;
+  const title = editing ? 'Edit incident' : 'New incident';
+
+  if (!event || loadError || !options) {
+    return (
+      <Screen title={title} scroll={false}>
+        {!event ? (
+          <ErrorView message="Pick an event on the Overview tab first." />
+        ) : loadError ? (
+          <ErrorView message={loadError} onRetry={load} />
+        ) : (
+          <LoadingView />
+        )}
+      </Screen>
+    );
+  }
 
   const updateMedication = (key: string, patch: Partial<MedicationRow>) =>
     setMedications(rows => rows.map(r => (r.key === key ? { ...r, ...patch } : r)));
@@ -204,159 +210,157 @@ export function IncidentFormScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView
-        style={styles.container}
-        contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={withBottomInset(styles.content, bottomInset)}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Section title="Incident details">
-          <Field label="Category">
-            <SelectField title="Category" value={category} options={options.categories} onChange={setCategory} placeholder="Select category" />
-          </Field>
-          <Field label="Level" description="S0 is the most urgent. The chart below has examples.">
-            <SelectField title="Level" value={severity} options={levelOptions} onChange={setSeverity} placeholder="Select level" />
-          </Field>
-          <Field label="Status">
-            <SelectField title="Status" value={status} options={options.statuses} onChange={setStatus} />
-          </Field>
-          <Field label="Date and time of incident" optional>
-            <DateTimeField value={occurredAt} onChange={setOccurredAt} />
-          </Field>
-          <Field label="Location" optional description="For example: Main Hall, Room 204">
-            <TextField value={location} onChangeText={setLocation} placeholder="Location" />
-          </Field>
-          <KitButton
-            title={showChart ? 'Hide the triage chart' : 'Which level? The triage chart'}
-            variant="link"
-            icon={showChart ? 'chevron-up' : 'chevron-down'}
-            iconPosition="end"
-            onPress={() => setShowChart(v => !v)}
-            style={styles.chartToggle}
-          />
-          {showChart ? (
-            <Container>
-              <LevelChart levels={options.levels} />
-            </Container>
-          ) : null}
-        </Section>
-
-        <Section title="People involved">
-          <Field label="Participants involved" optional={medical ? 'required for medical incidents' : undefined}>
-            <MultiSelectField
-              title="Participants involved"
-              items={options.participants.map(p => ({ id: p.id, title: p.name, subtitle: p.email }))}
-              selected={participantIds}
-              onChange={setParticipantIds}
-              noun={['participant', 'participants']}
-              searchPlaceholder="Search participants..."
+      <Screen title={title} scrollViewProps={{ keyboardShouldPersistTaps: 'handled' }}>
+        {/* The form's sections carry their own inset and spacing. */}
+        <View style={styles.sections}>
+          <Section title="Incident details">
+            <Field label="Category">
+              <SelectField title="Category" value={category} options={options.categories} onChange={setCategory} placeholder="Select category" />
+            </Field>
+            <Field label="Level" description="S0 is the most urgent. The chart below has examples.">
+              <SelectField title="Level" value={severity} options={levelOptions} onChange={setSeverity} placeholder="Select level" />
+            </Field>
+            <Field label="Status">
+              <SelectField title="Status" value={status} options={options.statuses} onChange={setStatus} />
+            </Field>
+            <Field label="Date and time of incident" optional>
+              <DateTimeField value={occurredAt} onChange={setOccurredAt} />
+            </Field>
+            <Field label="Location" optional description="For example: Main Hall, Room 204">
+              <TextField value={location} onChangeText={setLocation} placeholder="Location" />
+            </Field>
+            <KitButton
+              title={showChart ? 'Hide the triage chart' : 'Which level? The triage chart'}
+              variant="link"
+              icon={showChart ? 'chevron-up' : 'chevron-down'}
+              iconPosition="end"
+              onPress={() => setShowChart(v => !v)}
+              style={styles.chartToggle}
             />
-          </Field>
-          <Field label="Staff who helped" optional={medical ? 'required for medical incidents' : undefined}>
-            <MultiSelectField
-              title="Staff who helped"
-              items={options.staff.map(s => ({ id: s.id, title: s.name, subtitle: s.email }))}
-              selected={staffIds}
-              onChange={setStaffIds}
-              noun={['staff member', 'staff members']}
-              searchPlaceholder="Search staff..."
-            />
-          </Field>
-        </Section>
+            {showChart ? (
+              <Container>
+                <LevelChart levels={options.levels} />
+              </Container>
+            ) : null}
+          </Section>
 
-        <Section title="What happened">
-          <Field label="Summary" optional description="A brief summary of the incident.">
-            <TextField value={summary} onChangeText={setSummary} />
-          </Field>
-          <Field label="Details" optional description="A detailed description of what happened.">
-            <TextField value={details} onChangeText={setDetails} multiline />
-          </Field>
-          <Field label="Actions taken" optional description="What actions have been taken or are planned.">
-            <TextField value={actionsTaken} onChangeText={setActionsTaken} multiline />
-          </Field>
-        </Section>
+          <Section title="People involved">
+            <Field label="Participants involved" optional={medical ? 'required for medical incidents' : undefined}>
+              <MultiSelectField
+                title="Participants involved"
+                items={options.participants.map(p => ({ id: p.id, title: p.name, subtitle: p.email }))}
+                selected={participantIds}
+                onChange={setParticipantIds}
+                noun={['participant', 'participants']}
+                searchPlaceholder="Search participants..."
+              />
+            </Field>
+            <Field label="Staff who helped" optional={medical ? 'required for medical incidents' : undefined}>
+              <MultiSelectField
+                title="Staff who helped"
+                items={options.staff.map(s => ({ id: s.id, title: s.name, subtitle: s.email }))}
+                selected={staffIds}
+                onChange={setStaffIds}
+                noun={['staff member', 'staff members']}
+                searchPlaceholder="Search staff..."
+              />
+            </Field>
+          </Section>
 
-        {medical ? (
-          <Section title="Medication">
-            <CheckboxRow label="Medication was dispensed" checked={medicationDispensed} onChange={setMedicationDispensed} />
-            {medicationDispensed
-              ? liveMedications.map((row, i) => (
-                  <View key={row.key} style={styles.medication}>
-                    <View style={styles.medicationHeader}>
-                      <Text style={styles.medicationTitle}>Medication {i + 1}</Text>
-                      <Button title="Remove" variant="link" onPress={() => removeMedication(row)} />
+          <Section title="What happened">
+            <Field label="Summary" optional description="A brief summary of the incident.">
+              <TextField value={summary} onChangeText={setSummary} />
+            </Field>
+            <Field label="Details" optional description="A detailed description of what happened.">
+              <TextField value={details} onChangeText={setDetails} multiline />
+            </Field>
+            <Field label="Actions taken" optional description="What actions have been taken or are planned.">
+              <TextField value={actionsTaken} onChangeText={setActionsTaken} multiline />
+            </Field>
+          </Section>
+
+          {medical ? (
+            <Section title="Medication">
+              <CheckboxRow label="Medication was dispensed" checked={medicationDispensed} onChange={setMedicationDispensed} />
+              {medicationDispensed
+                ? liveMedications.map((row, i) => (
+                    <View key={row.key} style={styles.medication}>
+                      <View style={styles.medicationHeader}>
+                        <Text style={styles.medicationTitle}>Medication {i + 1}</Text>
+                        <Button title="Remove" variant="link" onPress={() => removeMedication(row)} />
+                      </View>
+                      <Field label="Medication">
+                        <TextField value={row.name} onChangeText={name => updateMedication(row.key, { name })} />
+                      </Field>
+                      <Field label="Quantity / dose">
+                        <TextField value={row.dose} onChangeText={dose => updateMedication(row.key, { dose })} />
+                      </Field>
+                      <Field label="Notes" optional>
+                        <TextField value={row.notes ?? ''} onChangeText={notes => updateMedication(row.key, { notes })} multiline />
+                      </Field>
                     </View>
-                    <Field label="Medication">
-                      <TextField value={row.name} onChangeText={name => updateMedication(row.key, { name })} />
-                    </Field>
-                    <Field label="Quantity / dose">
-                      <TextField value={row.dose} onChangeText={dose => updateMedication(row.key, { dose })} />
-                    </Field>
-                    <Field label="Notes" optional>
-                      <TextField value={row.notes ?? ''} onChangeText={notes => updateMedication(row.key, { notes })} multiline />
-                    </Field>
-                  </View>
-                ))
-              : null}
-            {medicationDispensed ? (
-              <Button title="Add another medication" icon="add" onPress={() => setMedications(rows => [...rows, blankMedication()])} />
-            ) : null}
-          </Section>
-        ) : null}
+                  ))
+                : null}
+              {medicationDispensed ? (
+                <Button title="Add another medication" icon="add" onPress={() => setMedications(rows => [...rows, blankMedication()])} />
+              ) : null}
+            </Section>
+          ) : null}
 
-        <Section title="Visibility" description="The roles that can view this incident.">
-          {options.roles.map(role => (
-            <CheckboxRow
-              key={role.value}
-              label={role.label}
-              checked={visibleRoles.includes(role.value)}
-              onChange={checked =>
-                setVisibleRoles(roles => (checked ? [...roles, role.value] : roles.filter(r => r !== role.value)))
-              }
-            />
-          ))}
-        </Section>
-
-        {!editing ? (
-          <Section title="Hack Club HQ">
-            <SwitchRow
-              label="Escalate to Hack Club HQ"
-              description="Files a confidential report with HQ's safeguarding team. They're notified by email and Slack, and an S0 rings their phones. Conduct incidents also post to the HQ Firehouse channel."
-              value={escalate}
-              onChange={setEscalate}
-            />
-            {escalate ? (
-              <>
-                <Field label="Number HQ can call you on" description="Include the country code, for example +1 555 555 0100.">
-                  <TextField value={reporterPhone} onChangeText={setReporterPhone} keyboardType="phone-pad" textContentType="telephoneNumber" />
-                </Field>
-                <Text style={styles.hint}>
-                  HQ responds at the incident’s level: S0 pages the safeguarding team’s phones within minutes, S1 within
-                  the hour, S2 within 12 hours.
-                </Text>
-                <CheckboxRow
-                  label="Emergency services (police, ambulance) have been called"
-                  checked={emergencyServices}
-                  onChange={setEmergencyServices}
-                />
-              </>
-            ) : null}
-          </Section>
-        ) : null}
-
-        {errors.length ? (
-          <Notice tone="error">
-            {errors.map(message => (
-              <Text key={message} style={styles.errorText}>{message}</Text>
+          <Section title="Visibility" description="The roles that can view this incident.">
+            {options.roles.map(role => (
+              <CheckboxRow
+                key={role.value}
+                label={role.label}
+                checked={visibleRoles.includes(role.value)}
+                onChange={checked =>
+                  setVisibleRoles(roles => (checked ? [...roles, role.value] : roles.filter(r => r !== role.value)))
+                }
+              />
             ))}
-          </Notice>
-        ) : null}
+          </Section>
 
-        <View style={styles.actions}>
-          <Button title={editing ? 'Update incident' : 'Create incident'} variant="primary" onPress={submit} loading={saving} />
-          <Button title="Cancel" variant="link" onPress={() => navigation.goBack()} />
+          {!editing ? (
+            <Section title="Hack Club HQ">
+              <SwitchRow
+                label="Escalate to Hack Club HQ"
+                description="Files a confidential report with HQ's safeguarding team. They're notified by email and Slack, and an S0 rings their phones. Conduct incidents also post to the HQ Firehouse channel."
+                value={escalate}
+                onChange={setEscalate}
+              />
+              {escalate ? (
+                <>
+                  <Field label="Number HQ can call you on" description="Include the country code, for example +1 555 555 0100.">
+                    <TextField value={reporterPhone} onChangeText={setReporterPhone} keyboardType="phone-pad" textContentType="telephoneNumber" />
+                  </Field>
+                  <Text style={styles.hint}>
+                    HQ responds at the incident’s level: S0 pages the safeguarding team’s phones within minutes, S1 within
+                    the hour, S2 within 12 hours.
+                  </Text>
+                  <CheckboxRow
+                    label="Emergency services (police, ambulance) have been called"
+                    checked={emergencyServices}
+                    onChange={setEmergencyServices}
+                  />
+                </>
+              ) : null}
+            </Section>
+          ) : null}
+
+          {errors.length ? (
+            <Notice tone="error">
+              {errors.map(message => (
+                <Text key={message} style={styles.errorText}>{message}</Text>
+              ))}
+            </Notice>
+          ) : null}
+
+          <View style={styles.actions}>
+            <Button title={editing ? 'Update incident' : 'Create incident'} variant="primary" onPress={submit} loading={saving} />
+            <Button title="Cancel" variant="link" onPress={() => navigation.goBack()} />
+          </View>
         </View>
-      </ScrollView>
+      </Screen>
     </KeyboardAvoidingView>
   );
 }
@@ -365,8 +369,7 @@ const makeStyles = (_colors: ThemeColors, theme: Theme) => {
   const { tokens: t, type, spacing, radii } = theme;
   return StyleSheet.create({
     flex: { flex: 1 },
-    container: { flex: 1, backgroundColor: t.bg },
-    content: { paddingBottom: 40 },
+    sections: { marginHorizontal: -spacing.lg, marginTop: -spacing.lg },
     chartToggle: { alignSelf: 'flex-start', paddingHorizontal: 0 },
     hint: { ...type.body, color: t.text2 },
     medication: {

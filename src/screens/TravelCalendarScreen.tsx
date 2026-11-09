@@ -26,14 +26,14 @@ import {
   type StatusType,
 } from '../components/ui';
 import type {
-  RootStackParamList,
+  AppStackParamList,
   TravelCalendarData,
   TravelCalendarEntry,
   TravelDirection,
   TravelMode,
 } from '../types';
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type NavigationProp = NativeStackNavigationProp<AppStackParamList>;
 
 const REFRESH_INTERVAL_MS = 60_000;
 

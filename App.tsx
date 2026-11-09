@@ -44,11 +44,21 @@ import { InboxScreen } from './src/screens/InboxScreen';
 import { InboxMessageScreen } from './src/screens/InboxMessageScreen';
 import { IdCheckScreen } from './src/screens/IdCheckScreen';
 import { ThemeProvider, useTheme, useThemedStyles, type ThemeColors } from './src/theme';
-import type { RootStackParamList, MainTabParamList } from './src/types';
+import type {
+  MainTabParamList,
+  OverviewStackParamList,
+  PassStackParamList,
+  PeopleStackParamList,
+  RootStackParamList,
+  ScannerStackParamList,
+  TravelStackParamList,
+} from './src/types';
 import * as Sentry from '@sentry/react-native';
 import { scrubIdCheckBreadcrumb, scrubIdCheckEvent } from './src/services/idCheck/sentryScrub';
 import { stripHttpBreadcrumbQuery } from './src/services/breadcrumbScrub';
-import { fallbackToRegisteredRoute } from './src/services/deepLinks';
+import { fallbackToRegisteredRoute, preferOrganizerTabs } from './src/services/deepLinks';
+import { ROOT_NAVIGATOR } from './src/navigation/routes';
+import { linkingConfig } from './src/navigation/linking';
 
 Sentry.init({
   dsn: 'https://6a7370567b34299ea8bb4ecf2aec3628@o4509680631087104.ingest.us.sentry.io/4510470752043008',
@@ -100,6 +110,15 @@ if (Platform.OS === 'android') {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createNativeBottomTabNavigator<MainTabParamList>();
+const OverviewStack = createNativeStackNavigator<OverviewStackParamList>();
+const ScannerStack = createNativeStackNavigator<ScannerStackParamList>();
+const PeopleStack = createNativeStackNavigator<PeopleStackParamList>();
+const TravelStack = createNativeStackNavigator<TravelStackParamList>();
+const PassStack = createNativeStackNavigator<PassStackParamList>();
+
+// Pushed screens draw their own back link and title (components/ui/Screen),
+// so no stack shows a native header.
+const STACK_OPTIONS = { headerShown: false } as const;
 
 function useNavigationTheme() {
   const { colors, isDark } = useTheme();
@@ -144,11 +163,71 @@ function useAndroidTabBarProps() {
   };
 }
 
+// Each tab is its own stack, so a pushed screen keeps the tab bar.
+function OverviewTab() {
+  return (
+    <OverviewStack.Navigator screenOptions={STACK_OPTIONS}>
+      <OverviewStack.Screen name="EventHome" component={EventHome} />
+      <OverviewStack.Screen name="IncidentList" component={IncidentListScreen} />
+      <OverviewStack.Screen name="IncidentDetail" component={IncidentDetailScreen} />
+      <OverviewStack.Screen name="IncidentForm" component={IncidentFormScreen} />
+      <OverviewStack.Screen name="IncidentReport" component={IncidentReportScreen} />
+      <OverviewStack.Screen name="MessageList" component={MessageListScreen} />
+      <OverviewStack.Screen name="MessageDetail" component={MessageDetailScreen} />
+      <OverviewStack.Screen name="MessageCompose" component={MessageComposeScreen} />
+      <OverviewStack.Screen name="MessagePreview" component={MessagePreviewScreen} />
+    </OverviewStack.Navigator>
+  );
+}
+
+function ScannerTab() {
+  return (
+    <ScannerStack.Navigator screenOptions={STACK_OPTIONS}>
+      <ScannerStack.Screen name="ScannerHome" component={ScannerScreen} />
+      <ScannerStack.Screen name="ParticipantDetail" component={ParticipantDetailScreen} />
+    </ScannerStack.Navigator>
+  );
+}
+
 // People is the roster. A role without participant records keeps the tab but
 // sees why it's empty, rather than the tab vanishing.
-function PeopleTab() {
+function PeopleHome() {
   const { canViewParticipantRecords } = useEventAccess();
   return canViewParticipantRecords ? <SearchScreen /> : <RoleRestricted fill />;
+}
+
+function PeopleTab() {
+  return (
+    <PeopleStack.Navigator screenOptions={STACK_OPTIONS}>
+      <PeopleStack.Screen name="PeopleHome" component={PeopleHome} />
+      <PeopleStack.Screen name="ParticipantDetail" component={ParticipantDetailScreen} />
+    </PeopleStack.Navigator>
+  );
+}
+
+function TravelTab() {
+  return (
+    <TravelStack.Navigator screenOptions={STACK_OPTIONS}>
+      <TravelStack.Screen name="TravelHome" component={TravelCalendarScreen} />
+      <TravelStack.Screen name="ParticipantDetail" component={ParticipantDetailScreen} />
+    </TravelStack.Navigator>
+  );
+}
+
+/**
+ * The attendee's stack: their tickets, each pushing its pass. An organizer
+ * who picks an event they attend gets the pass alone as its home.
+ */
+function PassStackNavigator() {
+  return (
+    <PassStack.Navigator screenOptions={STACK_OPTIONS}>
+      <PassStack.Screen name="MyTickets" component={MyTicketsScreen} />
+      <PassStack.Screen name="TicketDetail" component={TicketDetailScreen} />
+      <PassStack.Screen name="Inbox" component={InboxScreen} />
+      <PassStack.Screen name="InboxMessage" component={InboxMessageScreen} />
+      <PassStack.Screen name="IncidentReport" component={IncidentReportScreen} />
+    </PassStack.Navigator>
+  );
 }
 
 function MainTabs() {
@@ -165,7 +244,7 @@ function MainTabs() {
     >
       <Tab.Screen
         name="Overview"
-        component={EventHome}
+        component={OverviewTab}
         options={{
           tabBarLabel: 'Overview',
           tabBarIcon: tabIcon('house', require('./assets/tabs/home.svg')),
@@ -173,7 +252,7 @@ function MainTabs() {
       />
       <Tab.Screen
         name="Scanner"
-        component={ScannerScreen}
+        component={ScannerTab}
         options={{
           tabBarLabel: 'Scan',
           tabBarIcon: tabIcon('qrcode.viewfinder', require('./assets/tabs/scan.svg')),
@@ -190,7 +269,7 @@ function MainTabs() {
       {showTravel ? (
         <Tab.Screen
           name="Travel"
-          component={TravelCalendarScreen}
+          component={TravelTab}
           options={{
             tabBarLabel: 'Travel',
             tabBarIcon: tabIcon('airplane', require('./assets/tabs/travel.svg')),
@@ -201,31 +280,10 @@ function MainTabs() {
   );
 }
 
-// The pushed paper-world screens share the participant page's header: a
-// translucent blurred bar on iOS, the surface color on Android.
-function useStackHeaderOptions() {
-  const { colors, isDark } = useTheme();
-  return useCallback(
-    (title: string) => ({
-      headerShown: true,
-      headerTitle: title,
-      headerBackTitle: 'Back',
-      headerTintColor: colors.text.accent,
-      headerTransparent: Platform.OS === 'ios',
-      headerBlurEffect: isDark ? ('dark' as const) : ('light' as const),
-      headerStyle: {
-        backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.surface,
-      },
-    }),
-    [colors, isDark]
-  );
-}
-
 function RootNavigator() {
   const { state } = useApp();
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
-  const header = useStackHeaderOptions();
 
   if (state.auth.isLoading) {
     return (
@@ -237,14 +295,13 @@ function RootNavigator() {
 
   const user = state.auth.user;
   // Organizers (global admins or anyone with a staff role) get the event
-  // tabs. Everyone else lands on their tickets. A user who is both lands on
-  // the tabs and reaches the events they attend from the event switcher.
+  // tabs. Everyone has the attendee stack: it's a participant's home, and an
+  // organizer reaches the events they attend through it from the switcher
+  // (the participant flag can lag a new registration, so it isn't gated).
   const isOrganizer = !!(user?.is_organizer ?? user?.global_admin);
-  const isParticipant = !!user?.is_participant;
-  const showParticipant = isParticipant || !isOrganizer;
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator id={ROOT_NAVIGATOR} screenOptions={{ headerShown: false }}>
       {state.auth.isAuthenticated ? (
         <>
           {isOrganizer && <Stack.Screen name="Main" component={MainTabs} />}
@@ -255,35 +312,7 @@ function RootNavigator() {
               options={{ presentation: 'modal' }}
             />
           )}
-          {showParticipant && (
-            <Stack.Screen name="ParticipantMain" component={MyTicketsScreen} />
-          )}
-          <Stack.Screen name="TicketDetail" component={TicketDetailScreen} />
-          <Stack.Screen
-            name="ParticipantDetail"
-            component={ParticipantDetailScreen}
-            options={{
-              headerShown: true,
-              headerTitle: 'Participant',
-              headerBackTitle: 'Back',
-              headerTintColor: colors.text.accent,
-              headerTransparent: Platform.OS === 'ios',
-              headerBlurEffect: isDark ? 'dark' : 'light',
-              headerStyle: {
-                backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.surface,
-              },
-            }}
-          />
-          <Stack.Screen name="IncidentList" component={IncidentListScreen} options={header('Incidents')} />
-          <Stack.Screen name="IncidentDetail" component={IncidentDetailScreen} options={header('Incident details')} />
-          <Stack.Screen name="IncidentForm" component={IncidentFormScreen} options={header('New incident')} />
-          <Stack.Screen name="IncidentReport" component={IncidentReportScreen} options={header('Report an incident')} />
-          <Stack.Screen name="MessageList" component={MessageListScreen} options={header('Messages')} />
-          <Stack.Screen name="MessageDetail" component={MessageDetailScreen} options={header('Message')} />
-          <Stack.Screen name="MessageCompose" component={MessageComposeScreen} options={header('Compose message')} />
-          <Stack.Screen name="MessagePreview" component={MessagePreviewScreen} options={header('Preview & send')} />
-          <Stack.Screen name="Inbox" component={InboxScreen} options={header('Messages')} />
-          <Stack.Screen name="InboxMessage" component={InboxMessageScreen} options={header('Message')} />
+          <Stack.Screen name="ParticipantMain" component={PassStackNavigator} />
           {user?.global_admin ? (
             <Stack.Screen
               name="IdCheck"
@@ -320,32 +349,16 @@ const rootRouteNames = () =>
 
 const linking: LinkingOptions<RootStackParamList> = {
   prefixes: [Linking.createURL('/'), 'attend://'],
-  config: {
-    screens: {
-      Main: {
-        screens: {
-          // attend://scan, attend://people and attend://tickets are the
-          // app shortcuts'; the older paths keep working.
-          Scanner: { path: 'scanner', alias: ['scan'] },
-          Overview: { path: 'overview', alias: ['events'] },
-          Search: { path: 'search', alias: ['people'] },
-          Travel: 'travel',
-        },
-      },
-      ParticipantMain: { path: 'my-tickets', alias: ['tickets'] },
-      ParticipantDetail: 'participant/:id',
-      IncidentList: 'incidents',
-      IncidentReport: 'incident',
-      MessageList: 'event-messages',
-      Inbox: 'messages',
-      InboxMessage: 'messages/:messageId',
-    },
+  config: linkingConfig,
+  // Scan and People live in Main (organizers only); a link to a route this
+  // user doesn't have opens their home instead of doing nothing.
+  getStateFromPath: (path, options) => {
+    const routeNames = rootRouteNames();
+    return preferOrganizerTabs(
+      fallbackToRegisteredRoute(defaultGetStateFromPath(path, options), routeNames),
+      routeNames
+    );
   },
-  // Scan and Search live in Main (organizers only) and My tickets in
-  // ParticipantMain (participants only); a link to a route this user
-  // doesn't have opens their home instead of doing nothing.
-  getStateFromPath: (path, options) =>
-    fallbackToRegisteredRoute(defaultGetStateFromPath(path, options), rootRouteNames()),
 };
 
 // Only genuine attend:// deep links count. A loose substring check also
@@ -384,7 +397,7 @@ function AppNavigation() {
       // fallback already sends them home.
       if (!rootRouteNames()?.includes('Main')) return;
       // Navigate to scanner tab when tapping Live Activity
-      navigationRef.navigate('Main', { screen: 'Scanner' } as any);
+      navigationRef.navigate('Main', { screen: 'Scanner' });
     };
 
     const subscription = Linking.addEventListener('url', (event) => openScanner(event.url));
@@ -399,9 +412,14 @@ function AppNavigation() {
       const data = response.notification.request.content.data as { type?: string; message_id?: string } | undefined;
       if (data?.type !== 'message' || !navigationRef.isReady()) return;
       if (data.message_id) {
-        navigationRef.navigate('InboxMessage', { messageId: data.message_id });
+        // `initial: false` keeps the ticket list under it to go back to.
+        navigationRef.navigate('ParticipantMain', {
+          screen: 'InboxMessage',
+          params: { messageId: data.message_id },
+          initial: false,
+        });
       } else {
-        navigationRef.navigate('ParticipantMain' as any);
+        navigationRef.navigate('ParticipantMain');
       }
     });
 

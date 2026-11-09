@@ -1,16 +1,17 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
   Linking,
   Platform,
-  ScrollView,
   StyleSheet,
   Pressable,
   Text,
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { eventHomeState } from '../navigation/routes';
+import { resetRoot } from '../navigation/rootNavigation';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -29,12 +30,13 @@ import {
   SelectField,
   TextField,
 } from '../components/forms';
-import { Button as KitButton, Container, Icon, pressedStyle } from '../components/ui';
+import { Button as KitButton, Container, Icon, Screen, pressedStyle } from '../components/ui';
 import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
-import type { IncidentReportOptions, ReportAttachment, RootStackParamList } from '../types';
-import { useAndroidBottomInset, withBottomInset } from '../hooks/useAndroidBottomInset';
+import type { IncidentReportOptions, ReportAttachment, AppStackParamList } from '../types';
 
-type Nav = NativeStackNavigationProp<RootStackParamList, 'IncidentReport'>;
+type Nav = NativeStackNavigationProp<AppStackParamList, 'IncidentReport'>;
+
+const TITLE = 'Report an incident';
 
 const SUPPORT_EMAIL = 'attend@hackclub.com';
 const CONTACT_EMAIL = 'deven@hackclub.com';
@@ -44,7 +46,6 @@ const CONTACT_EMAIL = 'deven@hackclub.com';
  * anyone signed in: participants, parents, volunteers and staff.
  */
 export function IncidentReportScreen() {
-  const bottomInset = useAndroidBottomInset();
   const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<Nav>();
@@ -86,10 +87,6 @@ export function IncidentReportScreen() {
     load();
   }, [load]);
 
-  useLayoutEffect(() => {
-    navigation.setOptions({ headerTitle: 'Report an incident' });
-  }, [navigation]);
-
   const eventOptions = useMemo(
     () => [...(options?.events ?? []), ...(options?.custom_events ?? [])],
     [options]
@@ -112,8 +109,13 @@ export function IncidentReportScreen() {
     if (!medical) setEmergencyServices(false);
   }, [medical]);
 
-  if (loadError) return <ErrorView message={loadError} onRetry={load} />;
-  if (!options) return <LoadingView />;
+  if (loadError || !options) {
+    return (
+      <Screen title={TITLE} scroll={false}>
+        {loadError ? <ErrorView message={loadError} onRetry={load} /> : <LoadingView />}
+      </Screen>
+    );
+  }
 
   const addFiles = (files: ReportAttachment[]) => {
     const tooBig = files.find(f => f.size != null && f.size > options.max_attachment_bytes);
@@ -217,25 +219,33 @@ export function IncidentReportScreen() {
     const target = state.events.find(e => e.id === eventId);
     if (!target) return;
     await selectEvent(target);
-    navigation.replace('IncidentForm', {});
+    // In the Overview's stack the form takes this screen's place; from the
+    // attendee stack it opens on the Overview, under the event tabs.
+    if (navigation.getState().routeNames.includes('IncidentForm')) {
+      navigation.replace('IncidentForm', {});
+    } else {
+      resetRoot(navigation, eventHomeState('IncidentForm', {}));
+    }
   };
 
   if (submitted) {
     return (
-      <ScrollView style={styles.container} contentContainerStyle={withBottomInset(styles.thanks, bottomInset)}>
-        <View style={styles.thanksIcon}>
-          <Icon name="check" size={30} color={tokens.success} />
+      <Screen title={TITLE}>
+        <View style={styles.thanks}>
+          <View style={styles.thanksIcon}>
+            <Icon name="check" size={30} color={tokens.success} />
+          </View>
+          <Text style={styles.thanksTitle}>Thank you — your report has been received.</Text>
+          <Text style={styles.thanksText}>
+            Your report is confidential and has been sent directly to Hack Club HQ. Our average response time is 4–5 hours.
+          </Text>
+          <Text style={styles.thanksText}>
+            If you need to add anything or have questions, email{' '}
+            <Text style={styles.link} onPress={() => Linking.openURL(`mailto:${CONTACT_EMAIL}`)}>{CONTACT_EMAIL}</Text>.
+          </Text>
+          <Button title="File another report" variant="link" onPress={reset} />
         </View>
-        <Text style={styles.thanksTitle}>Thank you — your report has been received.</Text>
-        <Text style={styles.thanksText}>
-          Your report is confidential and has been sent directly to Hack Club HQ. Our average response time is 4–5 hours.
-        </Text>
-        <Text style={styles.thanksText}>
-          If you need to add anything or have questions, email{' '}
-          <Text style={styles.link} onPress={() => Linking.openURL(`mailto:${CONTACT_EMAIL}`)}>{CONTACT_EMAIL}</Text>.
-        </Text>
-        <Button title="File another report" variant="link" onPress={reset} />
-      </ScrollView>
+      </Screen>
     );
   }
 
@@ -244,177 +254,174 @@ export function IncidentReportScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView
-        style={styles.container}
-        contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={withBottomInset(styles.content, bottomInset)}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.intro}>
-          <Text style={styles.title}>File a Confidential Incident Report</Text>
-          <Text style={styles.response}>Average response time: 4–5 hours</Text>
-        </View>
-
-        <Notice tone="info">
-          <Text style={styles.noticeText}>
-            This form is for Hack Club event staff, volunteers, organizers, mentors, parents, attendees, and anyone
-            else to file incident reports directly to Hack Club HQ. This data is <Text style={styles.bold}>100% confidential</Text> and
-            is not accessible to other Hack Club staff members. Please file your report freely and candidly — we
-            assure you that we will fully and thoroughly investigate the incident.
-          </Text>
-          <Text style={[styles.noticeText, styles.emergency]}>
-            For medical emergencies, call 911 (or your local emergency number) and get the affected person the help
-            they need before filling out this form.
-          </Text>
-          <Text style={styles.noticeText}>
-            If you have any questions, please reach out directly to{' '}
-            <Text style={styles.link} onPress={() => Linking.openURL(`mailto:${CONTACT_EMAIL}`)}>{CONTACT_EMAIL}</Text>.
-          </Text>
-        </Notice>
-
-        <Notice tone="warning">
-          <Text style={styles.noticeText}>
-            <Text style={styles.bold}>This form is not for support tickets.</Text> If you need help with registration,
-            travel, waivers, or anything else about your event, please email our support team instead — reports filed
-            here go to our incident response team.
-          </Text>
-          <Button
-            title="Get Support →"
-            variant="link"
-            onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Support request')}`)}
-          />
-        </Notice>
-
-        {linkableOrganizerEvents.length ? (
-          <Notice tone="info">
-            <Text style={[styles.noticeText, styles.bold]}>Organizing one of these events?</Text>
-            <Text style={styles.noticeText}>
-              Your event’s Incidents page keeps a record for your team and can escalate to HQ from there, with the
-              same people notified:
-            </Text>
-            {linkableOrganizerEvents.map(e => (
-              <Text key={e.id} style={[styles.noticeText, styles.link]} onPress={() => openEventLog(e.id)}>
-                Log an incident for {e.name}
-              </Text>
-            ))}
-            <Text style={styles.muted}>Reporting as a participant or parent? Carry on below.</Text>
-          </Notice>
-        ) : null}
-
-        <Section title="About you">
-          <Field label="What is your full name?">
-            <TextField value={name} onChangeText={setName} textContentType="name" />
-          </Field>
-          <Field label="What is your email?">
-            <TextField value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" textContentType="emailAddress" />
-          </Field>
-          <Field
-            label="What is your phone number?"
-            description="We'll only use this if we need more information, and to send you SMS updates on your case if needed. Include the country code."
-          >
-            <TextField value={phone} onChangeText={setPhone} keyboardType="phone-pad" textContentType="telephoneNumber" />
-          </Field>
-          <Field label="What best describes you?">
-            <SelectField title="What best describes you?" value={role} options={options.roles} onChange={setRole} placeholder="Select one" />
-          </Field>
-        </Section>
-
-        <Section title="The incident">
-          <Field label="Event name">
-            <SelectField title="Event" value={eventChoice} options={eventOptions} onChange={setEventChoice} placeholder="Select the event" />
-          </Field>
-          <Field label="Incident type">
-            <SelectField
-              title="Incident type"
-              value={incidentType}
-              options={options.incident_types}
-              onChange={setIncidentType}
-              placeholder="Select one"
-            />
-          </Field>
-          {medical ? (
-            <CheckboxRow
-              label="Emergency services (e.g. 911) have already been called for this incident."
-              checked={emergencyServices}
-              onChange={setEmergencyServices}
-            />
-          ) : null}
-          <Field
-            label="How urgent is it?"
-            description="S0 is for something happening right now and rings our personal phones, so please use it only if needed. S3 is for something to follow up after the event."
-          >
-            <SelectField
-              title="How urgent is it?"
-              value={priority}
-              options={levelOptions}
-              onChange={setPriority}
-              placeholder="Select one"
-              disabled={forced}
-              isOptionDisabled={o => o.value === emergencyLevel && !emergencyAllowed}
-            />
-            {forced ? (
-              <Text style={styles.hint}>Set to S0 because emergency services have been called.</Text>
-            ) : null}
-          </Field>
-          <KitButton
-            title={showChart ? 'Hide the triage chart' : 'Which level? The triage chart'}
-            variant="link"
-            icon={showChart ? 'chevron-up' : 'chevron-down'}
-            iconPosition="end"
-            onPress={() => setShowChart(v => !v)}
-            style={styles.chartToggle}
-          />
-          {showChart ? (
-            <Container>
-              <LevelChart levels={options.levels} />
-            </Container>
-          ) : null}
-          <Field label="Describe the incident in one line">
-            <TextField value={summary} onChangeText={setSummary} />
-          </Field>
-          <Field label="Please add additional notes — be as thorough as you can!">
-            <TextField value={details} onChangeText={setDetails} multiline style={styles.details} />
-          </Field>
-        </Section>
-
-        <Section
-          title="Attachments"
-          description={`If any. Up to ${options.max_attachment_count} files, 25MB each.`}
-        >
-          {attachments.map((file, i) => (
-            <View key={`${file.uri}-${i}`} style={styles.file}>
-              <Ionicons name={file.mimeType.startsWith('image/') ? 'image-outline' : 'document-outline'} size={18} color={tokens.text2} />
-              <Text style={styles.fileName} numberOfLines={1}>{file.name}</Text>
-              <Pressable
-                onPress={() => setAttachments(list => list.filter((_, j) => j !== i))}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel={`Remove ${file.name}`}
-                style={({ pressed }) => pressedStyle(pressed)}
-              >
-                <Icon name="x-circle" size={20} color={tokens.muted} />
-              </Pressable>
-            </View>
-          ))}
-          <View style={styles.pickers}>
-            <Button title="Add photos" icon="images-outline" onPress={pickPhotos} />
-            <Button title="Add files" icon="attach" onPress={pickFiles} />
+      <Screen title={TITLE} scrollViewProps={{ keyboardShouldPersistTaps: 'handled' }}>
+        {/* The form's sections and notices carry their own inset and spacing. */}
+        <View style={styles.sections}>
+          <View style={styles.intro}>
+            <Text style={styles.response}>Average response time: 4–5 hours</Text>
           </View>
-        </Section>
 
-        {errors.length ? (
-          <Notice tone="error">
-            <Text style={[styles.noticeText, styles.bold]}>Please fix the following:</Text>
-            {errors.map(message => (
-              <Text key={message} style={[styles.noticeText, styles.errorText]}>{message}</Text>
-            ))}
+          <Notice tone="info">
+            <Text style={styles.noticeText}>
+              This form is for Hack Club event staff, volunteers, organizers, mentors, parents, attendees, and anyone
+              else to file incident reports directly to Hack Club HQ. This data is <Text style={styles.bold}>100% confidential</Text> and
+              is not accessible to other Hack Club staff members. Please file your report freely and candidly — we
+              assure you that we will fully and thoroughly investigate the incident.
+            </Text>
+            <Text style={[styles.noticeText, styles.emergency]}>
+              For medical emergencies, call 911 (or your local emergency number) and get the affected person the help
+              they need before filling out this form.
+            </Text>
+            <Text style={styles.noticeText}>
+              If you have any questions, please reach out directly to{' '}
+              <Text style={styles.link} onPress={() => Linking.openURL(`mailto:${CONTACT_EMAIL}`)}>{CONTACT_EMAIL}</Text>.
+            </Text>
           </Notice>
-        ) : null}
 
-        <View style={styles.actions}>
-          <Button title="Submit report" variant="primary" onPress={submit} loading={submitting} />
+          <Notice tone="warning">
+            <Text style={styles.noticeText}>
+              <Text style={styles.bold}>This form is not for support tickets.</Text> If you need help with registration,
+              travel, waivers, or anything else about your event, please email our support team instead — reports filed
+              here go to our incident response team.
+            </Text>
+            <Button
+              title="Get Support →"
+              variant="link"
+              onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Support request')}`)}
+            />
+          </Notice>
+
+          {linkableOrganizerEvents.length ? (
+            <Notice tone="info">
+              <Text style={[styles.noticeText, styles.bold]}>Organizing one of these events?</Text>
+              <Text style={styles.noticeText}>
+                Your event’s Incidents page keeps a record for your team and can escalate to HQ from there, with the
+                same people notified:
+              </Text>
+              {linkableOrganizerEvents.map(e => (
+                <Text key={e.id} style={[styles.noticeText, styles.link]} onPress={() => openEventLog(e.id)}>
+                  Log an incident for {e.name}
+                </Text>
+              ))}
+              <Text style={styles.muted}>Reporting as a participant or parent? Carry on below.</Text>
+            </Notice>
+          ) : null}
+
+          <Section title="About you">
+            <Field label="What is your full name?">
+              <TextField value={name} onChangeText={setName} textContentType="name" />
+            </Field>
+            <Field label="What is your email?">
+              <TextField value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" textContentType="emailAddress" />
+            </Field>
+            <Field
+              label="What is your phone number?"
+              description="We'll only use this if we need more information, and to send you SMS updates on your case if needed. Include the country code."
+            >
+              <TextField value={phone} onChangeText={setPhone} keyboardType="phone-pad" textContentType="telephoneNumber" />
+            </Field>
+            <Field label="What best describes you?">
+              <SelectField title="What best describes you?" value={role} options={options.roles} onChange={setRole} placeholder="Select one" />
+            </Field>
+          </Section>
+
+          <Section title="The incident">
+            <Field label="Event name">
+              <SelectField title="Event" value={eventChoice} options={eventOptions} onChange={setEventChoice} placeholder="Select the event" />
+            </Field>
+            <Field label="Incident type">
+              <SelectField
+                title="Incident type"
+                value={incidentType}
+                options={options.incident_types}
+                onChange={setIncidentType}
+                placeholder="Select one"
+              />
+            </Field>
+            {medical ? (
+              <CheckboxRow
+                label="Emergency services (e.g. 911) have already been called for this incident."
+                checked={emergencyServices}
+                onChange={setEmergencyServices}
+              />
+            ) : null}
+            <Field
+              label="How urgent is it?"
+              description="S0 is for something happening right now and rings our personal phones, so please use it only if needed. S3 is for something to follow up after the event."
+            >
+              <SelectField
+                title="How urgent is it?"
+                value={priority}
+                options={levelOptions}
+                onChange={setPriority}
+                placeholder="Select one"
+                disabled={forced}
+                isOptionDisabled={o => o.value === emergencyLevel && !emergencyAllowed}
+              />
+              {forced ? (
+                <Text style={styles.hint}>Set to S0 because emergency services have been called.</Text>
+              ) : null}
+            </Field>
+            <KitButton
+              title={showChart ? 'Hide the triage chart' : 'Which level? The triage chart'}
+              variant="link"
+              icon={showChart ? 'chevron-up' : 'chevron-down'}
+              iconPosition="end"
+              onPress={() => setShowChart(v => !v)}
+              style={styles.chartToggle}
+            />
+            {showChart ? (
+              <Container>
+                <LevelChart levels={options.levels} />
+              </Container>
+            ) : null}
+            <Field label="Describe the incident in one line">
+              <TextField value={summary} onChangeText={setSummary} />
+            </Field>
+            <Field label="Please add additional notes — be as thorough as you can!">
+              <TextField value={details} onChangeText={setDetails} multiline style={styles.details} />
+            </Field>
+          </Section>
+
+          <Section
+            title="Attachments"
+            description={`If any. Up to ${options.max_attachment_count} files, 25MB each.`}
+          >
+            {attachments.map((file, i) => (
+              <View key={`${file.uri}-${i}`} style={styles.file}>
+                <Ionicons name={file.mimeType.startsWith('image/') ? 'image-outline' : 'document-outline'} size={18} color={tokens.text2} />
+                <Text style={styles.fileName} numberOfLines={1}>{file.name}</Text>
+                <Pressable
+                  onPress={() => setAttachments(list => list.filter((_, j) => j !== i))}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${file.name}`}
+                  style={({ pressed }) => pressedStyle(pressed)}
+                >
+                  <Icon name="x-circle" size={20} color={tokens.muted} />
+                </Pressable>
+              </View>
+            ))}
+            <View style={styles.pickers}>
+              <Button title="Add photos" icon="images-outline" onPress={pickPhotos} />
+              <Button title="Add files" icon="attach" onPress={pickFiles} />
+            </View>
+          </Section>
+
+          {errors.length ? (
+            <Notice tone="error">
+              <Text style={[styles.noticeText, styles.bold]}>Please fix the following:</Text>
+              {errors.map(message => (
+                <Text key={message} style={[styles.noticeText, styles.errorText]}>{message}</Text>
+              ))}
+            </Notice>
+          ) : null}
+
+          <View style={styles.actions}>
+            <Button title="Submit report" variant="primary" onPress={submit} loading={submitting} />
+          </View>
         </View>
-      </ScrollView>
+      </Screen>
     </KeyboardAvoidingView>
   );
 }
@@ -423,10 +430,8 @@ const makeStyles = (_colors: ThemeColors, theme: Theme) => {
   const { tokens: t, type, spacing, radii } = theme;
   return StyleSheet.create({
     flex: { flex: 1 },
-    container: { flex: 1, backgroundColor: t.bg },
-    content: { paddingBottom: 40 },
+    sections: { marginHorizontal: -spacing.lg, marginTop: -spacing.lg },
     intro: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.xs },
-    title: { ...type.h1, color: t.textH },
     response: { ...type.label, color: t.success },
     noticeText: { ...type.body, color: t.text, marginBottom: 6 },
     emergency: { fontWeight: '700', color: t.error },
@@ -449,7 +454,7 @@ const makeStyles = (_colors: ThemeColors, theme: Theme) => {
     fileName: { ...type.body, flex: 1, color: t.text },
     pickers: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
     actions: { flexDirection: 'row', paddingHorizontal: spacing.lg, paddingTop: spacing.xl },
-    thanks: { alignItems: 'center', padding: spacing.xxl, paddingTop: 48, gap: spacing.md },
+    thanks: { alignItems: 'center', paddingHorizontal: spacing.sm, paddingTop: spacing.xxl, gap: spacing.md },
     thanksIcon: {
       width: 56,
       height: 56,

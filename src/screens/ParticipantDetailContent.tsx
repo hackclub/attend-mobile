@@ -10,6 +10,8 @@ import {
   RefreshControl,
   ActionSheetIOS,
   Platform,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -39,7 +41,7 @@ import { checkInDetail, participantDetailLine } from '../services/participantChe
 import { isWithdrawn } from '../services/participantStatus';
 import { useTheme } from '../theme';
 import { BiometricGate } from '../components/BiometricGate';
-import type { RootStackParamList, Participant, ParticipantNote, Travel, Guardian, Consent, Accommodation, AccessibilityDetail, PersonalDetails, ScanByContext } from '../types';
+import type { AppStackParamList, Participant, ParticipantNote, Travel, Guardian, Consent, Accommodation, AccessibilityDetail, PersonalDetails, ScanByContext } from '../types';
 
 interface ParticipantDetailContentProps {
   participant: Participant;
@@ -50,6 +52,8 @@ interface ParticipantDetailContentProps {
    * insets itself to clear it, with topInset as the gap below.
    */
   underHeader?: boolean;
+  /** Extra styles for the scrolling column, e.g. a pushed screen's max width. */
+  contentContainerStyle?: StyleProp<ViewStyle>;
 }
 
 /**
@@ -71,12 +75,13 @@ function ParticipantDetailBody({
   topInset = 16,
   bottomInset = 32,
   underHeader = false,
+  contentContainerStyle,
 }: ParticipantDetailContentProps) {
   const { tokens, type } = useTheme();
   const { state, updateParticipant } = useApp();
   const { canViewParticipantRecords, canViewParticipantPii, roleLabel } = useEventAccess();
   const { isSupported: nfcSupported, writeTag } = useNFC();
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
   // On-device passport/ID card check: global admins only (the server refuses
   // anyone else too), and only on an iPhone with an NFC reader to read the
   // document's chip — iPads and simulators have none.
@@ -400,7 +405,11 @@ function ParticipantDetailBody({
     <>
       <ScrollView
         style={{ backgroundColor: tokens.bg }}
-        contentContainerStyle={[styles.content, { paddingTop: topInset, paddingBottom: bottomInset }]}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: topInset, paddingBottom: bottomInset },
+          contentContainerStyle,
+        ]}
         contentInsetAdjustmentBehavior={underHeader ? 'automatic' : 'never'}
         scrollIndicatorInsets={underHeader ? undefined : { top: topInset }}
         keyboardShouldPersistTaps="handled"

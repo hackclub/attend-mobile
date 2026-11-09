@@ -10,10 +10,10 @@ import { useTheme } from '../theme';
 import { Button, Container, Flashbar, Icon, ListRow, Toggle } from '../components/ui';
 import { useApp } from '../context/AppContext';
 import { useBiometric } from '../hooks/useBiometric';
-import type { RootStackParamList } from '../types';
+import type { AppStackParamList } from '../types';
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'KioskSetup'>;
-type KioskSetupRoute = RouteProp<RootStackParamList, 'KioskSetup'>;
+type NavigationProp = NativeStackNavigationProp<AppStackParamList, 'KioskSetup'>;
+type KioskSetupRoute = RouteProp<AppStackParamList, 'KioskSetup'>;
 
 const PIN_LENGTH = 4;
 

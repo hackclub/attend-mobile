@@ -12,15 +12,16 @@ import {
   isAndroid,
   ripple,
   ROW_STATE_LAYER_ALPHA,
+  Screen,
 } from '../components/ui';
 import { MESSAGE_STATUS_BADGE, channelList } from '../components/messageStatus';
 import { EmptyState, ErrorView, LoadingView, formatDateTime } from '../components/forms';
 import { titleize } from '../services/statusDisplay';
 import { spacing, useTheme } from '../theme';
-import type { MessageSummary, RootStackParamList } from '../types';
-import { useAndroidBottomInset, withBottomInset } from '../hooks/useAndroidBottomInset';
+import type { MessageSummary, AppStackParamList } from '../types';
+import { useScreenInsets } from '../hooks/useScreenInsets';
 
-type Nav = NativeStackNavigationProp<RootStackParamList, 'MessageList'>;
+type Nav = NativeStackNavigationProp<AppStackParamList, 'MessageList'>;
 type Filter = 'all' | 'draft' | 'scheduled';
 
 function timeLine(m: MessageSummary): string {
@@ -33,7 +34,7 @@ function timeLine(m: MessageSummary): string {
 }
 
 export function MessageListScreen() {
-  const bottomInset = useAndroidBottomInset();
+  const insets = useScreenInsets();
   const { tokens, type, radii } = useTheme();
   const navigation = useNavigation<Nav>();
   const { state } = useApp();
@@ -64,9 +65,27 @@ export function MessageListScreen() {
     [messages, filter]
   );
 
-  if (!event) return <EmptyState title="No event selected" message="Pick an event on the Overview tab first." />;
-  if (error && !messages) return <ErrorView message={error} onRetry={load} />;
-  if (!messages) return <LoadingView />;
+  if (!event) {
+    return (
+      <Screen title="Messages">
+        <EmptyState title="No event selected" message="Pick an event on the Overview tab first." />
+      </Screen>
+    );
+  }
+  if (error && !messages) {
+    return (
+      <Screen title="Messages" scroll={false}>
+        <ErrorView message={error} onRetry={load} />
+      </Screen>
+    );
+  }
+  if (!messages) {
+    return (
+      <Screen title="Messages" scroll={false}>
+        <LoadingView />
+      </Screen>
+    );
+  }
 
   const refresh = async () => {
     setRefreshing(true);
@@ -82,103 +101,119 @@ export function MessageListScreen() {
   const scheduled = messages.filter(m => m.status === 'scheduled').length;
 
   return (
-    <FlatList
-      style={{ flex: 1, backgroundColor: tokens.bg }}
-      contentInsetAdjustmentBehavior="automatic"
-      data={shown}
-      keyExtractor={m => m.id}
-      contentContainerStyle={withBottomInset(styles.list, bottomInset)}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={tokens.accent} colors={[tokens.accent]} />}
-      ListHeaderComponent={
+    <Screen
+      title="Messages"
+      scroll={false}
+      action={
+        // An empty list offers Compose in its empty state instead.
         messages.length > 0 ? (
-          <View style={styles.header}>
-            <Button title="Compose message" variant="primary" icon="plus" onPress={compose} style={styles.compose} />
-            <SegmentedControl
-              accessibilityLabel="Filter messages"
-              role="tab"
-              value={filter}
-              onChange={setFilter}
-              options={[
-                { value: 'all', label: 'All' },
-                { value: 'draft', label: `Drafts · ${drafts}` },
-                { value: 'scheduled', label: `Scheduled · ${scheduled}` },
-              ]}
-            />
-          </View>
+          <Button title="Compose message" variant="primary" icon="plus" onPress={compose} />
         ) : undefined
       }
-      renderItem={({ item, index }) => {
-        const first = index === 0;
-        const last = index === shown.length - 1;
-        return (
-          <View
-            style={[
-              styles.cardSlice,
-              { backgroundColor: tokens.bg, borderColor: tokens.box },
-              first && { borderTopWidth: 1, borderTopLeftRadius: radii.container, borderTopRightRadius: radii.container },
-              last && { borderBottomWidth: 1, borderBottomLeftRadius: radii.container, borderBottomRightRadius: radii.container },
-            ]}
-          >
-            <Pressable
-              onPress={() => open(item)}
-              accessibilityRole="button"
-              accessibilityLabel={`${item.subject || 'No subject'}, ${titleize(item.status)}`}
-              android_ripple={ripple(tokens.text, { alpha: ROW_STATE_LAYER_ALPHA })}
-              style={({ pressed }) => [
-                styles.row,
-                !first && { borderTopWidth: 1, borderTopColor: tokens.div2 },
-                !isAndroid && pressed && { backgroundColor: tokens.shaded },
+    >
+      <FlatList
+        style={{ flex: 1, backgroundColor: tokens.bg }}
+        data={shown}
+        keyExtractor={m => m.id}
+        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + spacing.xxl }]}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refresh}
+            tintColor={tokens.accent}
+            colors={[tokens.accent]}
+            progressBackgroundColor={tokens.bg}
+          />
+        }
+        ListHeaderComponent={
+          messages.length > 0 ? (
+            <View style={styles.header}>
+              <SegmentedControl
+                accessibilityLabel="Filter messages"
+                role="tab"
+                value={filter}
+                onChange={setFilter}
+                options={[
+                  { value: 'all', label: 'All' },
+                  { value: 'draft', label: `Drafts · ${drafts}` },
+                  { value: 'scheduled', label: `Scheduled · ${scheduled}` },
+                ]}
+              />
+            </View>
+          ) : undefined
+        }
+        renderItem={({ item, index }) => {
+          const first = index === 0;
+          const last = index === shown.length - 1;
+          return (
+            <View
+              style={[
+                styles.cardSlice,
+                { backgroundColor: tokens.bg, borderColor: tokens.box },
+                first && { borderTopWidth: 1, borderTopLeftRadius: radii.container, borderTopRightRadius: radii.container },
+                last && { borderBottomWidth: 1, borderBottomLeftRadius: radii.container, borderBottomRightRadius: radii.container },
               ]}
             >
-              <View style={styles.titleRow}>
-                <Text
-                  style={[type.h3, styles.subject, { color: item.subject ? tokens.textH : tokens.muted }]}
-                  numberOfLines={1}
-                >
-                  {item.subject || 'No subject'}
-                </Text>
-                <Badge label={titleize(item.status)} color={MESSAGE_STATUS_BADGE[item.status] ?? 'grey'} />
-              </View>
-              {item.preview_text ? (
-                <Text style={[type.body, { color: tokens.text2 }]} numberOfLines={2}>
-                  {item.preview_text}
-                </Text>
-              ) : null}
-              <Text style={[type.body, { color: tokens.muted }]}>
-                {[item.audience_label, channelList(item.channels)].filter(Boolean).join(' · ')}
-              </Text>
-              <Text style={[type.body, { color: tokens.muted }]}>{timeLine(item)}</Text>
-              {item.failed_count ? (
-                <View style={styles.failed}>
-                  <Icon name="exclamation-circle" size={16} color={tokens.error} />
-                  <Text style={[type.body, { color: tokens.error }]}>{item.failed_count} failed</Text>
+              <Pressable
+                onPress={() => open(item)}
+                accessibilityRole="button"
+                accessibilityLabel={`${item.subject || 'No subject'}, ${titleize(item.status)}`}
+                android_ripple={ripple(tokens.text, { alpha: ROW_STATE_LAYER_ALPHA })}
+                style={({ pressed }) => [
+                  styles.row,
+                  !first && { borderTopWidth: 1, borderTopColor: tokens.div2 },
+                  !isAndroid && pressed && { backgroundColor: tokens.shaded },
+                ]}
+              >
+                <View style={styles.titleRow}>
+                  <Text
+                    style={[type.h3, styles.subject, { color: item.subject ? tokens.textH : tokens.muted }]}
+                    numberOfLines={1}
+                  >
+                    {item.subject || 'No subject'}
+                  </Text>
+                  <Badge label={titleize(item.status)} color={MESSAGE_STATUS_BADGE[item.status] ?? 'grey'} />
                 </View>
-              ) : null}
-            </Pressable>
-          </View>
-        );
-      }}
-      ListEmptyComponent={
-        messages.length === 0 ? (
-          <EmptyState
-            title="No messages yet"
-            message="Send email, SMS, Slack and push messages to this event's attendees and guardians."
-            action={<Button title="Compose message" variant="primary" icon="plus" onPress={compose} />}
-          />
-        ) : (
-          <Text style={[type.body, styles.none, { color: tokens.muted }]}>
-            {filter === 'draft' ? 'No drafts.' : 'No scheduled messages.'}
-          </Text>
-        )
-      }
-    />
+                {item.preview_text ? (
+                  <Text style={[type.body, { color: tokens.text2 }]} numberOfLines={2}>
+                    {item.preview_text}
+                  </Text>
+                ) : null}
+                <Text style={[type.body, { color: tokens.muted }]}>
+                  {[item.audience_label, channelList(item.channels)].filter(Boolean).join(' · ')}
+                </Text>
+                <Text style={[type.body, { color: tokens.muted }]}>{timeLine(item)}</Text>
+                {item.failed_count ? (
+                  <View style={styles.failed}>
+                    <Icon name="exclamation-circle" size={16} color={tokens.error} />
+                    <Text style={[type.body, { color: tokens.error }]}>{item.failed_count} failed</Text>
+                  </View>
+                ) : null}
+              </Pressable>
+            </View>
+          );
+        }}
+        ListEmptyComponent={
+          messages.length === 0 ? (
+            <EmptyState
+              title="No messages yet"
+              message="Send email, SMS, Slack and push messages to this event's attendees and guardians."
+              action={<Button title="Compose message" variant="primary" icon="plus" onPress={compose} />}
+            />
+          ) : (
+            <Text style={[type.body, styles.none, { color: tokens.muted }]}>
+              {filter === 'draft' ? 'No drafts.' : 'No scheduled messages.'}
+            </Text>
+          )
+        }
+      />
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  list: { padding: spacing.lg, paddingBottom: spacing.xxxl },
+  list: { paddingHorizontal: spacing.lg, width: '100%', maxWidth: 620, alignSelf: 'center' },
   header: { gap: spacing.md, marginBottom: spacing.lg },
-  compose: { alignSelf: 'flex-start' },
   // Rows render as slices of one bordered container, so the list stays virtualised.
   cardSlice: { borderLeftWidth: 1, borderRightWidth: 1, overflow: 'hidden' },
   row: { paddingVertical: 14, paddingHorizontal: spacing.xl, gap: spacing.xs },

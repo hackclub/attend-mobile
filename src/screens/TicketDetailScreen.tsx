@@ -36,10 +36,10 @@ import {
   StatusIndicator,
   Toggle,
 } from '../components/ui';
-import type { RootStackParamList, Ticket } from '../types';
+import type { AppStackParamList, Ticket } from '../types';
 
-type TicketDetailRoute = RouteProp<RootStackParamList, 'TicketDetail'>;
-type Nav = NativeStackNavigationProp<RootStackParamList, 'TicketDetail'>;
+type TicketDetailRoute = RouteProp<AppStackParamList, 'TicketDetail'>;
+type Nav = NativeStackNavigationProp<AppStackParamList, 'TicketDetail'>;
 
 const HOTLINE = '+18556254225';
 const HOTLINE_DISPLAY = '+1 (855) 625 4225';

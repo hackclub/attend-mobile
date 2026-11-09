@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { StackActions, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AccountButton, AccountSheet } from '../components/AccountSheet';
 import { EventCard } from '../components/EventBanner';
@@ -16,9 +16,9 @@ import {
 } from '../services/eventSwitcher';
 import { eventRoleLabel } from '../services/eventRoles';
 import { useTheme } from '../theme';
-import type { Event, RootStackParamList, Ticket } from '../types';
+import type { Event, AppStackParamList, Ticket } from '../types';
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type NavigationProp = NativeStackNavigationProp<AppStackParamList>;
 
 const CONTENT_MAX_WIDTH = 620;
 
@@ -72,11 +72,8 @@ export function SwitchEventList({
   }, [embedded, navigation, selectEvent]);
 
   const pickTicket = useCallback((ticket: Ticket) => {
-    if (embedded) {
-      navigation.navigate('TicketDetail', { ticket });
-    } else {
-      navigation.dispatch(StackActions.replace('TicketDetail', { ticket }));
-    }
+    if (!embedded) navigation.goBack();
+    navigation.navigate('ParticipantMain', { screen: 'TicketDetail', params: { ticket }, initial: false });
   }, [embedded, navigation]);
 
   const onRefresh = useCallback(async () => {

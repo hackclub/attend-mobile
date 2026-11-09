@@ -1,6 +1,6 @@
-import { fallbackToRegisteredRoute, homeRouteName, participantDetailTarget } from '../deepLinks';
+import { fallbackToRegisteredRoute, homeRouteName, participantDetailTarget, preferOrganizerTabs } from '../deepLinks';
 
-const scan = { routes: [{ name: 'Main', state: { routes: [{ name: 'Scanner' }] } }] };
+const scan = { routes: [{ name: 'Main', state: { routes: [{ name: 'Scanner', state: { routes: [{ name: 'ScannerHome' }] } }] } }] };
 const tickets = { routes: [{ name: 'ParticipantMain' }] };
 
 describe('homeRouteName', () => {
@@ -50,5 +50,47 @@ describe('participantDetailTarget', () => {
     expect(participantDetailTarget({ participant: 'foo' })).toEqual({ id: undefined });
     expect(participantDetailTarget({ participant: ['x'] })).toEqual({ id: undefined });
     expect(participantDetailTarget(undefined)).toEqual({ id: undefined });
+  });
+});
+
+describe('preferOrganizerTabs', () => {
+  const report = {
+    routes: [
+      {
+        name: 'ParticipantMain',
+        state: { index: 1, routes: [{ name: 'MyTickets' }, { name: 'IncidentReport' }] },
+      },
+    ],
+  };
+  const inbox = {
+    routes: [{ name: 'ParticipantMain', state: { index: 1, routes: [{ name: 'MyTickets' }, { name: 'Inbox' }] } }],
+  };
+
+  it("opens an organizer's incident report link on the Overview", () => {
+    expect(preferOrganizerTabs(report, ['Main', 'SwitchEvent', 'ParticipantMain'])).toEqual({
+      routes: [
+        {
+          name: 'Main',
+          state: {
+            routes: [
+              { name: 'Overview', state: { index: 1, routes: [{ name: 'EventHome' }, { name: 'IncidentReport' }] } },
+            ],
+          },
+        },
+      ],
+    });
+  });
+
+  it('keeps it in the attendee stack for a participant-only user', () => {
+    expect(preferOrganizerTabs(report, ['ParticipantMain'])).toBe(report);
+  });
+
+  it('leaves attendee-only screens alone', () => {
+    expect(preferOrganizerTabs(inbox, ['Main', 'ParticipantMain'])).toBe(inbox);
+  });
+
+  it('passes through without a state or route names', () => {
+    expect(preferOrganizerTabs(undefined, ['Main'])).toBeUndefined();
+    expect(preferOrganizerTabs(report, undefined)).toBe(report);
   });
 });

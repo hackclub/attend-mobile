@@ -1,25 +1,23 @@
-import React, { useCallback, useLayoutEffect, useState } from 'react';
-import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
 import { RichText } from '../components/RichText';
-import { Badge, Button, Container, KeyValue, Stat, StatusIndicator } from '../components/ui';
+import { Badge, Button, Container, KeyValue, Screen, Stat, StatusIndicator } from '../components/ui';
 import { ErrorView, LoadingView, formatDateTime, formatRelative } from '../components/forms';
 import { MESSAGE_STATUS_BADGE, channelList, statusType } from '../components/messageStatus';
 import { CHANNEL_LABELS, DELIVERY_STATUS_TONES, MESSAGE_STATUS_TONES, titleize } from '../services/statusDisplay';
 import { spacing, useTheme } from '../theme';
-import type { BroadcastMessage, RootStackParamList } from '../types';
-import { useAndroidBottomInset, withBottomInset } from '../hooks/useAndroidBottomInset';
+import type { BroadcastMessage, AppStackParamList } from '../types';
 
-type Nav = NativeStackNavigationProp<RootStackParamList, 'MessageDetail'>;
-type Route = RouteProp<RootStackParamList, 'MessageDetail'>;
+type Nav = NativeStackNavigationProp<AppStackParamList, 'MessageDetail'>;
+type Route = RouteProp<AppStackParamList, 'MessageDetail'>;
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
 export function MessageDetailScreen() {
-  const bottomInset = useAndroidBottomInset();
   const { tokens, type } = useTheme();
   const navigation = useNavigation<Nav>();
   const { messageId } = useRoute<Route>().params;
@@ -46,13 +44,21 @@ export function MessageDetailScreen() {
     }, [load])
   );
 
-  useLayoutEffect(() => {
-    navigation.setOptions({ headerTitle: 'Message' });
-  }, [navigation]);
-
-  if (!event) return <ErrorView message="Pick an event on the Overview tab first." />;
-  if (error && !message) return <ErrorView message={error} onRetry={load} />;
-  if (!message) return <LoadingView />;
+  // The message's subject is the page's heading, so the scaffold has no title
+  // once it has loaded.
+  if (!event || !message) {
+    return (
+      <Screen title="Message" scroll={false}>
+        {!event ? (
+          <ErrorView message="Pick an event on the Overview tab first." />
+        ) : error ? (
+          <ErrorView message={error} onRetry={load} />
+        ) : (
+          <LoadingView />
+        )}
+      </Screen>
+    );
+  }
 
   const refresh = async () => {
     setRefreshing(true);
@@ -119,12 +125,7 @@ export function MessageDetailScreen() {
   ];
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: tokens.bg }}
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={withBottomInset(styles.content, bottomInset)}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={tokens.accent} colors={[tokens.accent]} />}
-    >
+    <Screen refreshing={refreshing} onRefresh={refresh}>
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <Text
@@ -283,13 +284,12 @@ export function MessageDetailScreen() {
           </View>
         )}
       </Container>
-    </ScrollView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
-  content: { padding: spacing.lg, paddingBottom: spacing.xxxl + spacing.sm, gap: spacing.lg },
   header: { gap: spacing.xs },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
   badge: { marginTop: 5 },

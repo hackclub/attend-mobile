@@ -11,14 +11,15 @@ import {
   StatusIndicator,
   TextField,
   PressableSurface,
+  Screen,
 } from '../components/ui';
 import { EmptyState, ErrorView, LevelBadge, LevelChart, LoadingView, formatDateTime } from '../components/forms';
 import { humanize } from '../services/statusDisplay';
 import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
-import type { IncidentLevel, IncidentStatus, IncidentSummary, RootStackParamList } from '../types';
-import { useAndroidBottomInset, withBottomInset } from '../hooks/useAndroidBottomInset';
+import type { IncidentLevel, IncidentStatus, IncidentSummary, AppStackParamList } from '../types';
+import { useScreenInsets } from '../hooks/useScreenInsets';
 
-type Nav = NativeStackNavigationProp<RootStackParamList, 'IncidentList'>;
+type Nav = NativeStackNavigationProp<AppStackParamList, 'IncidentList'>;
 
 // Open work first; closed incidents fold away behind a link.
 const STATUS_ORDER: IncidentStatus[] = ['open', 'in_review', 'closed'];
@@ -83,8 +84,8 @@ function IncidentCard({
 }
 
 export function IncidentListScreen() {
-  const bottomInset = useAndroidBottomInset();
-  const { tokens } = useTheme();
+  const insets = useScreenInsets();
+  const { tokens, spacing } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<Nav>();
   const { state } = useApp();
@@ -169,15 +170,30 @@ export function IncidentListScreen() {
 
   const newIncident = () => navigation.navigate('IncidentForm', {});
 
-  if (!event) return <EmptyState title="No event selected" message="Pick an event on the Overview tab first." />;
-  if (error && !incidents) return <ErrorView message={error} onRetry={load} />;
-  if (!incidents) return <LoadingView />;
+  if (!event) {
+    return (
+      <Screen title="Incidents">
+        <EmptyState title="No event selected" message="Pick an event on the Overview tab first." />
+      </Screen>
+    );
+  }
+  if (error && !incidents) {
+    return (
+      <Screen title="Incidents" scroll={false}>
+        <ErrorView message={error} onRetry={load} />
+      </Screen>
+    );
+  }
+  if (!incidents) {
+    return (
+      <Screen title="Incidents" scroll={false}>
+        <LoadingView />
+      </Screen>
+    );
+  }
 
   const header = (
     <View style={styles.header}>
-      <View style={styles.actionsRow}>
-        <Button title="New incident" variant="primary" icon="plus" onPress={newIncident} />
-      </View>
       <Text style={styles.description}>
         Private to your event team. Turn on “Escalate to Hack Club HQ” on a new incident, or escalate an
         existing one from its page, to involve HQ’s safeguarding team.
@@ -212,61 +228,66 @@ export function IncidentListScreen() {
   );
 
   return (
-    <SectionList
-      style={styles.container}
-      contentInsetAdjustmentBehavior="automatic"
-      sections={sections}
-      keyExtractor={item => item.id}
-      ListHeaderComponent={header}
-      contentContainerStyle={withBottomInset(styles.list, bottomInset)}
-      keyboardDismissMode="on-drag"
-      keyboardShouldPersistTaps="handled"
-      stickySectionHeadersEnabled={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={refresh}
-          tintColor={tokens.accent}
-          colors={[tokens.accent]}
-          progressBackgroundColor={tokens.bg}
-        />
-      }
-      renderSectionHeader={({ section }) =>
-        section.collapsed ? (
-          <Button
-            title={`${section.title} (${section.count})`}
-            variant="link"
-            icon="chevron-down"
-            iconPosition="end"
-            onPress={() => setShowClosed(true)}
-            style={styles.collapsedToggle}
+    <Screen
+      title="Incidents"
+      scroll={false}
+      action={<Button title="New incident" variant="primary" icon="plus" onPress={newIncident} />}
+    >
+      <SectionList
+        style={styles.container}
+        sections={sections}
+        keyExtractor={item => item.id}
+        ListHeaderComponent={header}
+        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + spacing.xxl }]}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+        stickySectionHeadersEnabled={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refresh}
+            tintColor={tokens.accent}
+            colors={[tokens.accent]}
+            progressBackgroundColor={tokens.bg}
           />
-        ) : (
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle} accessibilityRole="header">
-              {section.title} · {section.count}
-            </Text>
-            {section.key === 'closed' && showClosed && !trimmed ? (
-              <Button title="Hide" variant="link" onPress={() => setShowClosed(false)} />
-            ) : null}
-          </View>
-        )
-      }
-      renderItem={({ item }) => (
-        <IncidentCard
-          incident={item}
-          level={levelsByKey[item.severity]}
-          onPress={() => navigation.navigate('IncidentDetail', { incidentId: item.id })}
-        />
-      )}
-      ListEmptyComponent={
-        incidents.length ? (
-          <EmptyState title={`No incidents match “${trimmed}”`} />
-        ) : (
-          <EmptyState title="No incidents" message="No incidents reported for this event." />
-        )
-      }
-    />
+        }
+        renderSectionHeader={({ section }) =>
+          section.collapsed ? (
+            <Button
+              title={`${section.title} (${section.count})`}
+              variant="link"
+              icon="chevron-down"
+              iconPosition="end"
+              onPress={() => setShowClosed(true)}
+              style={styles.collapsedToggle}
+            />
+          ) : (
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle} accessibilityRole="header">
+                {section.title} · {section.count}
+              </Text>
+              {section.key === 'closed' && showClosed && !trimmed ? (
+                <Button title="Hide" variant="link" onPress={() => setShowClosed(false)} />
+              ) : null}
+            </View>
+          )
+        }
+        renderItem={({ item }) => (
+          <IncidentCard
+            incident={item}
+            level={levelsByKey[item.severity]}
+            onPress={() => navigation.navigate('IncidentDetail', { incidentId: item.id })}
+          />
+        )}
+        ListEmptyComponent={
+          incidents.length ? (
+            <EmptyState title={`No incidents match “${trimmed}”`} />
+          ) : (
+            <EmptyState title="No incidents" message="No incidents reported for this event." />
+          )
+        }
+      />
+    </Screen>
   );
 }
 
@@ -274,9 +295,8 @@ const makeStyles = (_colors: ThemeColors, theme: Theme) => {
   const { tokens: t, type, spacing, radii } = theme;
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: t.bg },
-    list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl },
-    header: { paddingTop: spacing.md, gap: spacing.md },
-    actionsRow: { flexDirection: 'row' },
+    list: { paddingHorizontal: spacing.lg, width: '100%', maxWidth: 620, alignSelf: 'center' },
+    header: { gap: spacing.md },
     description: { ...type.body, color: t.text2 },
     chartToggle: { alignSelf: 'flex-start', paddingHorizontal: 0 },
     sectionHeader: {

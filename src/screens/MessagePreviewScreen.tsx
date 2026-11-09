@@ -1,22 +1,22 @@
-import React, { useCallback, useEffect, useLayoutEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { CommonActions, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
 import { RichText } from '../components/RichText';
-import { Badge, Button, Container, Flashbar, StatusIndicator } from '../components/ui';
+import { Badge, Button, Container, Flashbar, Screen, StatusIndicator } from '../components/ui';
 import { ErrorView, LoadingView, formatDateTime } from '../components/forms';
 import { spacing, useTheme } from '../theme';
-import type { MessagePreview, RootStackParamList } from '../types';
-import { useAndroidBottomInset, withBottomInset } from '../hooks/useAndroidBottomInset';
+import type { MessagePreview, AppStackParamList } from '../types';
 
-type Nav = NativeStackNavigationProp<RootStackParamList, 'MessagePreview'>;
-type Route = RouteProp<RootStackParamList, 'MessagePreview'>;
+type Nav = NativeStackNavigationProp<AppStackParamList, 'MessagePreview'>;
+type Route = RouteProp<AppStackParamList, 'MessagePreview'>;
+
+const TITLE = 'Preview & send';
 
 /** Step 2 of 2: who it reaches, how each channel renders, then send. */
 export function MessagePreviewScreen() {
-  const bottomInset = useAndroidBottomInset();
   const { tokens, type } = useTheme();
   const navigation = useNavigation<Nav>();
   const { messageId } = useRoute<Route>().params;
@@ -40,13 +40,19 @@ export function MessagePreviewScreen() {
     load();
   }, [load]);
 
-  useLayoutEffect(() => {
-    navigation.setOptions({ headerTitle: 'Preview & send' });
-  }, [navigation]);
-
-  if (!event) return <ErrorView message="Pick an event on the Overview tab first." />;
-  if (error && !preview) return <ErrorView message={error} onRetry={load} />;
-  if (!preview) return <LoadingView />;
+  if (!event || !preview) {
+    return (
+      <Screen title={TITLE} scroll={false}>
+        {!event ? (
+          <ErrorView message="Pick an event on the Overview tab first." />
+        ) : error ? (
+          <ErrorView message={error} onRetry={load} />
+        ) : (
+          <LoadingView />
+        )}
+      </Screen>
+    );
+  }
 
   // Out of the composer and onto the message's page: drop Compose and this
   // screen, landing on the message's page if that is what opened the
@@ -92,11 +98,7 @@ export function MessagePreviewScreen() {
   const more = preview.total_count - shown.length;
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: tokens.bg }}
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={withBottomInset(styles.content, bottomInset)}
-    >
+    <Screen title={TITLE}>
       <Text style={[type.body, { color: tokens.muted }]}>Step 2 of 2 — Review and send your message</Text>
 
       <Container title={`Audience: ${preview.audience_label}`} bodyStyle={styles.section}>
@@ -172,13 +174,12 @@ export function MessagePreviewScreen() {
           disabled={preview.total_count === 0}
         />
       </View>
-    </ScrollView>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  content: { padding: spacing.lg, paddingBottom: spacing.xxxl + spacing.sm, gap: spacing.lg },
   section: { gap: spacing.md },
   tokens: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   // Mocks of Slack's dark message view and an SMS bubble, so they keep those apps' colours.

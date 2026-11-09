@@ -26,9 +26,9 @@ import {
   StatusIndicator,
   PressableSurface,
 } from '../components/ui';
-import type { RootStackParamList, Ticket } from '../types';
+import type { AppStackParamList, Ticket } from '../types';
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ParticipantMain'>;
+type NavigationProp = NativeStackNavigationProp<AppStackParamList, 'ParticipantMain'>;
 
 // Dates are shown in the event's timezone, not the device's, so the day
 // doesn't shift for travellers.

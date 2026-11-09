@@ -47,9 +47,9 @@ import { computeEventStats } from '../services/eventStats';
 import { participantAfterUndo } from '../services/scanUndo';
 import { useTheme } from '../theme';
 import { colors } from '../theme/colors';
-import type { Participant, RootStackParamList } from '../types';
+import type { Participant, AppStackParamList } from '../types';
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type NavigationProp = NativeStackNavigationProp<AppStackParamList>;
 type ManualEntryMode = 'none' | 'search';
 
 // How long the camera ignores codes after a sheet over it closes.

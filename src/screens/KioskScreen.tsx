@@ -31,10 +31,10 @@ import { useScannerPowerMode } from '../hooks/useScannerPowerMode';
 import { useApp } from '../context/AppContext';
 import type { ScannerResult } from '../services/scannerCore';
 import { colors } from '../theme/colors';
-import type { RootStackParamList } from '../types';
+import type { AppStackParamList } from '../types';
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Kiosk'>;
-type KioskRoute = RouteProp<RootStackParamList, 'Kiosk'>;
+type NavigationProp = NativeStackNavigationProp<AppStackParamList, 'Kiosk'>;
+type KioskRoute = RouteProp<AppStackParamList, 'Kiosk'>;
 
 const PIN_LENGTH = 4;
 const MAX_PIN_ATTEMPTS = 3;

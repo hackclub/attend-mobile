@@ -55,10 +55,10 @@ import {
   type OverviewSection,
 } from '../services/overview';
 import { useTheme } from '../theme';
-import type { Event, MainTabParamList, RootStackParamList, ScanContext, TravelCalendarEntry } from '../types';
+import type { Event, MainTabParamList, AppStackParamList, ScanContext, TravelCalendarEntry } from '../types';
 import { SwitchEventList } from './SwitchEventScreen';
 
-type Navigation = NavigationProp<RootStackParamList & MainTabParamList>;
+type Navigation = NavigationProp<AppStackParamList & MainTabParamList>;
 
 const CONTENT_MAX_WIDTH = 620;
 const WIDE_MAX_WIDTH = 1040;

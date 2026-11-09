@@ -40,9 +40,9 @@ import {
 import { useTheme, type ThemeTokens } from '../theme';
 import { Button, Container, Flashbar, Icon, KeyValue, TextField, type IconName } from '../components/ui';
 import { BiometricGate } from '../components/BiometricGate';
-import type { RootStackParamList } from '../types';
+import type { AppStackParamList } from '../types';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'IdCheck'>;
+type Props = NativeStackScreenProps<AppStackParamList, 'IdCheck'>;
 
 // Every document detail lives in this component's state and nowhere else: not
 // AsyncStorage, SecureStore, the sync queue, a file, or the console. It is all

@@ -39,10 +39,10 @@ import {
   PRESET_VIEWS,
   type FilterContext,
 } from '../services/participantFilters';
-import type { RootStackParamList, Participant, ScanContext } from '../types';
+import type { AppStackParamList, Participant, ScanContext } from '../types';
 import { useTabBarInset } from '../hooks/useTabBarInset';
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type NavigationProp = NativeStackNavigationProp<AppStackParamList>;
 
 // The three preset views, shown as the segmented control.
 const SEGMENT_LABELS: Record<string, string> = {

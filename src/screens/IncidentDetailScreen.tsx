@@ -1,11 +1,9 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
   Linking,
   Platform,
-  RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -20,6 +18,7 @@ import {
   Button,
   Container,
   KeyValue,
+  Screen,
   StatusGlyph,
   StatusIndicator,
   statusColor,
@@ -37,14 +36,12 @@ import {
 } from '../components/forms';
 import { INCIDENT_STATUS_TONES, humanize } from '../services/statusDisplay';
 import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
-import type { Incident, IncidentFormOptions, IncidentStatus, RootStackParamList } from '../types';
-import { useAndroidBottomInset, withBottomInset } from '../hooks/useAndroidBottomInset';
+import type { Incident, IncidentFormOptions, IncidentStatus, AppStackParamList } from '../types';
 
-type Nav = NativeStackNavigationProp<RootStackParamList, 'IncidentDetail'>;
-type Route = RouteProp<RootStackParamList, 'IncidentDetail'>;
+type Nav = NativeStackNavigationProp<AppStackParamList, 'IncidentDetail'>;
+type Route = RouteProp<AppStackParamList, 'IncidentDetail'>;
 
 export function IncidentDetailScreen() {
-  const bottomInset = useAndroidBottomInset();
   const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<Nav>();
@@ -96,25 +93,24 @@ export function IncidentDetailScreen() {
     }, [load])
   );
 
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerTitle: 'Incident details',
-      headerRight: incident?.permissions.update
-        ? () => (
-            <Button title="Edit" variant="link" onPress={() => navigation.navigate('IncidentForm', { incidentId })} />
-          )
-        : undefined,
-    });
-  }, [navigation, incident, incidentId]);
-
   const level = useMemo(
     () => options?.levels.find(l => l.value === incident?.severity) ?? null,
     [options, incident]
   );
 
-  if (!event) return <ErrorView message="Pick an event on the Overview tab first." />;
-  if (error && !incident) return <ErrorView message={error} onRetry={load} />;
-  if (!incident) return <LoadingView />;
+  if (!event || !incident) {
+    return (
+      <Screen scroll={false}>
+        {!event ? (
+          <ErrorView message="Pick an event on the Overview tab first." />
+        ) : error ? (
+          <ErrorView message={error} onRetry={load} />
+        ) : (
+          <LoadingView />
+        )}
+      </Screen>
+    );
+  }
 
   const refresh = async () => {
     setRefreshing(true);
@@ -208,19 +204,14 @@ export function IncidentDetailScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView
-        style={styles.container}
-        contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={withBottomInset(styles.content, bottomInset)}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={refresh}
-            tintColor={tokens.accent}
-            colors={[tokens.accent]}
-            progressBackgroundColor={tokens.bg}
-          />
+      <Screen
+        refreshing={refreshing}
+        onRefresh={refresh}
+        scrollViewProps={{ keyboardShouldPersistTaps: 'handled' }}
+        action={
+          incident.permissions.update ? (
+            <Button title="Edit" onPress={() => navigation.navigate('IncidentForm', { incidentId })} />
+          ) : undefined
         }
       >
         <View style={styles.intro}>
@@ -385,7 +376,7 @@ export function IncidentDetailScreen() {
             {commentForm}
           </Container>
         ) : null}
-      </ScrollView>
+      </Screen>
     </KeyboardAvoidingView>
   );
 }
@@ -394,8 +385,6 @@ const makeStyles = (_colors: ThemeColors, theme: Theme) => {
   const { tokens: t, type, spacing, radii } = theme;
   return StyleSheet.create({
     flex: { flex: 1 },
-    container: { flex: 1, backgroundColor: t.bg },
-    content: { padding: spacing.lg, paddingBottom: 40, gap: spacing.lg },
     intro: { gap: spacing.sm },
     badges: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
     status: { marginLeft: spacing.xs },

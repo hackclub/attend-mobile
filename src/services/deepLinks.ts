@@ -1,14 +1,17 @@
 // Deep links and app shortcuts name a fixed root route (attend://scan →
-// Main, attend://tickets → ParticipantMain), but which root routes exist
+// Main › Scanner, attend://tickets → ParticipantMain › MyTickets), but which root routes exist
 // depends on the signed-in user's roles. A link to a route this user doesn't
 // have would be an unhandled navigate action and silently do nothing, so it
 // lands on the user's home instead.
 
 interface RouteLike {
   name: string;
+  params?: object;
+  state?: StateLike;
 }
 
 interface StateLike {
+  index?: number;
   routes: readonly RouteLike[];
 }
 
@@ -34,6 +37,31 @@ export function fallbackToRegisteredRoute<T extends StateLike>(
   if (state.routes.every((route) => routeNames.includes(route.name))) return state;
   const home = homeRouteName(routeNames);
   return home ? ({ routes: [{ name: home }] } as unknown as T) : undefined;
+}
+
+// A path can only name one screen, so screens that both the attendee stack
+// and the Overview stack hold are linked under the attendee stack. For an
+// organizer the Overview is home, so their links open these there instead.
+const SHARED_WITH_OVERVIEW = ['IncidentReport'];
+
+/**
+ * `state` with a link into the attendee stack moved to the Overview when the
+ * user has the organizer tabs and the Overview stack holds the same screen.
+ */
+export function preferOrganizerTabs<T extends StateLike>(
+  state: T | undefined,
+  routeNames: readonly string[] | undefined
+): T | undefined {
+  if (!state || !routeNames?.includes('Main')) return state;
+  const root = state.routes[0];
+  if (state.routes.length !== 1 || root?.name !== 'ParticipantMain' || !root.state) return state;
+  const leaf = root.state.routes[root.state.routes.length - 1];
+  if (!leaf || !SHARED_WITH_OVERVIEW.includes(leaf.name)) return state;
+  const { name, params } = leaf;
+  const overview = { index: 1, routes: [{ name: 'EventHome' }, params ? { name, params } : { name }] };
+  return {
+    routes: [{ name: 'Main', state: { routes: [{ name: 'Overview', state: overview }] } }],
+  } as unknown as T;
 }
 
 /**
