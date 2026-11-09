@@ -10,6 +10,8 @@ import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
 import { useDiscardGuard } from '../hooks/useDiscardGuard';
+import { useFlash } from '../hooks/useFlash';
+import { haptics } from '../services/haptics';
 import { BiometricGate } from '../components/BiometricGate';
 import { api } from '../services/api';
 import {
@@ -17,6 +19,7 @@ import {
   Badge,
   Button,
   Container,
+  Flashbar,
   KeyValue,
   Screen,
   StatusGlyph,
@@ -36,7 +39,7 @@ import {
   statusType,
 } from '../components/forms';
 import { INCIDENT_STATUS_TONES, humanize } from '../services/statusDisplay';
-import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
+import { useTheme, useThemedStyles, type Theme } from '../theme';
 import type { Incident, IncidentFormOptions, IncidentStatus, AppStackParamList } from '../types';
 
 type Nav = NativeStackNavigationProp<AppStackParamList, 'IncidentDetail'>;
@@ -61,6 +64,7 @@ export function IncidentDetailScreen() {
   const [posting, setPosting] = useState(false);
 
   const [escalateOpen, setEscalateOpen] = useState(false);
+  const { flash, show: showFlash, dismiss: dismissFlash } = useFlash();
   const [showChart, setShowChart] = useState(false);
   const [phone, setPhone] = useState('');
   const [emergency, setEmergency] = useState(false);
@@ -163,8 +167,10 @@ export function IncidentDetailScreen() {
             });
             setIncident(result.record);
             setEscalateOpen(false);
-            if (result.notice) Alert.alert(result.notice);
+            if (result.notice) showFlash('success', result.notice);
+            else haptics.success();
           } catch (e) {
+            haptics.error();
             Alert.alert("Couldn't escalate", e instanceof Error ? e.message : 'Please try again.');
           } finally {
             setEscalating(false);
@@ -260,6 +266,8 @@ export function IncidentDetailScreen() {
         </Text>
         {meta ? <Text style={styles.meta}>{meta}</Text> : null}
       </View>
+
+      {flash ? <Flashbar type={flash.type} message={flash.message} onDismiss={dismissFlash} /> : null}
 
       {incident.hq_report ? (
         <View style={styles.hqBox}>
@@ -403,7 +411,7 @@ export function IncidentDetailScreen() {
   );
 }
 
-const makeStyles = (_colors: ThemeColors, theme: Theme) => {
+const makeStyles = (theme: Theme) => {
   const { tokens: t, type, spacing, radii } = theme;
   return StyleSheet.create({
     flex: { flex: 1 },

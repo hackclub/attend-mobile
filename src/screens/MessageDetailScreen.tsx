@@ -1,8 +1,10 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
+import { useFlash } from '../hooks/useFlash';
+import { haptics } from '../services/haptics';
 import { api } from '../services/api';
 import { RichText } from '../components/RichText';
 import {
@@ -10,6 +12,7 @@ import {
   Badge,
   Button,
   Container,
+  Flashbar,
   KeyValue,
   Screen,
   Stat,
@@ -30,13 +33,22 @@ const plural = (count: number, word: string) => `${count} ${word}${count === 1 ?
 export function MessageDetailScreen() {
   const { tokens, type } = useTheme();
   const navigation = useNavigation<Nav>();
-  const { messageId } = useRoute<Route>().params;
+  const { messageId, notice } = useRoute<Route>().params;
   const { state } = useApp();
   const event = state.currentEvent;
   const [message, setMessage] = useState<BroadcastMessage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const { flash, show: showFlash, dismiss: dismissFlash } = useFlash();
+
+  // A notice handed over by the preview (sent or scheduled) shows once; the
+  // preview already played the haptic.
+  useEffect(() => {
+    if (!notice) return;
+    showFlash('success', notice, { silent: true });
+    navigation.setParams({ notice: undefined });
+  }, [notice, showFlash, navigation]);
 
   const load = useCallback(async () => {
     if (!event) return;
@@ -82,8 +94,10 @@ export function MessageDetailScreen() {
     try {
       const result = await api.messageAction(event.id, message.id, action, params);
       setMessage(result.record);
-      if (result.notice) Alert.alert(result.notice);
+      if (result.notice) showFlash('success', result.notice);
+      else haptics.success();
     } catch (e) {
+      haptics.error();
       Alert.alert('Something went wrong', e instanceof Error ? e.message : 'Please try again.');
     } finally {
       setBusy(null);
@@ -110,8 +124,10 @@ export function MessageDetailScreen() {
         setBusy('destroy');
         try {
           await api.deleteMessage(event.id, message.id);
+          haptics.success();
           navigation.goBack();
         } catch (e) {
+          haptics.error();
           Alert.alert('Not deleted', e instanceof Error ? e.message : 'Please try again.');
           setBusy(null);
         }
@@ -212,6 +228,8 @@ export function MessageDetailScreen() {
         </View>
         <Text style={[type.body, { color: tokens.muted }]}>{byline}</Text>
       </View>
+
+      {flash ? <Flashbar type={flash.type} message={flash.message} onDismiss={dismissFlash} /> : null}
 
       {permissions.send_now ? (
         <View style={styles.actionRow}>

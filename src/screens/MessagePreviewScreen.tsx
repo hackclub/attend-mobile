@@ -4,6 +4,7 @@ import { CommonActions, useNavigation, useRoute, type RouteProp } from '@react-n
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
+import { haptics } from '../services/haptics';
 import { RichText } from '../components/RichText';
 import { Badge, Button, Container, Flashbar, Screen, StatusIndicator } from '../components/ui';
 import { ErrorView, LoadingView, formatDateTime } from '../components/forms';
@@ -57,14 +58,14 @@ export function MessagePreviewScreen() {
   // Out of the composer and onto the message's page: drop Compose and this
   // screen, landing on the message's page if that is what opened the
   // composer, or pushing it otherwise.
-  const leaveComposer = () => {
+  const leaveComposer = (notice?: string) => {
     const navState = navigation.getState();
     const composeAt = navState.routes.map(r => r.name).lastIndexOf('MessageCompose');
     const base = navState.routes.slice(0, Math.max(composeAt, 0));
     const last = base[base.length - 1];
     const routes = last?.name === 'MessageDetail' && (last.params as { messageId?: string })?.messageId === messageId
-      ? base
-      : [...base, { name: 'MessageDetail' as const, params: { messageId } }];
+      ? [...base.slice(0, -1), { ...last, params: { messageId, notice } }]
+      : [...base, { name: 'MessageDetail' as const, params: { messageId, notice } }];
     navigation.dispatch(CommonActions.reset({ ...navState, routes, index: routes.length - 1 } as never));
   };
 
@@ -81,9 +82,10 @@ export function MessagePreviewScreen() {
           setSending(true);
           try {
             const result = await api.messageAction(event.id, messageId, 'send_now');
-            if (result.notice) Alert.alert(result.notice);
-            leaveComposer();
+            haptics.success();
+            leaveComposer(result.notice ?? undefined);
           } catch (e) {
+            haptics.error();
             Alert.alert('Not sent', e instanceof Error ? e.message : 'Please try again.');
           } finally {
             setSending(false);

@@ -23,6 +23,7 @@ import {
   Button,
   Container,
   Divider,
+  Flashbar,
   Icon,
   KeyValue,
   PressableSurface,
@@ -34,7 +35,9 @@ import {
 } from '../components/ui';
 import { useApp } from '../context/AppContext';
 import { useEventAccess } from '../hooks/useEventAccess';
+import { useFlash } from '../hooks/useFlash';
 import { useNFC } from '../hooks/useNFC';
+import { haptics } from '../services/haptics';
 import { api } from '../services/api';
 import { buildPhoneActions } from '../services/contactLinks';
 import { checkInDetail, participantDetailLine } from '../services/participantCheckIn';
@@ -96,6 +99,7 @@ function ParticipantDetailBody({
   const canVerifyId = !!state.auth.user?.global_admin && Platform.OS === 'ios' && nfcSupported;
   const [isUndoing, setIsUndoing] = useState(false);
   const [isWritingBadge, setIsWritingBadge] = useState(false);
+  const { flash, show: showFlash, dismiss: dismissFlash } = useFlash();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentParticipant, setCurrentParticipant] = useState<Participant>(participant);
   const [notes, setNotes] = useState<ParticipantNote[]>([]);
@@ -278,8 +282,9 @@ function ParticipantDetailBody({
       const message = contextName
         ? `Scan at "${contextName}" has been undone`
         : 'All scans have been undone';
-      Alert.alert('Success', message);
+      showFlash('success', message);
     } catch (error) {
+      haptics.error();
       Alert.alert('Error', 'Failed to undo check-in');
     } finally {
       setIsUndoing(false);
@@ -399,11 +404,13 @@ function ParticipantDetailBody({
       });
 
       if (result.success) {
-        Alert.alert('Success', 'Badge written successfully');
+        // useNFC has already played the haptic.
+        showFlash('success', 'Badge written successfully', { silent: true });
       } else if (result.error !== 'Cancelled') {
         Alert.alert('Error', result.error || 'Failed to write badge');
       }
     } catch (error) {
+      haptics.error();
       Alert.alert('Error', 'Failed to write badge');
     } finally {
       setIsWritingBadge(false);
@@ -476,6 +483,8 @@ function ParticipantDetailBody({
             ))}
           </Container>
         )}
+
+        {flash ? <Flashbar type={flash.type} message={flash.message} onDismiss={dismissFlash} /> : null}
 
         <View style={styles.actions}>
           {currentParticipant.checked_in_at && (

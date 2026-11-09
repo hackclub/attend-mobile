@@ -521,7 +521,8 @@ export type OverviewStackParamList = {
   IncidentForm: { incidentId?: string };
   IncidentReport: undefined;
   MessageList: undefined;
-  MessageDetail: { messageId: string };
+  /** notice: the server's confirmation of an action taken on the previous screen. */
+  MessageDetail: { messageId: string; notice?: string };
   MessageCompose: { messageId?: string };
   MessagePreview: { messageId: string };
 };
