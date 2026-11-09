@@ -35,14 +35,14 @@ const LIGHT = {
 
 const DARK = {
   on_primary: '#FFFFFF',
-  primary_container: '#3D121C',
-  on_primary_container: '#FF7A8A',
-  surface: '#161D26',
-  on_surface: '#EBEBF0',
-  surface_variant: '#232B37',
-  on_surface_variant: '#A4A4AD',
-  surface_container: '#1B232D',
-  outline: '#424650',
+  primary_container: '#32171E',
+  on_primary_container: '#FF5670',
+  surface: '#0F1115',
+  on_surface: '#F3F4F8',
+  surface_variant: '#242938',
+  on_surface_variant: '#8089A0',
+  surface_container: '#161922',
+  outline: '#3A4159',
 };
 
 // Theme attribute -> colour resource. The secondary container is the bottom

@@ -82,7 +82,7 @@
           "backgroundColor": "#EC3750",
           "dark": {
             "image": "./assets/splash-icon-dark.png",
-            "backgroundColor": "#161D26"
+            "backgroundColor": "#0F1115"
           }
         }
       ],

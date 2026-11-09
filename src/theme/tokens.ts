@@ -1,6 +1,7 @@
-// Design tokens for the redesign. Colour values are the Attend web admin's
-// console design system (console.css `--cs-*` variables), so the app and the
-// admin read as one product. Both sets have an identical shape; a component
+// Design tokens for the redesign. Light values are the Attend web admin's
+// console design system (console.css `--cs-*` variables); dark values are
+// Attend's own dark theme (themes.css), so the app and the admin read as one
+// product. Both sets have an identical shape; a component
 // picks a token by role (`textH`, `div2`, `tint.amber.bg`) and gets the right
 // value for the active scheme.
 
@@ -133,53 +134,56 @@ export const lightTokens: ThemeTokens = {
 };
 
 export const darkTokens: ThemeTokens = {
-  bg: '#161d26',
-  shaded: '#1b232d',
-  textH: '#ebebf0',
-  text: '#dedee3',
-  text2: '#c6c6cd',
-  muted: '#a4a4ad',
-  disabled: '#8c8c94',
-  div: '#424650',
-  div2: '#232b37',
-  box: '#424650',
-  input: '#656871',
-  inputDisabled: '#1b232d',
-  accent: '#ff7a8a',
-  accentOn: '#0f141a',
-  accentActive: '#ff7a8a',
+  // Attend's own dark theme (themes.css `[data-theme="dark"]`): neutral
+  // greys and the brand red, not the console beta's pink accent.
+  bg: '#0f1115',
+  shaded: '#161922',
+  textH: '#f3f4f8',
+  text: '#d6dae5',
+  text2: '#aab1c1',
+  muted: '#8089a0',
+  disabled: '#5b6377',
+  div: '#3a4159',
+  div2: '#2a3043',
+  box: '#2a3043',
+  input: '#5b6377',
+  inputDisabled: '#242938',
+  accent: '#ec3750',
+  accentOn: '#ffffff',
+  accentActive: '#d42f46',
   brand: '#ec3750',
-  selected: '#2a0d14',
-  pressed: '#3d121c',
-  inactive: '#a4a4ad',
+  // --accent-soft (16% and 26% brand red) flattened onto the page.
+  selected: '#32171e',
+  pressed: '#481b24',
+  inactive: '#8089a0',
 
-  success: '#2bb534',
-  successBg: '#001401',
-  error: '#ff7a7a',
-  errorBg: '#1f0000',
-  warning: '#fbd332',
-  warningBg: '#191100',
-  warningFill: '#fbd332',
-  onWarningFill: '#0f141a',
-  info: '#42b4ff',
-  infoBg: '#001129',
+  success: '#4ee2b4',
+  successBg: '#142d29',
+  error: '#ff5670',
+  errorBg: '#311b22',
+  warning: '#ffa55c',
+  warningBg: '#31221a',
+  warningFill: '#ff8c37',
+  onWarningFill: '#0f1115',
+  info: '#5aa4e6',
+  infoBg: '#142231',
   onStatusFill: '#ffffff',
 
-  badgeGrey: '#656871',
+  badgeGrey: '#3a4159',
   badgeGreen: '#00802f',
   badgeBlue: '#006ce0',
-  badgeRed: '#db0000',
-  badgeOn: '#f9f9fa',
+  badgeRed: '#d42f46',
+  badgeOn: '#f3f4f8',
 
   tint: {
-    red: { bg: '#3d121c', fg: '#ff7a8a' },
+    red: { bg: '#32171e', fg: '#ff5670' },
     indigo: { bg: '#1e1b4b', fg: '#a5b4fc' },
     sky: { bg: '#0c2a45', fg: '#7dd3fc' },
     teal: { bg: '#042f2e', fg: '#5eead4' },
     amber: { bg: '#3b2305', fg: '#fcd34d' },
     purple: { bg: '#2e1065', fg: '#d8b4fe' },
     green: { bg: '#052e16', fg: '#6ee7b7' },
-    grey: { bg: '#232b37', fg: '#c6c6cd' },
+    grey: { bg: '#242938', fg: '#aab1c1' },
   },
 
   overlay: 'rgba(0, 0, 0, 0.6)',
