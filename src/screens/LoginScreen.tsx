@@ -7,7 +7,7 @@ import { HackClubFlag } from '../components/HackClubFlag';
 import { useTheme } from '../theme';
 import { Button } from '../components/ui';
 
-const HERO = require('../../assets/login-hero.jpg');
+const HERO = require('../../assets/login-hero.webp');
 
 // Number of bands used to fake a bottom-up dark gradient over the hero photo.
 const GRADIENT_STOPS = 18;
