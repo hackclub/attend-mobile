@@ -1,12 +1,12 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { eventHomeState, passHomeState } from '../navigation/routes';
 import { resetRoot } from '../navigation/rootNavigation';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AccountButton } from '../components/AccountSheet';
 import { EventCard } from '../components/EventBanner';
-import { Button, EmptyState, ErrorView, LoadingView, Screen, TextField } from '../components/ui';
+import { EmptyState, GroupToggle, ErrorView, LoadingView, Screen, TextField } from '../components/ui';
 import { useApp } from '../context/AppContext';
 import { useSwitcherEvents } from '../hooks/useSwitcherEvents';
 import { eventPhaseLabel } from '../services/eventDates';
@@ -16,6 +16,7 @@ import {
   switcherEventCount,
 } from '../services/eventSwitcher';
 import { eventRoleLabel } from '../services/eventRoles';
+import { collapsibleGroup } from '../services/collapsibleGroup';
 import { useTheme } from '../theme';
 import type { Event, AppStackParamList, Ticket } from '../types';
 
@@ -85,7 +86,7 @@ export function SwitchEventList({
   }, [refresh]);
 
   const searching = searchable && query.trim().length > 0;
-  const showPast = pastOpen || searching;
+  const past = collapsibleGroup(pastOpen, searching);
   const empty = switcherEventCount(allGroups) === 0;
   const noMatches = !empty && switcherEventCount(groups) === 0;
   return (
@@ -149,17 +150,16 @@ export function SwitchEventList({
       ) : null}
 
       {groups.past.length > 0 ? (
-        showPast ? (
-          <>
-            <View style={[styles.groupHeader, styles.groupLabel]}>
-              <Text style={[type.label, styles.title, { color: tokens.text2 }]} accessibilityRole="header">
-                Past
-              </Text>
-              {searching ? null : (
-                <Button title="Hide" variant="link" onPress={() => setPastOpen(false)} />
-              )}
-            </View>
-            {groups.past.map((entry) =>
+        <>
+          <GroupToggle
+            label="Past"
+            count={groups.past.length}
+            open={past.expanded}
+            onToggle={past.toggleable ? () => setPastOpen((open) => !open) : undefined}
+            style={styles.groupLabel}
+          />
+          {past.expanded
+            ? groups.past.map((entry) =>
               entry.kind === 'organising' ? (
                 <EventCard
                   key={`event-${entry.event.id}`}
@@ -178,18 +178,9 @@ export function SwitchEventList({
                   accessibilityHint="Opens your ticket"
                 />
               )
-            )}
-          </>
-        ) : (
-          <Button
-            title={`Past (${groups.past.length})`}
-            variant="link"
-            icon="chevron-down"
-            iconPosition="end"
-            onPress={() => setPastOpen(true)}
-            style={styles.groupLabel}
-          />
-        )
+            )
+            : null}
+        </>
       ) : null}
 
       {noMatches ? <EmptyState title={`No events match “${query.trim()}”`} /> : null}
@@ -211,7 +202,5 @@ export function SwitchEventList({
 }
 
 const styles = StyleSheet.create({
-  title: { flex: 1 },
   groupLabel: { marginTop: 8 },
-  groupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 });

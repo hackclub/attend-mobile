@@ -9,7 +9,7 @@ import { VersionFooter } from '../components/VersionFooter';
 import { AccountButton } from '../components/AccountSheet';
 import { EventCard } from '../components/EventBanner';
 import { useTheme } from '../theme';
-import { Button, EmptyState, ErrorView, LoadingView, QuickActionTile, Screen } from '../components/ui';
+import { EmptyState, ErrorView, GroupToggle, LoadingView, QuickActionTile, Screen } from '../components/ui';
 import type { AppStackParamList, Ticket } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<AppStackParamList, 'MyTickets'>;
@@ -115,26 +115,15 @@ export function MyTicketsScreen() {
         ) : null}
 
         {past.length > 0 ? (
-          pastOpen ? (
-            <View style={{ gap: spacing.md }}>
-              <View style={styles.groupHeader}>
-                <Text style={[type.label, styles.fill, { color: tokens.text2 }]} accessibilityRole="header">
-                  Past
-                </Text>
-                <Button title="Hide" variant="link" onPress={() => setPastOpen(false)} />
-              </View>
-              {past.map(card)}
-            </View>
-          ) : (
-            <Button
-              title={`Past (${past.length})`}
-              variant="link"
-              icon="chevron-down"
-              iconPosition="end"
-              onPress={() => setPastOpen(true)}
-              style={styles.pastToggle}
+          <View style={{ gap: spacing.md }}>
+            <GroupToggle
+              label="Past"
+              count={past.length}
+              open={pastOpen}
+              onToggle={() => setPastOpen((open) => !open)}
             />
-          )
+            {pastOpen ? past.map(card) : null}
+          </View>
         ) : null}
 
         {tickets.length > 0 ? null : isLoading ? (
@@ -161,7 +150,4 @@ export function MyTicketsScreen() {
 
 const styles = StyleSheet.create({
   quickActions: { flexDirection: 'row', gap: 12 },
-  groupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  fill: { flex: 1 },
-  pastToggle: { alignSelf: 'flex-start' },
 });

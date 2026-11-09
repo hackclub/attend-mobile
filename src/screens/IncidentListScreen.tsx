@@ -11,6 +11,7 @@ import {
   Container,
   EmptyState,
   ErrorView,
+  GroupToggle,
   LoadingView,
   PressableSurface,
   Screen,
@@ -18,6 +19,7 @@ import {
   TextField,
 } from '../components/ui';
 import { LevelBadge, LevelChart, formatDateTime } from '../components/forms';
+import { collapsibleGroup } from '../services/collapsibleGroup';
 import { humanize } from '../services/statusDisplay';
 import { useTheme, useThemedStyles, type Theme } from '../theme';
 import type { IncidentLevel, IncidentStatus, IncidentSummary, AppStackParamList } from '../types';
@@ -25,7 +27,7 @@ import { useScreenInsets } from '../hooks/useScreenInsets';
 
 type Nav = NativeStackNavigationProp<AppStackParamList, 'IncidentList'>;
 
-// Open work first; closed incidents fold away behind a link.
+// Open work first; closed incidents fold away under their label.
 const STATUS_ORDER: IncidentStatus[] = ['open', 'in_review', 'closed'];
 
 interface StatusSection {
@@ -161,7 +163,7 @@ export function IncidentListScreen() {
     return keys.map(key => {
       const items = byStatus.get(key) ?? [];
       // A search shows every match, closed or not.
-      const collapsed = key === 'closed' && !showClosed && !trimmed;
+      const collapsed = key === 'closed' && !collapsibleGroup(showClosed, !!trimmed).expanded;
       return { key, title: humanize(key), count: items.length, collapsed, data: collapsed ? [] : items };
     });
   }, [visible, showClosed, trimmed]);
@@ -258,27 +260,23 @@ export function IncidentListScreen() {
             progressBackgroundColor={tokens.bg}
           />
         }
-        renderSectionHeader={({ section }) =>
-          section.collapsed ? (
-            <Button
-              title={`${section.title} (${section.count})`}
-              variant="link"
-              icon="chevron-down"
-              iconPosition="end"
-              onPress={() => setShowClosed(true)}
-              style={styles.collapsedToggle}
-            />
-          ) : (
-            <View style={styles.sectionHeader}>
+        renderSectionHeader={({ section }) => (
+          <View style={styles.sectionHeader}>
+            {section.key === 'closed' && !trimmed ? (
+              // Closed incidents fold away; a search shows every match.
+              <GroupToggle
+                label={section.title}
+                count={section.count}
+                open={!section.collapsed}
+                onToggle={() => setShowClosed(shown => !shown)}
+              />
+            ) : (
               <Text style={styles.sectionTitle} accessibilityRole="header">
                 {section.title} · {section.count}
               </Text>
-              {section.key === 'closed' && showClosed && !trimmed ? (
-                <Button title="Hide" variant="link" onPress={() => setShowClosed(false)} />
-              ) : null}
-            </View>
-          )
-        }
+            )}
+          </View>
+        )}
         renderItem={({ item }) => (
           <IncidentCard
             incident={item}
@@ -314,7 +312,6 @@ const makeStyles = (theme: Theme) => {
       marginTop: spacing.sm,
     },
     sectionTitle: { ...type.label, color: t.text },
-    collapsedToggle: { alignSelf: 'flex-start', paddingHorizontal: 0, marginTop: spacing.sm },
     card: {
       borderWidth: 1,
       borderColor: t.box,

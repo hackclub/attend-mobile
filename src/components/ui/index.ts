@@ -6,6 +6,7 @@ export { Badge, type BadgeColor, type BadgeProps } from './Badge';
 export { Button, type ButtonProps, type ButtonVariant } from './Button';
 export { Container, type ContainerProps } from './Container';
 export { Divider, type DividerProps } from './Divider';
+export { GroupToggle, groupToggleTitle, type GroupToggleProps } from './GroupToggle';
 export { Flashbar, type FlashbarProps, type FlashbarType } from './Flashbar';
 export { Icon, icons, type IconName, type IconProps } from './Icon';
 export { KeyValue, type KeyValueProps } from './KeyValue';
