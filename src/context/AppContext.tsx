@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo, useRef, ReactNode } from 'react';
 import { AppState as RNAppState } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
-import { authService } from '../services/auth';
+import { authService, type SessionValidation } from '../services/auth';
+import { createSessionRecheck, type SessionRecheck } from '../services/sessionRecheck';
 import { syncService, SyncStatus } from '../services/sync';
 import { scanQueue } from '../services/scanQueue';
 import { notificationService } from '../services/notifications';
@@ -269,6 +270,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const eventSelectionGenerationRef = useRef(0);
   currentEventIdRef.current = state.currentEvent?.id ?? null;
 
+  // Acts on a background /me check of `token`: the fresh user, or (on a 401,
+  // after authService's own sign-out cleanup) the signed-out state.
+  const applySessionValidation = useCallback((token: string, outcome: SessionValidation) => {
+    // Signed out, or someone else signed in, in the meantime.
+    if (authTokenRef.current !== token) return;
+    if (outcome.status === 'valid') {
+      dispatch({ type: 'SET_AUTH', payload: { user: outcome.user, token } });
+    } else if (outcome.status === 'expired') {
+      // authService already ran the full sign-out cleanup.
+      eventSelectionGenerationRef.current += 1;
+      authTokenRef.current = null;
+      resetSwitcherEventsCache();
+      dispatch({ type: 'CLEAR_AUTH' });
+    }
+  }, []);
+
+  // A check left `unverified` (offline, server error) is run again on
+  // reconnect and on returning to the foreground, at most once a minute.
+  const sessionRecheckRef = useRef<SessionRecheck | null>(null);
+  useEffect(() => {
+    const recheck = createSessionRecheck({
+      validate: (token) => authService.validateSession(token),
+      onOutcome: applySessionValidation,
+    });
+    sessionRecheckRef.current = recheck;
+    let wasConnected: boolean | null = null;
+    const netSub = NetInfo.addEventListener((netState) => {
+      const connected = netState.isConnected !== false;
+      if (connected && wasConnected === false) recheck.trigger();
+      wasConnected = connected;
+    });
+    const appStateSub = RNAppState.addEventListener('change', (next) => {
+      if (next === 'active') recheck.trigger();
+    });
+    return () => {
+      netSub();
+      appStateSub.remove();
+      recheck.dispose();
+      if (sessionRecheckRef.current === recheck) sessionRecheckRef.current = null;
+    };
+  }, [applySessionValidation]);
+
   const refreshSyncStatus = useCallback(() => {
     syncService.getStatus().then((status) => {
       dispatch({ type: 'SET_SYNC_STATUS', payload: status });
@@ -296,6 +339,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       preload ?? Promise.resolve([]),
     ]);
     const token = knownToken ?? await authService.getToken();
+    sessionRecheckRef.current?.clear();
     authTokenRef.current = token;
     for (const action of preloadActions) dispatch(action);
     dispatch({ type: 'SET_AUTH', payload: { user, token: token! } });
@@ -354,17 +398,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // always lands last.
           const token = result.token;
           void result.validation?.then((outcome) => {
-            // Signed out, or someone else signed in, in the meantime.
             if (!token || authTokenRef.current !== token) return;
-            if (outcome.status === 'valid') {
-              dispatch({ type: 'SET_AUTH', payload: { user: outcome.user, token } });
-            } else if (outcome.status === 'expired') {
-              // authService already ran the full sign-out cleanup.
-              eventSelectionGenerationRef.current += 1;
-              authTokenRef.current = null;
-              resetSwitcherEventsCache();
-              dispatch({ type: 'CLEAR_AUTH' });
-            }
+            sessionRecheckRef.current?.record(token, outcome);
+            applySessionValidation(token, outcome);
           });
         } else {
           dispatch({ type: 'SET_LOADING', payload: false });
@@ -379,7 +415,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     liveActivityService.syncState();
     restoreAuth();
     return () => appStateSub?.remove();
-  }, [beginSession]);
+  }, [applySessionValidation, beginSession]);
 
   // Sends queued scans by itself while signed in: at start, on reconnect, on
   // returning to the foreground, and on a backoff timer while any remain.
@@ -457,6 +493,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     eventSelectionGenerationRef.current += 1;
     biometricService.clearSession();
     authTokenRef.current = null;
+    sessionRecheckRef.current?.clear();
     resetSwitcherEventsCache();
     dispatch({ type: 'CLEAR_AUTH' });
     try {
