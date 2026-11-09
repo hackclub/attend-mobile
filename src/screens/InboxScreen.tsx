@@ -6,15 +6,14 @@ import { api } from '../services/api';
 import {
   EmptyState,
   ErrorView,
+  FilterChip,
   isAndroid,
   LoadingView,
-  PressableSurface,
   ripple,
   ROW_STATE_LAYER_ALPHA,
   Screen,
   TextField,
 } from '../components/ui';
-import { CHROME_MAX_FONT_SCALE } from '../components/ui/fontScale';
 import { formatDateTime } from '../components/forms';
 import { channelList } from '../components/messageStatus';
 import { radii, spacing, useTheme } from '../theme';
@@ -122,9 +121,9 @@ export function InboxScreen() {
             />
             {events.length > 1 ? (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-                <EventChip label="All events" active={!eventId} onPress={() => setEventId(null)} />
+                <FilterChip label="All events" selected={!eventId} onPress={() => setEventId(null)} />
                 {events.map(e => (
-                  <EventChip key={e.id} label={e.name} active={eventId === e.id} onPress={() => setEventId(e.id)} />
+                  <FilterChip key={e.id} label={e.name} selected={eventId === e.id} onPress={() => setEventId(e.id)} />
                 ))}
               </ScrollView>
             ) : null}
@@ -189,42 +188,7 @@ export function InboxScreen() {
   );
 }
 
-// The event filter. The kit has no chip, and a person can have more events
-// than a SegmentedControl holds, so it is a scrolling strip of pills styled
-// like a segment (selected: accent on the selected tint).
-function EventChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  const { tokens, type, radii } = useTheme();
-  return (
-    <PressableSurface
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      rippleColor={active ? tokens.accent : tokens.text}
-      style={[
-        styles.chip,
-        {
-          borderRadius: radii.pill,
-          borderColor: active ? tokens.accent : tokens.input,
-          backgroundColor: active ? tokens.selected : tokens.bg,
-        },
-      ]}
-      contentStyle={styles.chipContent}
-    >
-      <Text
-        style={[type.label, { color: active ? tokens.accent : tokens.text }]}
-        numberOfLines={1}
-        maxFontSizeMultiplier={CHROME_MAX_FONT_SCALE}
-      >
-        {label}
-      </Text>
-    </PressableSurface>
-  );
-}
-
 const styles = StyleSheet.create({
-  chip: { borderWidth: 1 },
-  // 36 including the 1px border.
-  chipContent: { minHeight: 34, paddingHorizontal: 14, justifyContent: 'center' },
   list: { paddingHorizontal: spacing.lg, width: '100%', maxWidth: 620, alignSelf: 'center' },
   header: { gap: spacing.md, marginBottom: spacing.lg },
   chips: { gap: spacing.sm },

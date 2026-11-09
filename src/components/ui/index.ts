@@ -45,6 +45,7 @@ export {
 export { TextField, type TextFieldProps } from './TextField';
 export { Toggle, type ToggleProps } from './Toggle';
 export { Spinner, type SpinnerProps } from './Spinner';
+export { FilterChip, type FilterChipProps } from './FilterChip';
 export {
   isAndroid,
   pressedStyle,
