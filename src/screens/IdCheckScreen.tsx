@@ -38,7 +38,7 @@ import {
   type Decision,
   type VerdictInput,
 } from '../services/idCheck/verdict';
-import { useTheme, type ThemeTokens } from '../theme';
+import { radii, useTheme, type ThemeTokens } from '../theme';
 import { Button, Container, Flashbar, Icon, KeyValue, TextField, type IconName } from '../components/ui';
 import { BiometricGate } from '../components/BiometricGate';
 import type { AppStackParamList } from '../types';
@@ -561,7 +561,7 @@ const styles = StyleSheet.create({
   cancel: { marginLeft: -12, marginTop: 4 },
   content: { paddingBottom: 48 },
   participant: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  participantPhoto: { width: 48, height: 48, borderRadius: 24 },
+  participantPhoto: { width: 48, height: 48, borderRadius: radii.pill },
   section: { gap: 12 },
   busy: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 12 },
   banner: { padding: 16, gap: 8 },

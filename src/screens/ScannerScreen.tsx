@@ -38,7 +38,7 @@ import { api } from '../services/api';
 import { haptics } from '../services/haptics';
 import { computeEventStats } from '../services/eventStats';
 import { participantAfterUndo } from '../services/scanUndo';
-import { overlayTokens, useTheme } from '../theme';
+import { overlayTokens, radii, useTheme } from '../theme';
 import type { Participant, AppStackParamList } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<AppStackParamList>;
@@ -467,7 +467,7 @@ const scan = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8,
   },
-  pill: { height: 44, borderRadius: 22, backgroundColor: overlayTokens.cameraControl },
+  pill: { height: 44, borderRadius: radii.pill, backgroundColor: overlayTokens.cameraControl },
   pillContent: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16 },
   contextPill: { flexShrink: 1, maxWidth: '72%' },
   pillMuted: { color: overlayTokens.onMuted, flexShrink: 1 },
@@ -529,7 +529,7 @@ const styles = StyleSheet.create({
   overlay: { flex: 1 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 8 },
   centerText: { textAlign: 'center' },
-  stateIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  stateIcon: { width: 56, height: 56, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   stateMessage: { maxWidth: 360 },
   stateAction: { marginTop: 16 },
   onCamera: { color: overlayTokens.on },
@@ -543,7 +543,7 @@ const styles = StyleSheet.create({
   topRight: { top: 0, right: 0, borderTopWidth: CORNER.thickness, borderRightWidth: CORNER.thickness, borderTopRightRadius: CORNER.radius },
   bottomLeft: { bottom: 0, left: 0, borderBottomWidth: CORNER.thickness, borderLeftWidth: CORNER.thickness, borderBottomLeftRadius: CORNER.radius },
   bottomRight: { bottom: 0, right: 0, borderBottomWidth: CORNER.thickness, borderRightWidth: CORNER.thickness, borderBottomRightRadius: CORNER.radius },
-  processingIndicator: { position: 'absolute', left: '50%', top: '50%', width: 48, height: 48, marginLeft: -24, marginTop: -24, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: overlayTokens.cameraControl },
+  processingIndicator: { position: 'absolute', left: '50%', top: '50%', width: 48, height: 48, marginLeft: -24, marginTop: -24, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: overlayTokens.cameraControl },
   // Anchored above the dock, outside layout flow, so the scan frame never shifts
   resultCardOverlay: { position: 'absolute', left: 14, right: 14 },
   resultCardScroll: { width: '100%', maxWidth: 620, alignSelf: 'center' },

@@ -65,7 +65,7 @@ export function ParticipantAvatar({ participant, size = 84 }: ParticipantAvatarP
   );
 }
 
-const makeStyles = ({ isDark, tokens }: Theme) => StyleSheet.create({
+const makeStyles = ({ isDark, tokens, type }: Theme) => StyleSheet.create({
   avatar: {
     borderWidth: 2,
     borderColor: withAlpha(overlayTokens.on, isDark ? 0.18 : 0.72),
@@ -78,7 +78,7 @@ const makeStyles = ({ isDark, tokens }: Theme) => StyleSheet.create({
   },
   initials: {
     color: overlayTokens.on,
-    fontWeight: '800',
+    fontWeight: type.label.fontWeight,
     letterSpacing: -0.5,
   },
 });
