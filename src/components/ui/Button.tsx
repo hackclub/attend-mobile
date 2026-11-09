@@ -87,6 +87,8 @@ export function Button({
     onPress?.(event);
   };
 
+  const { shape: callerShape, content: callerContent } = splitButtonStyle(style);
+
   const iconNode = loading ? (
     <ActivityIndicator size="small" color={fg} />
   ) : icon ? (
@@ -108,14 +110,15 @@ export function Button({
         { borderRadius: radii.pill, backgroundColor: bg, borderColor: border },
         isIcon && { width: hitTarget, height: hitTarget },
         fullWidth && styles.full,
-        style,
+        callerShape,
       ]}
       contentStyle={[
         styles.base,
         // The 2px border sits outside the content.
-        { minHeight: hitTarget - 4 },
+        { minHeight: hitTarget - BORDER * 2 },
         isLink && styles.link,
         isIcon && styles.icon,
+        callerContent,
       ]}
       testID={testID}
     >
@@ -134,8 +137,41 @@ export function Button({
   );
 }
 
+const BORDER = 2;
+
+const CONTENT_KEYS = new Set<string>([
+  'padding',
+  'paddingHorizontal',
+  'paddingVertical',
+  'paddingTop',
+  'paddingBottom',
+  'paddingLeft',
+  'paddingRight',
+  'paddingStart',
+  'paddingEnd',
+  'minHeight',
+]);
+
+/**
+ * A caller's style splits between the shape (margins, size, alignment) and
+ * the content inside it (padding, minimum height), which is where the
+ * ripple-clipping layout puts them. A minimum height is for the whole
+ * button, so the content's loses the border.
+ */
+function splitButtonStyle(style: StyleProp<ViewStyle>): { shape: ViewStyle; content: ViewStyle } {
+  const flat = StyleSheet.flatten(style) ?? {};
+  const shape: Record<string, unknown> = {};
+  const content: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(flat)) {
+    if (!CONTENT_KEYS.has(key)) shape[key] = value;
+    else if (key === 'minHeight' && typeof value === 'number') content[key] = Math.max(0, value - BORDER * 2);
+    else content[key] = value;
+  }
+  return { shape: shape as ViewStyle, content: content as ViewStyle };
+}
+
 const styles = StyleSheet.create({
-  shape: { borderWidth: 2, alignSelf: 'flex-start' },
+  shape: { borderWidth: BORDER, alignSelf: 'flex-start' },
   base: { paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center' },
   link: { paddingHorizontal: 12 },
   icon: { paddingHorizontal: 0 },
