@@ -1,6 +1,6 @@
 import React, { type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import { useTheme, type ThemeTokens } from '../../theme';
+import { hitTarget, useTheme, type ThemeTokens } from '../../theme';
 import { Icon, type IconName } from './Icon';
 import { pressedStyle, ripple } from './pressFeedback';
 
@@ -29,13 +29,13 @@ const DEFAULT_ICON: Record<FlashbarType, IconName> = {
 function flashColors(type: FlashbarType, t: ThemeTokens) {
   switch (type) {
     case 'success':
-      return { bg: t.badgeGreen, fg: '#ffffff' };
+      return { bg: t.badgeGreen, fg: t.onStatusFill };
     case 'error':
-      return { bg: t.badgeRed, fg: '#ffffff' };
+      return { bg: t.badgeRed, fg: t.onStatusFill };
     case 'warning':
       return { bg: t.warningFill, fg: t.onWarningFill };
     case 'info':
-      return { bg: t.badgeBlue, fg: '#ffffff' };
+      return { bg: t.badgeBlue, fg: t.onStatusFill };
   }
 }
 
@@ -77,11 +77,10 @@ export function Flashbar({
           onPress={action.onPress}
           accessibilityRole="button"
           accessibilityLabel={action.label}
-          hitSlop={10}
-          android_ripple={ripple('rgba(255,255,255,0.3)', { borderless: true })}
-          style={({ pressed }) => pressedStyle(pressed)}
+          android_ripple={ripple(fg, { alpha: 0.24, borderless: true, radius: hitTarget / 2 })}
+          style={({ pressed }) => [styles.action, pressedStyle(pressed)]}
         >
-          <Text style={[typeScale.label, styles.action, { color: fg }]}>{action.label}</Text>
+          <Text style={[typeScale.label, styles.actionLabel, { color: fg }]}>{action.label}</Text>
         </Pressable>
       ) : null}
       {onDismiss ? (
@@ -89,8 +88,7 @@ export function Flashbar({
           onPress={onDismiss}
           accessibilityRole="button"
           accessibilityLabel="Dismiss"
-          hitSlop={12}
-          android_ripple={ripple('rgba(255,255,255,0.3)', { borderless: true, radius: 16 })}
+          android_ripple={ripple(fg, { alpha: 0.24, borderless: true, radius: hitTarget / 2 })}
           style={({ pressed }) => [styles.dismiss, pressedStyle(pressed)]}
         >
           <Icon name="x" size={16} color={fg} />
@@ -110,6 +108,21 @@ const styles = StyleSheet.create({
   },
   icon: { paddingTop: 2 },
   text: { flex: 1, minWidth: 0 },
-  action: { textDecorationLine: 'underline' },
-  dismiss: { paddingTop: 2 },
+  // 44pt targets that overlap the bar's padding, centred on the first line.
+  action: {
+    minHeight: hitTarget,
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    marginVertical: -(hitTarget - 20) / 2,
+  },
+  actionLabel: { textDecorationLine: 'underline' },
+  dismiss: {
+    width: hitTarget,
+    height: hitTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: -(hitTarget - 20) / 2,
+    // The glyph's edge, not the target's, sits on the bar's padding.
+    marginRight: -(hitTarget - 16) / 2,
+  },
 });

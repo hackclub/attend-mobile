@@ -62,6 +62,8 @@ export interface ThemeTokens {
   onWarningFill: string;
   info: string;
   infoBg: string;
+  /** Text and icons on a solid success, error or info fill (flashbars). */
+  onStatusFill: string;
 
   badgeGrey: string;
   badgeGreen: string;
@@ -108,6 +110,7 @@ export const lightTokens: ThemeTokens = {
   onWarningFill: '#0f141a',
   info: '#006ce0',
   infoBg: '#f0fbff',
+  onStatusFill: '#ffffff',
 
   badgeGrey: '#424650',
   badgeGreen: '#00802f',
@@ -160,6 +163,7 @@ export const darkTokens: ThemeTokens = {
   onWarningFill: '#0f141a',
   info: '#42b4ff',
   infoBg: '#001129',
+  onStatusFill: '#ffffff',
 
   badgeGrey: '#656871',
   badgeGreen: '#00802f',
