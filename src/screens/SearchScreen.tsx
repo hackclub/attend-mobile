@@ -3,12 +3,12 @@ import {
   View,
   Text,
   StyleSheet,
-  FlatList,
   ActivityIndicator,
   RefreshControl,
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useEventAccess } from '../hooks/useEventAccess';
@@ -123,13 +123,13 @@ export function SearchScreen() {
     }
   }, [search, clearSearch]);
 
-  const handleParticipantPress = (participant: Participant) => {
+  const handleParticipantPress = useCallback((participant: Participant) => {
     if (useSplitView) {
       setSelectedParticipant(participant);
     } else {
       navigation.navigate('ParticipantDetail', { participant });
     }
-  };
+  }, [useSplitView, navigation]);
 
   // Browsing shows only people who are still attending. Server search results
   // can still surface withdrawn registrations, which the row flags with a badge.
@@ -156,6 +156,23 @@ export function SearchScreen() {
   const filteredParticipants = useMemo(
     () => applySort(applyFilters(baseParticipants, rules, conjunction, filterContext), effectiveSort),
     [baseParticipants, rules, conjunction, effectiveSort, filterContext],
+  );
+
+  // One stable renderItem and callback, so the memoised rows only re-render
+  // when their own selection or position changes.
+  const selectedId = useSplitView ? selectedParticipant?.participant_event_id ?? null : null;
+  const lastIndex = filteredParticipants.length - 1;
+  const renderParticipant = useCallback(
+    ({ item, index }: ListRenderItemInfo<Participant>) => (
+      <ParticipantRow
+        participant={item}
+        onPress={handleParticipantPress}
+        selected={selectedId !== null && selectedId === item.participant_event_id}
+        first={index === 0}
+        last={index === lastIndex}
+      />
+    ),
+    [handleParticipantPress, selectedId, lastIndex],
   );
 
   const viewCounts = useMemo(() => {
@@ -349,17 +366,10 @@ export function SearchScreen() {
         </View>
       )}
 
-      <FlatList
+      <FlashList
         data={filteredParticipants}
-        renderItem={({ item, index }) => (
-          <ParticipantRow
-            participant={item}
-            onPress={() => handleParticipantPress(item)}
-            selected={useSplitView && selectedParticipant?.participant_event_id === item.participant_event_id}
-            first={index === 0}
-            last={index === filteredParticipants.length - 1}
-          />
-        )}
+        renderItem={renderParticipant}
+        extraData={selectedId}
         keyExtractor={(item, index) => item.participant_id || item.participant_event_id || `item-${index}`}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -380,9 +390,7 @@ export function SearchScreen() {
             <Text style={[type.body, styles.centeredText, { color: tokens.text2 }]}>{emptyState.text}</Text>
           </View>
         }
-        contentContainerStyle={
-          filteredParticipants.length === 0 ? styles.emptyList : { paddingBottom: tabBarInset + 24 }
-        }
+        contentContainerStyle={{ paddingBottom: tabBarInset + 24 }}
       />
 
     </View>
@@ -583,8 +591,5 @@ const styles = StyleSheet.create({
     padding: 32,
     paddingTop: 64,
     gap: 8,
-  },
-  emptyList: {
-    flexGrow: 1,
   },
 });

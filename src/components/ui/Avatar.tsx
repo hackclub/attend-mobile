@@ -54,7 +54,14 @@ export function Avatar({ name, uri, size = 40, tint, decorative = false, style, 
         {initialsFor(name)}
       </Text>
       {uri ? (
-        <Image source={{ uri }} style={[StyleSheet.absoluteFill, round]} contentFit="cover" transition={120} />
+        <Image
+          source={{ uri }}
+          style={[StyleSheet.absoluteFill, round]}
+          contentFit="cover"
+          transition={120}
+          // A recycled list cell drops the previous person's photo at once.
+          recyclingKey={uri}
+        />
       ) : null}
     </View>
   );

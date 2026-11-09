@@ -8,7 +8,8 @@ import type { Participant } from '../types';
 
 interface ParticipantRowProps {
   participant: Participant;
-  onPress: () => void;
+  /** Called with the row's participant, so a list can pass one stable callback. */
+  onPress: (participant: Participant) => void;
   selected?: boolean;
   /** Position in the list, so the rows draw one bordered container between them. */
   first?: boolean;
@@ -28,7 +29,15 @@ export function participantBadges(participant: Participant): { label: string; co
   return badges;
 }
 
-export function ParticipantRow({ participant, onPress, selected = false, first = false, last = false }: ParticipantRowProps) {
+// Memoised: the People list re-renders on every keystroke and selection, and
+// only the rows whose props changed need to.
+export const ParticipantRow = React.memo(function ParticipantRow({
+  participant,
+  onPress,
+  selected = false,
+  first = false,
+  last = false,
+}: ParticipantRowProps) {
   const { tokens, type, radii } = useTheme();
   const name = participant.display_name || participant.full_name;
   const detail = participantDetailLine(participant);
@@ -36,7 +45,7 @@ export function ParticipantRow({ participant, onPress, selected = false, first =
 
   return (
     <PressableSurface
-      onPress={onPress}
+      onPress={() => onPress(participant)}
       accessibilityRole="button"
       accessibilityState={{ selected }}
       accessibilityLabel={[name, participant.pronouns, detail, ...badges.map((b) => b.label)]
@@ -76,7 +85,7 @@ export function ParticipantRow({ participant, onPress, selected = false, first =
       </View>
     </PressableSurface>
   );
-}
+});
 
 const styles = StyleSheet.create({
   shape: {
