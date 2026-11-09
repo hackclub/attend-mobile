@@ -64,7 +64,7 @@ const TRAVEL_MODE_OPTIONS: FieldOption[] = [
 ];
 
 const VISA_STATUS_OPTIONS: FieldOption[] = [
-  { value: 'not_required', label: 'Not Required' },
+  { value: 'not_required', label: 'Not required' },
   { value: 'pending', label: 'Pending' },
   { value: 'applied', label: 'Applied' },
   { value: 'approved', label: 'Approved' },
@@ -86,13 +86,13 @@ function optionsFromData(
 export const FILTER_FIELDS: FieldDef[] = [
   {
     key: 'checked_in',
-    label: 'Checked In',
+    label: 'Checked in',
     type: 'boolean',
     getValue: p => !!p.checked_in_at,
   },
   {
     key: 'scan_context',
-    label: 'Scanned At',
+    label: 'Scanned at',
     type: 'select',
     getValue: () => null,
     getOptions: ctx => {
@@ -125,77 +125,77 @@ export const FILTER_FIELDS: FieldDef[] = [
   },
   {
     key: 'has_travel_inbound',
-    label: 'Has Inbound Travel',
+    label: 'Has inbound travel',
     type: 'boolean',
     getValue: p => !!p.travel_inbound,
   },
   {
     key: 'has_travel_outbound',
-    label: 'Has Outbound Travel',
+    label: 'Has outbound travel',
     type: 'boolean',
     getValue: p => !!p.travel_outbound,
   },
   {
     key: 'travel_mode_inbound',
-    label: 'Travel In',
+    label: 'Travel in',
     type: 'select',
     getValue: p => p.travel_inbound?.mode,
     getOptions: () => TRAVEL_MODE_OPTIONS,
   },
   {
     key: 'travel_mode_outbound',
-    label: 'Travel Out',
+    label: 'Travel out',
     type: 'select',
     getValue: p => p.travel_outbound?.mode,
     getOptions: () => TRAVEL_MODE_OPTIONS,
   },
   {
     key: 'visa_status',
-    label: 'Visa Status',
+    label: 'Visa status',
     type: 'select',
     getValue: p => p.travel_inbound?.visa_status,
     getOptions: () => VISA_STATUS_OPTIONS,
   },
   {
     key: 'unaccompanied_minor',
-    label: 'Unaccompanied Minor',
+    label: 'Unaccompanied minor',
     type: 'boolean',
     getValue: p =>
       !!p.travel_inbound?.is_unaccompanied_minor || !!p.travel_outbound?.is_unaccompanied_minor,
   },
   {
     key: 'waiver_signed',
-    label: 'Waiver Signed',
+    label: 'Waiver signed',
     type: 'boolean',
     getValue: p => p.waiver_signed,
   },
   {
     key: 'anaphylaxis_risk',
-    label: 'Anaphylaxis Risk',
+    label: 'Anaphylaxis risk',
     type: 'boolean',
     getValue: p => p.has_anaphylaxis_risk,
   },
   {
     key: 'high_support',
-    label: 'High Support',
+    label: 'High support',
     type: 'boolean',
     getValue: p => p.high_support_flag,
   },
   {
     key: 'requires_refrigeration',
-    label: 'Requires Refrigeration',
+    label: 'Requires refrigeration',
     type: 'boolean',
     getValue: p => p.requires_refrigeration,
   },
   {
     key: 'cross_contamination_risk',
-    label: 'Cross-Contamination Risk',
+    label: 'Cross-contamination risk',
     type: 'boolean',
     getValue: p => p.cross_contamination_risk,
   },
   {
     key: 'can_leave_unaccompanied',
-    label: 'Can Leave Unaccompanied',
+    label: 'Can leave unaccompanied',
     type: 'boolean',
     getValue: p => p.can_leave_unaccompanied,
   },
@@ -211,7 +211,7 @@ export const FILTER_FIELDS: FieldDef[] = [
   // that still name those keys skip the rule, since getField() finds nothing.
   {
     key: 'nfc_badge',
-    label: 'NFC Badge Assigned',
+    label: 'NFC badge assigned',
     type: 'boolean',
     getValue: p => !!p.nfc_badge_assigned,
   },
@@ -325,7 +325,7 @@ export const SORT_FIELDS: SortFieldDef[] = [
   },
   {
     key: 'checked_in_at',
-    label: 'Check-in Time',
+    label: 'Check-in time',
     getSortValue: p => (p.checked_in_at ? new Date(p.checked_in_at).getTime() : 0),
   },
   {

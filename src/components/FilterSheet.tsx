@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, TextInput } from 'react-native';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { BackHandler, View, Text, StyleSheet, TextInput } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../theme';
 import {
@@ -158,6 +158,18 @@ function FilterSheetBody({
 
   const handleClose = useCallback(() => navigation.goBack(), [navigation]);
 
+  // Android's back button leaves an option list for the filters, as the
+  // list's Back button does, rather than dismissing the whole sheet. This
+  // listener is newer than the navigator's, so it runs first.
+  useEffect(() => {
+    if (!picker) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setPicker(null);
+      return true;
+    });
+    return () => sub.remove();
+  }, [picker]);
+
   const sortField = sort ? getSortField(sort.field) : undefined;
   const canSaveView = rules.length > 0 || sort !== null;
 
@@ -189,7 +201,6 @@ function FilterSheetBody({
   const mainContent = (
     <Sheet
       title="Filter and sort"
-      contentContainerStyle={styles.content}
       footer={(
         <>
           <Text style={[type.body, styles.matchCount, { color: tokens.text2 }]} accessibilityLiveRegion="polite">
@@ -199,6 +210,7 @@ function FilterSheetBody({
         </>
       )}
     >
+      <View style={styles.content}>
         <Text style={[type.h3, styles.sectionTitle, { color: tokens.textH }]} accessibilityRole="header">
           Filters
         </Text>
@@ -282,11 +294,10 @@ function FilterSheetBody({
               </View>
 
               <Button
-                variant="icon"
+                variant="plain-icon"
                 icon="x"
                 title="Remove filter"
                 onPress={() => removeRule(rule.id)}
-                style={styles.iconButton}
               />
             </View>
           );
@@ -320,11 +331,10 @@ function FilterSheetBody({
 
           {sort && (
             <Button
-              variant="icon"
+              variant="plain-icon"
               icon="x"
               title="Clear sort"
               onPress={() => onSortChange(null)}
-              style={styles.iconButton}
             />
           )}
         </View>
@@ -332,7 +342,7 @@ function FilterSheetBody({
         <Divider style={styles.divider} />
 
         <Text style={[type.h3, styles.sectionTitle, { color: tokens.textH }]} accessibilityRole="header">
-          Saved Views
+          Saved views
         </Text>
         {savedViews.length === 0 && !isNamingView && (
           <Text style={[type.body, styles.emptyText, { color: tokens.text2 }]}>
@@ -347,7 +357,7 @@ function FilterSheetBody({
             value={`${view.rules.length} filter${view.rules.length === 1 ? '' : 's'}`}
             trailing={
               <Button
-                variant="icon"
+                variant="plain-icon"
                 icon="trash"
                 title={`Delete ${view.name}`}
                 onPress={() => onDeleteView(view.id)}
@@ -377,7 +387,7 @@ function FilterSheetBody({
               disabled={!viewName.trim()}
             />
             <Button
-              variant="icon"
+              variant="plain-icon"
               icon="x"
               title="Cancel"
               onPress={() => {
@@ -396,6 +406,7 @@ function FilterSheetBody({
             style={styles.linkButton}
           />
         )}
+      </View>
     </Sheet>
   );
 
@@ -470,9 +481,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    paddingVertical: 8,
+    paddingVertical: 6,
     paddingLeft: 12,
-    paddingRight: 4,
+    paddingRight: 0,
     marginBottom: 8,
     gap: 4,
   },
@@ -487,8 +498,8 @@ const styles = StyleSheet.create({
   pillContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    // 36 including the 1px border.
-    minHeight: 34,
+    // 44 including the 1px border.
+    minHeight: 42,
     paddingHorizontal: 10,
     gap: 4,
   },
@@ -498,13 +509,10 @@ const styles = StyleSheet.create({
   valueInput: {
     flexGrow: 1,
     minWidth: 100,
-    minHeight: 36,
+    minHeight: 44,
     borderWidth: 1,
     paddingVertical: 6,
     paddingHorizontal: 10,
-  },
-  iconButton: {
-    borderWidth: 0,
   },
   linkButton: {
     alignSelf: 'flex-start',
