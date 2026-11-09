@@ -5,7 +5,6 @@ import {
   FlatList,
   Image,
   Linking,
-  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -25,8 +24,7 @@ import {
   Icon,
   QuickActionTile,
   StatusIndicator,
-  pressedStyle,
-  ripple,
+  PressableSurface,
 } from '../components/ui';
 import type { RootStackParamList, Ticket } from '../types';
 
@@ -195,18 +193,18 @@ function TicketCard({ ticket, onPress }: { ticket: Ticket; onPress: () => void }
   const meta = [formatDate(event.starts_at, event.timezone), event.location_city].filter(Boolean).join(' · ');
 
   return (
-    <Pressable
+    <PressableSurface
       onPress={onPress}
       accessibilityRole={ticket.confirmed ? 'button' : 'link'}
       accessibilityLabel={[event.name, meta, ticket.checked_in ? 'Checked in' : ticket.display_status]
         .filter(Boolean)
         .join(', ')}
       accessibilityHint={ticket.confirmed ? 'Opens your pass' : 'Opens registration in the browser'}
-      android_ripple={ripple(tokens.pressed, { foreground: true })}
-      style={({ pressed }) => [
+      rippleColor={tokens.text}
+      pressedOpacity={0.7}
+      style={[
         styles.card,
         { backgroundColor: tokens.bg, borderColor: tokens.box, borderRadius: radii.container },
-        pressedStyle(pressed, 0.7),
       ]}
     >
       {event.banner_url ? (
@@ -243,7 +241,7 @@ function TicketCard({ ticket, onPress }: { ticket: Ticket; onPress: () => void }
           ) : null}
         </View>
       </View>
-    </Pressable>
+    </PressableSurface>
   );
 }
 
@@ -254,7 +252,7 @@ const styles = StyleSheet.create({
   headerText: { flex: 1, minWidth: 0 },
   quickActions: { flexDirection: 'row', gap: 12 },
   list: { paddingBottom: 100 },
-  card: { borderWidth: 1, overflow: 'hidden' },
+  card: { borderWidth: 1 },
   banner: { height: 96 },
   cardBody: { paddingHorizontal: 20, paddingVertical: 16, gap: 12 },
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },

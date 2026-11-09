@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } fro
 import { Image } from 'expo-image';
 import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
 import { useEventPassColor } from '../hooks/useEventPassColor';
-import { Icon, pressedStyle, ripple, type IconName } from './ui';
+import { Icon, PressableSurface, pressedStyle, ripple, type IconName } from './ui';
 import { useTheme } from '../theme';
 import type { Event } from '../types';
 
@@ -132,10 +132,15 @@ interface EventCardProps {
 export function EventCard({ event, meta, selected, onPress, accessibilityHint }: EventCardProps) {
   const { type, radii } = useTheme();
   return (
-    <Pressable
+    <PressableSurface
       onPress={onPress}
-      android_ripple={ripple('rgba(255,255,255,0.18)', { foreground: true })}
-      style={({ pressed }) => [styles.card, { borderRadius: radii.container }, pressedStyle(pressed, 0.8)]}
+      // The photo would hide a ripple drawn under it.
+      rippleColor={ON_BANNER}
+      rippleAlpha={0.18}
+      rippleForeground
+      pressedOpacity={0.8}
+      style={[styles.card, { borderRadius: radii.container }]}
+      contentStyle={styles.cardContent}
       accessibilityRole="button"
       accessibilityState={{ selected: !!selected }}
       accessibilityLabel={[event.name, meta].filter(Boolean).join('. ')}
@@ -151,7 +156,7 @@ export function EventCard({ event, meta, selected, onPress, accessibilityHint }:
         <Text style={[styles.cardName, styles.onBanner]} numberOfLines={2}>{event.name}</Text>
         {meta ? <Text style={[type.body, styles.onBanner]} numberOfLines={1}>{meta}</Text> : null}
       </View>
-    </Pressable>
+    </PressableSurface>
   );
 }
 
@@ -173,7 +178,8 @@ const styles = StyleSheet.create({
   },
   meta: { marginTop: 2 },
   accessory: { position: 'absolute', right: 16 },
-  card: { height: 150, overflow: 'hidden', justifyContent: 'flex-end' },
+  card: { height: 150 },
+  cardContent: { justifyContent: 'flex-end' },
   selectedMark: {
     position: 'absolute',
     top: 12,

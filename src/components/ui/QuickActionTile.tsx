@@ -1,8 +1,8 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useTheme, type TintName } from '../../theme';
 import { Icon, type IconName } from './Icon';
-import { pressedStyle, ripple } from './pressFeedback';
+import { PressableSurface } from './PressableSurface';
 
 export interface QuickActionTileProps {
   icon: IconName;
@@ -31,21 +31,21 @@ export function QuickActionTile({
   const { tokens, type, radii } = useTheme();
   const { bg, fg } = tokens.tint[tint];
   return (
-    <Pressable
+    <PressableSurface
       onPress={onPress}
       disabled={disabled || !onPress}
       accessibilityRole="button"
       accessibilityLabel={subLabel ? `${label}, ${subLabel}` : label}
       accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled }}
-      android_ripple={ripple(tokens.pressed, { foreground: true })}
-      style={({ pressed }) => [
+      rippleColor={tokens.text}
+      style={[
         styles.tile,
         { borderColor: tokens.div2, borderRadius: radii.item, backgroundColor: tokens.bg },
         disabled && styles.disabled,
-        pressedStyle(pressed),
         style,
       ]}
+      contentStyle={styles.content}
       testID={testID}
     >
       <View style={[styles.chip, { backgroundColor: bg }]}>
@@ -59,20 +59,13 @@ export function QuickActionTile({
           {subLabel}
         </Text>
       ) : null}
-    </Pressable>
+    </PressableSurface>
   );
 }
 
 const styles = StyleSheet.create({
-  tile: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 16,
-    paddingHorizontal: 8,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
+  tile: { flex: 1, borderWidth: 1 },
+  content: { alignItems: 'center', gap: 8, paddingVertical: 16, paddingHorizontal: 8 },
   chip: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   center: { textAlign: 'center' },
   disabled: { opacity: 0.5 },

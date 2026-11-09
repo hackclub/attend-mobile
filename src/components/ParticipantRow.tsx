@@ -1,7 +1,7 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme';
-import { Avatar, Badge, isAndroid, ripple, type BadgeColor } from './ui';
+import { Avatar, Badge, PressableSurface, ROW_STATE_LAYER_ALPHA, type BadgeColor } from './ui';
 import { isWithdrawn } from '../services/participantStatus';
 import { participantDetailLine } from '../services/participantCheckIn';
 import type { Participant } from '../types';
@@ -35,16 +35,18 @@ export function ParticipantRow({ participant, onPress, selected = false, first =
   const badges = participantBadges(participant);
 
   return (
-    <Pressable
+    <PressableSurface
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected }}
       accessibilityLabel={[name, participant.pronouns, detail, ...badges.map((b) => b.label)]
         .filter(Boolean)
         .join(', ')}
-      android_ripple={ripple(tokens.pressed)}
-      style={({ pressed }) => [
-        styles.row,
+      rippleColor={tokens.text}
+      rippleAlpha={ROW_STATE_LAYER_ALPHA}
+      pressedOpacity={null}
+      style={(pressed) => [
+        styles.shape,
         {
           borderColor: tokens.box,
           backgroundColor: selected ? tokens.selected : tokens.bg,
@@ -53,8 +55,9 @@ export function ParticipantRow({ participant, onPress, selected = false, first =
         first && { borderTopLeftRadius: radii.container, borderTopRightRadius: radii.container },
         last && styles.last,
         last && { borderBottomLeftRadius: radii.container, borderBottomRightRadius: radii.container },
-        !isAndroid && pressed && !selected && { backgroundColor: tokens.shaded },
+        pressed && !selected && { backgroundColor: tokens.shaded },
       ]}
+      contentStyle={styles.row}
     >
       <Avatar name={name} uri={participant.headshot_url} size={36} decorative />
       <View style={styles.text}>
@@ -71,23 +74,25 @@ export function ParticipantRow({ participant, onPress, selected = false, first =
           <Badge key={badge.label} label={badge.label} color={badge.color} style={styles.badge} />
         ))}
       </View>
-    </Pressable>
+    </PressableSurface>
   );
 }
 
 const styles = StyleSheet.create({
+  shape: {
+    marginHorizontal: 16,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderTopWidth: 1,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    minHeight: 56,
-    marginHorizontal: 16,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderTopWidth: 1,
-    overflow: 'hidden',
+    // 56 including the 1px top border.
+    minHeight: 55,
   },
   last: { borderBottomWidth: 1 },
   text: { flex: 1, minWidth: 0 },

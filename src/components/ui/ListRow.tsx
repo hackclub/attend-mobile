@@ -2,7 +2,7 @@ import React, { type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useTheme } from '../../theme';
 import { Icon, type IconName } from './Icon';
-import { isAndroid, ripple } from './pressFeedback';
+import { isAndroid, ripple, ROW_STATE_LAYER_ALPHA } from './pressFeedback';
 
 export interface ListRowProps {
   title: string;
@@ -53,7 +53,7 @@ export function ListRow({
   const content = (
     <>
       {leading ?? (icon ? <Icon name={icon} size={20} color={destructive ? tokens.error : tokens.text2} /> : null)}
-      <View style={styles.text}>
+      <View style={styles.text} pointerEvents="none">
         <Text style={[subtitle ? type.label : type.body, { color: titleColor }]} numberOfLines={2}>
           {title}
         </Text>
@@ -89,7 +89,7 @@ export function ListRow({
       accessibilityLabel={[title, subtitle, value].filter(Boolean).join(', ')}
       accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled }}
-      android_ripple={ripple(tokens.pressed)}
+      android_ripple={ripple(tokens.text, { alpha: ROW_STATE_LAYER_ALPHA })}
       // iOS highlights the row like a table cell; Android ripples.
       style={({ pressed }) => [rowStyle, !isAndroid && pressed && { backgroundColor: tokens.shaded }, style]}
       testID={testID}

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, type NavigationProp } from '@react-navigation/native';
 import { AccountButton, AccountSheet } from '../components/AccountSheet';
@@ -17,8 +17,7 @@ import {
   QuickActionTile,
   Stat,
   Toggle,
-  pressedStyle,
-  ripple,
+  PressableSurface,
   type IconName,
 } from '../components/ui';
 import { useApp } from '../context/AppContext';
@@ -518,17 +517,18 @@ function Placeholder({ icon, title, detail, onPress }: { icon?: IconName; title:
     </>
   );
   const frame = [styles.placeholder, { borderColor: tokens.box, borderRadius: radii.container }];
-  if (!onPress) return <View style={frame} accessible>{body}</View>;
+  if (!onPress) return <View style={[frame, styles.placeholderContent]} accessible>{body}</View>;
   return (
-    <Pressable
+    <PressableSurface
       onPress={onPress}
-      android_ripple={ripple(tokens.pressed, { foreground: true })}
-      style={({ pressed }) => [frame, pressedStyle(pressed)]}
+      rippleColor={tokens.text}
+      style={frame}
+      contentStyle={styles.placeholderContent}
       accessibilityRole="button"
       accessibilityLabel={`${title}. ${detail}`}
     >
       {body}
-    </Pressable>
+    </PressableSurface>
   );
 }
 
@@ -633,12 +633,11 @@ const styles = StyleSheet.create({
   feedRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, paddingHorizontal: 20 },
   attentionRow: { flexDirection: 'row', gap: 8 },
   attentionIcon: { marginTop: 2 },
-  placeholder: {
+  placeholder: { borderWidth: 1, borderStyle: 'dashed' },
+  placeholderContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    borderWidth: 1,
-    borderStyle: 'dashed',
     paddingHorizontal: 20,
     paddingVertical: 16,
   },

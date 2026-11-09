@@ -26,7 +26,14 @@ export {
 } from './StatusIndicator';
 export { TextField, type TextFieldProps } from './TextField';
 export { Toggle, type ToggleProps } from './Toggle';
-export { isAndroid, pressedStyle, ripple } from './pressFeedback';
+export {
+  isAndroid,
+  pressedStyle,
+  ripple,
+  ROW_STATE_LAYER_ALPHA,
+  STATE_LAYER_ALPHA,
+} from './pressFeedback';
+export { PressableSurface, type PressableSurfaceProps } from './PressableSurface';
 
 // Pre-redesign primitives (ScreenHeader, SearchField, FilterChip, card
 // surface helpers), still used by existing screens.

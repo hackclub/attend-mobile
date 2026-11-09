@@ -1,7 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   RefreshControl,
   SectionList,
   StyleSheet,
@@ -23,8 +22,7 @@ import {
   SegmentedControl,
   StatusGlyph,
   TextField,
-  pressedStyle,
-  ripple,
+  PressableSurface,
   type StatusType,
 } from '../components/ui';
 import type {
@@ -216,11 +214,12 @@ function LegRow({
         <View style={styles.chips}>
           {leg.entries.map((entry) =>
             onOpen ? (
-              <Pressable
+              <PressableSurface
                 key={entry.id}
                 onPress={() => onOpen(entry)}
-                android_ripple={ripple(tokens.pressed)}
-                style={({ pressed }) => [styles.chip, styles.chipPressable, pressedStyle(pressed)]}
+                rippleColor={tokens.text}
+                style={styles.chipShape}
+                contentStyle={[styles.chipContent, styles.chipPressable]}
                 accessibilityRole="button"
                 accessibilityLabel={`${displayName(entry)}${entry.isUnaccompaniedMinor ? ', unaccompanied minor' : ''}`}
                 accessibilityHint="Opens their participant record"
@@ -228,9 +227,9 @@ function LegRow({
                 <Text style={styles.chipText} numberOfLines={1}>
                   {displayName(entry)}
                 </Text>
-              </Pressable>
+              </PressableSurface>
             ) : (
-              <View key={entry.id} style={styles.chip}>
+              <View key={entry.id} style={[styles.chipShape, styles.chipContent]}>
                 <Text style={styles.chipText} numberOfLines={1}>
                   {displayName(entry)}
                 </Text>
@@ -539,13 +538,8 @@ const makeStyles = (_colors: ThemeColors, theme: Theme) => {
     legRoute: { ...type.body, color: t.text2, marginTop: -spacing.xs },
     legRouteHidden: { ...type.body, color: t.muted, fontStyle: 'italic', marginTop: -spacing.xs },
     chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-    chip: {
-      paddingHorizontal: spacing.sm,
-      borderRadius: radii.badge,
-      backgroundColor: t.shaded,
-      maxWidth: '100%',
-      overflow: 'hidden',
-    },
+    chipShape: { borderRadius: radii.badge, backgroundColor: t.shaded, maxWidth: '100%', overflow: 'hidden' },
+    chipContent: { paddingHorizontal: spacing.sm },
     // A larger touch area around the 20pt chip without changing its look.
     chipPressable: { minHeight: 28, justifyContent: 'center' },
     chipText: { fontSize: 12, lineHeight: 20, color: t.text },

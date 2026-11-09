@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  Pressable,
   ActivityIndicator,
   RefreshControl,
   ScrollView,
@@ -26,9 +25,7 @@ import {
   Icon,
   SegmentedControl,
   TextField,
-  isAndroid,
-  pressedStyle,
-  ripple,
+  PressableSurface,
   type IconName,
 } from '../components/ui';
 import {
@@ -425,27 +422,27 @@ function ToolChip({ label, icon, trailingIcon, active = false, onPress, accessib
   const { tokens, type, radii } = useTheme();
   const color = active ? tokens.accent : tokens.text;
   return (
-    <Pressable
+    <PressableSurface
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ selected: active }}
-      android_ripple={ripple(tokens.pressed)}
+      rippleColor={color}
       hitSlop={{ top: 6, bottom: 6 }}
-      style={({ pressed }) => [
+      style={[
         styles.chip,
         {
           borderRadius: radii.item,
           borderColor: active ? tokens.accent : tokens.input,
           backgroundColor: active ? tokens.selected : tokens.bg,
         },
-        !isAndroid && pressedStyle(pressed),
       ]}
+      contentStyle={styles.chipContent}
     >
       {icon ? <Icon name={icon} size={16} color={color} /> : null}
       <Text style={[type.label, styles.chipText, { color }]} numberOfLines={1}>{label}</Text>
       {trailingIcon ? <Icon name={trailingIcon} size={14} color={color} /> : null}
-    </Pressable>
+    </PressableSurface>
   );
 }
 
@@ -475,15 +472,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 8,
   },
-  chip: {
-    minHeight: 32,
+  chip: { borderWidth: 1, maxWidth: 260 },
+  chipContent: {
+    // 32 including the 1px border.
+    minHeight: 30,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 12,
-    borderWidth: 1,
-    overflow: 'hidden',
-    maxWidth: 260,
   },
   chipText: {
     flexShrink: 1,

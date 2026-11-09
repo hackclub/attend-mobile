@@ -20,6 +20,7 @@ import {
   Toggle,
   pressedStyle,
   ripple,
+  STATE_LAYER_ALPHA,
 } from './ui';
 
 export const PROFILE_URL = 'https://attend.hackclub.com/dashboard/profile';
@@ -43,13 +44,19 @@ export function AccountButton({
   onBanner?: boolean;
 }) {
   const { state } = useApp();
+  const { tokens } = useTheme();
   const user = state.auth.user;
   const name = user?.name || user?.email || 'Account';
+  // A borderless ripple draws on whatever is behind the avatar: white over a
+  // banner photo, the text colour over the page so it shows in light mode.
+  const rippleConfig = onBanner
+    ? ripple('#ffffff', { alpha: 0.3, borderless: true, radius: size / 2 + 4 })
+    : ripple(tokens.text, { alpha: STATE_LAYER_ALPHA, borderless: true, radius: size / 2 + 4 });
   return (
     <Pressable
       onPress={onPress}
       hitSlop={4}
-      android_ripple={ripple('rgba(255,255,255,0.3)', { borderless: true, radius: size / 2 + 4 })}
+      android_ripple={rippleConfig}
       style={({ pressed }) => [
         onBanner && styles.bannerRing,
         { borderRadius: size },

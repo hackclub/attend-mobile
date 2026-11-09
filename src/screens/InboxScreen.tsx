@@ -3,7 +3,13 @@ import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { api } from '../services/api';
-import { TextField, isAndroid, pressedStyle, ripple } from '../components/ui';
+import {
+  PressableSurface,
+  ROW_STATE_LAYER_ALPHA,
+  TextField,
+  isAndroid,
+  ripple,
+} from '../components/ui';
 import { EmptyState, ErrorView, LoadingView, formatDateTime } from '../components/forms';
 import { channelList } from '../components/messageStatus';
 import { spacing, useTheme } from '../theme';
@@ -121,7 +127,7 @@ export function InboxScreen() {
               onPress={() => navigation.navigate('InboxMessage', { messageId: item.id })}
               accessibilityRole="button"
               accessibilityLabel={item.unread ? `Unread, ${subject}` : subject}
-              android_ripple={ripple(tokens.pressed)}
+              android_ripple={ripple(tokens.text, { alpha: ROW_STATE_LAYER_ALPHA })}
               style={({ pressed }) => [
                 styles.row,
                 !first && { borderTopWidth: 1, borderTopColor: tokens.div2 },
@@ -168,30 +174,32 @@ export function InboxScreen() {
 function EventChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   const { tokens, type, radii } = useTheme();
   return (
-    <Pressable
+    <PressableSurface
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
-      android_ripple={ripple(tokens.pressed, { foreground: true })}
-      style={({ pressed }) => [
+      rippleColor={active ? tokens.accent : tokens.text}
+      style={[
         styles.chip,
         {
           borderRadius: radii.pill,
           borderColor: active ? tokens.accent : tokens.input,
           backgroundColor: active ? tokens.selected : tokens.bg,
         },
-        pressedStyle(pressed),
       ]}
+      contentStyle={styles.chipContent}
     >
       <Text style={[type.label, { color: active ? tokens.accent : tokens.text }]} numberOfLines={1}>
         {label}
       </Text>
-    </Pressable>
+    </PressableSurface>
   );
 }
 
 const styles = StyleSheet.create({
-  chip: { minHeight: 36, paddingHorizontal: 14, justifyContent: 'center', borderWidth: 1, overflow: 'hidden' },
+  chip: { borderWidth: 1 },
+  // 36 including the 1px border.
+  chipContent: { minHeight: 34, paddingHorizontal: 14, justifyContent: 'center' },
   list: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxxl },
   header: { paddingTop: spacing.sm, gap: spacing.md, marginBottom: spacing.lg },
   chips: { gap: spacing.sm },

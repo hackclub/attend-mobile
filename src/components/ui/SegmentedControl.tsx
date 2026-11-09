@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useTheme } from '../../theme';
 import { haptics } from '../../services/haptics';
-import { ripple } from './pressFeedback';
+import { ripple, STATE_LAYER_ALPHA } from './pressFeedback';
 
 export interface SegmentOption<T extends string> {
   value: T;
@@ -60,7 +60,7 @@ export function SegmentedControl<T extends string>({
               (option.count != null ? `${option.label}, ${option.count}` : option.label)
             }
             accessibilityState={role === 'tab' ? { selected } : { checked: selected }}
-            android_ripple={ripple(tokens.pressed)}
+            android_ripple={ripple(tokens.text, { alpha: STATE_LAYER_ALPHA })}
             style={[
               styles.segment,
               hasCounts ? styles.withCount : styles.single,

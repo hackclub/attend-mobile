@@ -28,7 +28,9 @@ import {
   Toggle,
   icons,
   pressedStyle,
+  PressableSurface,
   ripple,
+  ROW_STATE_LAYER_ALPHA,
   statusColor,
   type BadgeColor,
   type IconName,
@@ -160,9 +162,10 @@ export function SelectField({
 
   return (
     <>
-      <Pressable
-        style={({ pressed }) => [styles.input, styles.selectButton, disabled && styles.inputDisabled, pressedStyle(pressed)]}
-        android_ripple={ripple(tokens.pressed)}
+      <PressableSurface
+        style={[styles.selectShape, disabled && styles.inputDisabled]}
+        contentStyle={styles.selectButton}
+        rippleColor={tokens.text}
         onPress={() => setOpen(true)}
         disabled={disabled}
         accessibilityRole="button"
@@ -172,7 +175,7 @@ export function SelectField({
           {selected?.label ?? placeholder}
         </Text>
         <Icon name="chevron-down" size={16} color={tokens.muted} />
-      </Pressable>
+      </PressableSurface>
       <PickerSheet visible={open} title={title} onClose={() => setOpen(false)}>
         <FlatList
           data={options}
@@ -188,7 +191,7 @@ export function SelectField({
                   optionDisabled && styles.optionDisabled,
                   pressedStyle(pressed),
                 ]}
-                android_ripple={ripple(tokens.pressed)}
+                android_ripple={ripple(tokens.text, { alpha: ROW_STATE_LAYER_ALPHA })}
                 disabled={optionDisabled}
                 onPress={() => {
                   onChange(item.value);
@@ -258,9 +261,10 @@ export function MultiSelectField({
 
   return (
     <>
-      <Pressable
-        style={({ pressed }) => [styles.input, styles.selectButton, pressedStyle(pressed)]}
-        android_ripple={ripple(tokens.pressed)}
+      <PressableSurface
+        style={styles.selectShape}
+        contentStyle={styles.selectButton}
+        rippleColor={tokens.text}
         onPress={() => setOpen(true)}
         accessibilityRole="button"
         accessibilityLabel={`${title}: ${selected.length} ${selected.length === 1 ? noun[0] : noun[1]} selected`}
@@ -272,7 +276,7 @@ export function MultiSelectField({
         </View>
         {selected.length ? <KitBadge label={String(selected.length)} /> : null}
         <Icon name="chevron-right" size={16} color={tokens.muted} />
-      </Pressable>
+      </PressableSurface>
       <PickerSheet
         visible={open}
         title={title}
@@ -307,7 +311,7 @@ export function MultiSelectField({
             return (
               <Pressable
                 style={({ pressed }) => [styles.optionRow, pressedStyle(pressed)]}
-                android_ripple={ripple(tokens.pressed)}
+                android_ripple={ripple(tokens.text, { alpha: ROW_STATE_LAYER_ALPHA })}
                 onPress={() => toggle(item.id)}
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked }}
@@ -396,7 +400,7 @@ export function CheckboxRow({
   return (
     <Pressable
       style={({ pressed }) => [styles.checkRow, disabled && styles.optionDisabled, pressedStyle(pressed)]}
-      android_ripple={ripple(tokens.pressed)}
+      android_ripple={ripple(tokens.text, { alpha: ROW_STATE_LAYER_ALPHA })}
       onPress={() => onChange(!checked)}
       disabled={disabled}
       accessibilityRole="checkbox"
@@ -483,9 +487,10 @@ export function DateTimeField({
           onValueChange={(_event, date) => onChange(date)}
         />
       ) : (
-        <Pressable
-          style={({ pressed }) => [styles.input, styles.selectButton, styles.flex, pressedStyle(pressed)]}
-          android_ripple={ripple(tokens.pressed)}
+        <PressableSurface
+          style={[styles.selectShape, styles.flex]}
+          contentStyle={styles.selectButton}
+          rippleColor={tokens.text}
           onPress={() => (Platform.OS === 'ios' ? onChange(new Date()) : openAndroid())}
           accessibilityRole="button"
         >
@@ -493,7 +498,7 @@ export function DateTimeField({
             {value ? formatDateTime(value.toISOString()) : placeholder}
           </Text>
           <Icon name="calendar" size={16} color={tokens.muted} />
-        </Pressable>
+        </PressableSurface>
       )}
       {clearable && value ? (
         <Pressable onPress={() => onChange(null)} hitSlop={12} accessibilityRole="button" accessibilityLabel="Clear date">
@@ -804,7 +809,22 @@ function makeStyles(_colors: ThemeColors, theme: Theme) {
     inputFocused: { borderWidth: 2, borderColor: t.accent, paddingHorizontal: spacing.md - 1, paddingVertical: 9 },
     inputMultiline: { minHeight: 96 },
     inputDisabled: { backgroundColor: t.inputDisabled, color: t.disabled },
-    selectButton: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    // A pressable field: the shape clips the ripple, the content lays out inside.
+    selectShape: {
+      borderRadius: radii.input,
+      borderWidth: 1,
+      borderColor: t.input,
+      backgroundColor: t.bg,
+    },
+    selectButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      // hitTarget including the 1px border.
+      minHeight: hitTarget - 2,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 10,
+    },
     selectText: { ...type.body, flex: 1, color: t.text },
     placeholderText: { color: t.muted },
     optionRow: {

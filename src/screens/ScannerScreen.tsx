@@ -36,6 +36,7 @@ import {
   Button,
   Icon,
   ListRow,
+  PressableSurface,
   Toggle,
   pressedStyle,
   ripple,
@@ -352,9 +353,11 @@ export function ScannerScreen() {
 
       <SafeAreaView style={styles.overlay} edges={['top', 'bottom', 'left', 'right']}>
         <View style={scan.header}>
-          <Pressable
-            style={({ pressed }) => [scan.pill, scan.contextPill, pressedStyle(pressed)]}
-            android_ripple={ripple('rgba(255,255,255,0.2)', { foreground: true })}
+          <PressableSurface
+            style={[scan.pill, scan.contextPill]}
+            contentStyle={scan.pillContent}
+            rippleColor={ON_CAMERA}
+            rippleAlpha={0.2}
             onPress={() => {
               recordScannerActivity();
               setContextPickerOpen(true);
@@ -370,7 +373,7 @@ export function ScannerScreen() {
               {contextLabel}
             </Text>
             {scanContexts.length > 0 ? <Icon name="chevron-down" size={16} color={ON_CAMERA} /> : null}
-          </Pressable>
+          </PressableSurface>
           <View style={scan.flexSpacer} />
           <RoundButton
             icon="torch"
@@ -613,16 +616,8 @@ const scan = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8,
   },
-  pill: {
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: CAMERA_CONTROL,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 16,
-    overflow: 'hidden',
-  },
+  pill: { height: 44, borderRadius: 22, backgroundColor: CAMERA_CONTROL },
+  pillContent: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16 },
   contextPill: { flexShrink: 1, maxWidth: '72%' },
   pillMuted: { color: ON_CAMERA_MUTED, fontSize: 14, lineHeight: 20, flexShrink: 1 },
   pillStrong: { color: ON_CAMERA, fontSize: 14, lineHeight: 20, fontWeight: '700', flexShrink: 1 },

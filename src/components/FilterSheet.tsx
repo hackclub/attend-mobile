@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput } from 'react-native';
 import { useTheme } from '../theme';
 import {
   BottomSheet,
@@ -9,9 +9,7 @@ import {
   ListRow,
   SegmentedControl,
   TextField,
-  isAndroid,
-  pressedStyle,
-  ripple,
+  PressableSurface,
   type IconName,
 } from './ui';
 import {
@@ -441,12 +439,12 @@ function SelectPill({
 }) {
   const { tokens, type, radii } = useTheme();
   return (
-    <Pressable
+    <PressableSurface
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
-      android_ripple={ripple(tokens.pressed)}
-      style={({ pressed }) => [
+      rippleColor={tokens.text}
+      style={[
         styles.pill,
         {
           borderRadius: radii.input,
@@ -454,8 +452,8 @@ function SelectPill({
           borderStyle: placeholder ? 'dashed' : 'solid',
           backgroundColor: tokens.bg,
         },
-        !isAndroid && pressedStyle(pressed),
       ]}
+      contentStyle={styles.pillContent}
     >
       {icon ? <Icon name={icon} size={14} color={tokens.text2} /> : null}
       <Text
@@ -465,7 +463,7 @@ function SelectPill({
         {label}
       </Text>
       <Icon name="chevron-down" size={14} color={tokens.muted} />
-    </Pressable>
+    </PressableSurface>
   );
 }
 
@@ -510,15 +508,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  pill: {
+  pill: { borderWidth: 1, maxWidth: 200 },
+  pillContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    minHeight: 36,
+    // 36 including the 1px border.
+    minHeight: 34,
     paddingHorizontal: 10,
     gap: 4,
-    maxWidth: 200,
-    overflow: 'hidden',
   },
   pillText: {
     flexShrink: 1,

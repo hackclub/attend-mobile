@@ -11,6 +11,7 @@ import {
   SegmentedControl,
   isAndroid,
   ripple,
+  ROW_STATE_LAYER_ALPHA,
 } from '../components/ui';
 import { MESSAGE_STATUS_BADGE, channelList } from '../components/messageStatus';
 import { EmptyState, ErrorView, LoadingView, formatDateTime } from '../components/forms';
@@ -120,7 +121,7 @@ export function MessageListScreen() {
               onPress={() => open(item)}
               accessibilityRole="button"
               accessibilityLabel={`${item.subject || 'No subject'}, ${titleize(item.status)}`}
-              android_ripple={ripple(tokens.pressed)}
+              android_ripple={ripple(tokens.text, { alpha: ROW_STATE_LAYER_ALPHA })}
               style={({ pressed }) => [
                 styles.row,
                 !first && { borderTopWidth: 1, borderTopColor: tokens.div2 },

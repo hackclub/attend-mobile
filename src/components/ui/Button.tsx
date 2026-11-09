@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -12,7 +11,7 @@ import {
 import { useTheme } from '../../theme';
 import { haptics, type HapticImpact } from '../../services/haptics';
 import { Icon, type IconName } from './Icon';
-import { pressedStyle, ripple } from './pressFeedback';
+import { PressableSurface } from './PressableSurface';
 
 export type ButtonVariant = 'normal' | 'primary' | 'link' | 'icon';
 
@@ -95,28 +94,28 @@ export function Button({
   ) : null;
 
   return (
-    <Pressable
+    <PressableSurface
       onPress={handlePress}
       disabled={inactive}
       accessibilityRole={isLink ? 'link' : 'button'}
       accessibilityLabel={accessibilityLabel ?? title}
       accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled: inactive, busy: loading }}
-      android_ripple={ripple(isPrimary ? 'rgba(255,255,255,0.24)' : tokens.pressed, { foreground: true })}
+      rippleColor={fg}
       hitSlop={isLink ? 4 : undefined}
-      style={({ pressed }) => [
-        styles.base,
-        {
-          minHeight: hitTarget,
-          borderRadius: radii.pill,
-          backgroundColor: bg,
-          borderColor: border,
-        },
-        isLink && styles.link,
-        isIcon && { width: hitTarget, height: hitTarget, paddingHorizontal: 0 },
+      style={[
+        styles.shape,
+        { borderRadius: radii.pill, backgroundColor: bg, borderColor: border },
+        isIcon && { width: hitTarget, height: hitTarget },
         fullWidth && styles.full,
-        pressedStyle(pressed),
         style,
+      ]}
+      contentStyle={[
+        styles.base,
+        // The 2px border sits outside the content.
+        { minHeight: hitTarget - 4 },
+        isLink && styles.link,
+        isIcon && styles.icon,
       ]}
       testID={testID}
     >
@@ -131,20 +130,15 @@ export function Button({
           {iconPosition === 'end' && iconNode}
         </View>
       )}
-    </Pressable>
+    </PressableSurface>
   );
 }
 
 const styles = StyleSheet.create({
-  base: {
-    borderWidth: 2,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'flex-start',
-    overflow: 'hidden',
-  },
+  shape: { borderWidth: 2, alignSelf: 'flex-start' },
+  base: { paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center' },
   link: { paddingHorizontal: 12 },
+  icon: { paddingHorizontal: 0 },
   full: { alignSelf: 'stretch' },
   content: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   title: { letterSpacing: 0.07 },

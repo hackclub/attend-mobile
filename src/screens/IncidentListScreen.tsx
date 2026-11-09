@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Pressable, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
@@ -10,8 +10,7 @@ import {
   Container,
   StatusIndicator,
   TextField,
-  pressedStyle,
-  ripple,
+  PressableSurface,
 } from '../components/ui';
 import { EmptyState, ErrorView, LevelBadge, LevelChart, LoadingView, formatDateTime } from '../components/forms';
 import { humanize } from '../services/statusDisplay';
@@ -51,9 +50,10 @@ function IncidentCard({
   ].filter(Boolean);
 
   return (
-    <Pressable
-      style={({ pressed }) => [styles.card, pressedStyle(pressed)]}
-      android_ripple={ripple(tokens.pressed)}
+    <PressableSurface
+      style={styles.card}
+      contentStyle={styles.cardContent}
+      rippleColor={tokens.text}
       onPress={onPress}
       accessibilityRole="button"
     >
@@ -77,7 +77,7 @@ function IncidentCard({
           label={`Escalated to Hack Club HQ · ${humanize(incident.hq_report.status)}`}
         />
       ) : null}
-    </Pressable>
+    </PressableSurface>
   );
 }
 
@@ -287,16 +287,13 @@ const makeStyles = (_colors: ThemeColors, theme: Theme) => {
     sectionTitle: { ...type.label, color: t.text },
     collapsedToggle: { alignSelf: 'flex-start', paddingHorizontal: 0, marginTop: spacing.sm },
     card: {
-      gap: spacing.sm,
-      paddingVertical: spacing.md,
-      paddingHorizontal: spacing.lg,
       borderWidth: 1,
       borderColor: t.box,
       borderRadius: radii.container,
       backgroundColor: t.bg,
       marginBottom: spacing.md,
-      overflow: 'hidden',
     },
+    cardContent: { gap: spacing.sm, paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
     badges: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
     summary: { ...type.h3, lineHeight: 22, color: t.textH },
     meta: { ...type.body, color: t.muted },

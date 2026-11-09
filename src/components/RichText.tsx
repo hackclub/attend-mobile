@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Linking, Modal, Platform, Pressable, StyleSheet, Text, View, type TextStyle } from 'react-native';
-import { pressedStyle, ripple } from './ui/pressFeedback';
+import { Linking, Modal, Platform, StyleSheet, Text, View, type TextStyle } from 'react-native';
+import { PressableSurface } from './ui/PressableSurface';
 import { Ionicons } from '@expo/vector-icons';
 import { parseHtml, type Block, type Inline } from '../services/richText';
 import { Button, TextField } from './forms';
@@ -151,10 +151,11 @@ export function MarkupEditor({
     <View style={styles.editor}>
       <View style={styles.toolbar}>
         {tools.map(tool => (
-          <Pressable
+          <PressableSurface
             key={tool.label}
-            style={({ pressed }) => [styles.tool, pressedStyle(pressed)]}
-            android_ripple={ripple(tokens.pressed, { foreground: true })}
+            style={styles.tool}
+            contentStyle={styles.toolContent}
+            rippleColor={tokens.text}
             onPress={tool.onPress}
             accessibilityRole="button"
             accessibilityLabel={tool.label}
@@ -172,7 +173,7 @@ export function MarkupEditor({
                 {tool.text}
               </Text>
             )}
-          </Pressable>
+          </PressableSurface>
         ))}
       </View>
       <TextField
@@ -228,13 +229,11 @@ const makeStyles = (_colors: ThemeColors, { tokens }: Theme) => StyleSheet.creat
     width: 38,
     height: 34,
     borderRadius: 8,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
     borderWidth: 1,
     borderColor: tokens.input,
     backgroundColor: tokens.bg,
   },
+  toolContent: { alignItems: 'center', justifyContent: 'center' },
   toolText: { fontSize: 16, fontWeight: '800', color: tokens.text2 },
   editorInput: { minHeight: 180 },
   backdrop: { flex: 1, backgroundColor: tokens.overlay, justifyContent: 'center', padding: 24 },
