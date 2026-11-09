@@ -174,12 +174,12 @@ export function ScannerResultCard({
         <View style={styles.identityRow}>
           <ParticipantAvatar participant={participant} size={48} />
           <View style={styles.flex}>
-            <Text style={[type.h2, { color: tokens.textH }]}>
-              <Text>{name}</Text>
+            <View style={styles.nameRow}>
+              <Text style={[type.h2, styles.name, { color: tokens.textH }]}>{name}</Text>
               {participant.pronouns ? (
-                <Text style={[type.body, { color: tokens.muted }]}>{`  ${participant.pronouns}`}</Text>
+                <Text style={[type.body, { color: tokens.muted }]}>{participant.pronouns}</Text>
               ) : null}
-            </Text>
+            </View>
             <View style={styles.statusRow}>
               <StatusGlyph type={config.status} color={color} />
               <Text style={[type.body, styles.flex, { color: tokens.muted }]}>
@@ -258,6 +258,9 @@ const styles = StyleSheet.create({
   dragHandle: { width: 36, height: 5, borderRadius: 3 },
   compactRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   identityRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  // Pronouns sit on the name's baseline and wrap under it when there's no room.
+  nameRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 8 },
+  name: { flexShrink: 1 },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   alerts: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   actions: { flexDirection: 'row', gap: 8 },

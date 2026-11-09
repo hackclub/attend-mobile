@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -29,9 +28,8 @@ import {
   ActionMenu,
   Button,
   Icon,
+  OverlayIconButton,
   PressableSurface,
-  pressedStyle,
-  ripple,
   type IconName,
 } from '../components/ui';
 import { scanContextSheet, scannerSearchSheet } from '../navigation/sheetData';
@@ -39,7 +37,7 @@ import { useIsUnderSheet } from '../navigation/useIsUnderSheet';
 import { api } from '../services/api';
 import { computeEventStats } from '../services/eventStats';
 import { participantAfterUndo } from '../services/scanUndo';
-import { colors } from '../theme/colors';
+import { overlayTokens, useTheme } from '../theme';
 import type { Participant, AppStackParamList } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<AppStackParamList>;
@@ -85,13 +83,9 @@ export function ScannerScreen() {
   const [undoing, setUndoing] = useState(false);
   const [isFocused, setIsFocused] = useState(true);
   const lastFeedbackAttemptRef = useRef<string | null>(null);
-  const scanAreaRef = useRef<React.ComponentRef<typeof View>>(null);
-  // Window-space rect of the scan frame, so the scrim cutout can track it.
-  const [scanFrameRect, setScanFrameRect] = useState<{
-    x: number; y: number; width: number; height: number;
-  } | null>(null);
+  const { type, radii } = useTheme();
 
-  const scanAreaSize = Math.min(width * 0.6, height * 0.32, isRegular ? 380 : 260);
+  const scanAreaSize = Math.min(width * 0.6, height * 0.32, isRegular ? 280 : 200);
   const selectedContext = contextsReady
     ? scanContexts.find(context => context.id === selectedContextId)
     : undefined;
@@ -160,18 +154,6 @@ export function ScannerScreen() {
       .contexts.find(context => context.id === contextId);
     return progress && progress.total > 0 ? `${progress.scanned} of ${progress.total}` : null;
   }, [lastScan?.scanContext?.id, scanContexts, state.participants]);
-
-  const measureScanArea = useCallback(() => {
-    scanAreaRef.current?.measureInWindow((x, y, w, h) => {
-      if (w > 0 && h > 0) {
-        setScanFrameRect(prev =>
-          prev && prev.x === x && prev.y === y && prev.width === w && prev.height === h
-            ? prev
-            : { x, y, width: w, height: h }
-        );
-      }
-    });
-  }, []);
 
   useEffect(() => {
     if (!lastScan || lastScan.outcome === 'confirming') return;
@@ -263,12 +245,13 @@ export function ScannerScreen() {
   }, [clearLastScan, lastScan, recordScannerActivity, state.currentEvent?.id, undoing, updateParticipant]);
 
   if (!permission) {
-    return <CenteredState title="Starting camera" loading />;
+    return <CenteredState icon="camera" title="Starting camera" loading />;
   }
 
   if (!permission.granted) {
     return (
       <CenteredState
+        icon="camera"
         title="Camera access required"
         message="Attend needs camera access to scan attendee QR codes."
         actionLabel="Allow camera"
@@ -280,6 +263,7 @@ export function ScannerScreen() {
   if (!hasEvent) {
     return (
       <CenteredState
+        icon="calendar"
         title="No event selected"
         message="Choose an event on the Overview tab before scanning."
       />
@@ -305,25 +289,12 @@ export function ScannerScreen() {
         />
       ) : null}
 
-      <View style={styles.cameraScrim} pointerEvents="none">
-        {scanFrameRect ? (
-          <>
-            <View style={[styles.scrim, { top: 0, left: 0, right: 0, height: scanFrameRect.y }]} />
-            <View style={[styles.scrim, { top: scanFrameRect.y, left: 0, width: scanFrameRect.x, height: scanFrameRect.height }]} />
-            <View style={[styles.scrim, { top: scanFrameRect.y, left: scanFrameRect.x + scanFrameRect.width, right: 0, height: scanFrameRect.height }]} />
-            <View style={[styles.scrim, { top: scanFrameRect.y + scanFrameRect.height, left: 0, right: 0, bottom: 0 }]} />
-          </>
-        ) : (
-          <View style={[styles.scrim, StyleSheet.absoluteFill]} />
-        )}
-      </View>
-
       <SafeAreaView style={styles.overlay} edges={['top', 'bottom', 'left', 'right']}>
         <View style={scan.header}>
           <PressableSurface
             style={[scan.pill, scan.contextPill]}
             contentStyle={scan.pillContent}
-            rippleColor={ON_CAMERA}
+            rippleColor={overlayTokens.on}
             rippleAlpha={0.2}
             onPress={openContextPicker}
             disabled={scanContexts.length === 0}
@@ -331,17 +302,18 @@ export function ScannerScreen() {
             accessibilityLabel={`Scan context: ${selectedContext?.name ?? 'not chosen'}. Change`}
             accessibilityHint={selectedContext ? undefined : 'Choose a context before scanning'}
           >
-            <Text style={scan.pillMuted} numberOfLines={1}>{state.currentEvent?.name}</Text>
-            <Icon name="chevron-right" size={14} color={ON_CAMERA_MUTED} />
-            <Text style={[scan.pillStrong, !selectedContext && scan.pillWarning]} numberOfLines={1}>
+            <Text style={[type.body, scan.pillMuted]} numberOfLines={1}>{state.currentEvent?.name}</Text>
+            <Icon name="chevron-right" size={14} color={overlayTokens.onMuted} />
+            <Text style={[type.label, scan.pillStrong, !selectedContext && scan.pillWarning]} numberOfLines={1}>
               {contextLabel}
             </Text>
-            {scanContexts.length > 0 ? <Icon name="chevron-down" size={16} color={ON_CAMERA} /> : null}
+            {scanContexts.length > 0 ? <Icon name="chevron-down" size={16} color={overlayTokens.on} /> : null}
           </PressableSurface>
           <View style={scan.flexSpacer} />
-          <RoundButton
+          <OverlayIconButton
+            surface="camera"
             icon="torch"
-            label={torchOn ? 'Turn torch off' : 'Turn torch on'}
+            accessibilityLabel={torchOn ? 'Turn torch off' : 'Turn torch on'}
             active={torchOn}
             onPress={() => {
               recordScannerActivity();
@@ -375,37 +347,48 @@ export function ScannerScreen() {
               },
             ]}
           >
-            <RoundGlyph icon="dots-horizontal" active={isPowerModeEnabled} />
+            <OverlayIconButton
+              surface="camera"
+              icon="dots-horizontal"
+              accessibilityLabel="More"
+              active={isPowerModeEnabled}
+            />
           </ActionMenu>
         </View>
 
-        <View style={styles.scanStage} onLayout={measureScanArea}>
+        <View style={styles.scanStage}>
           <View
-            ref={scanAreaRef}
-            onLayout={measureScanArea}
             style={[styles.scanArea, { width: scanAreaSize, height: scanAreaSize }]}
             accessible
             accessibilityLabel={`QR code scanning area. ${scannerStatus}`}
           >
-            <View style={[styles.corner, styles.topLeft]} />
-            <View style={[styles.corner, styles.topRight]} />
-            <View style={[styles.corner, styles.bottomLeft]} />
-            <View style={[styles.corner, styles.bottomRight]} />
+            {/* Until a context is chosen the reason takes the frame's place. */}
+            {needsContext ? null : (
+              <>
+                <View style={[styles.corner, styles.topLeft]} />
+                <View style={[styles.corner, styles.topRight]} />
+                <View style={[styles.corner, styles.bottomLeft]} />
+                <View style={[styles.corner, styles.bottomRight]} />
+              </>
+            )}
             {isProcessing ? (
               <View style={styles.processingIndicator}>
-                <ActivityIndicator color={colors.white} size="small" />
+                <ActivityIndicator color={overlayTokens.on} size="small" />
               </View>
             ) : null}
           </View>
 
           {needsContext ? (
             <View style={styles.contextRequired} pointerEvents="none">
-              <Text style={styles.contextRequiredTitle}>
-                Choose a context to start scanning
-              </Text>
-              <Text style={styles.contextRequiredText}>
-                {"Pick where you're scanning people in from the context picker at the top."}
-              </Text>
+              <View style={[styles.contextRequiredCard, { borderRadius: radii.container }]}>
+                <Icon name="location" size={24} color={overlayTokens.active} />
+                <Text style={[type.h3, styles.onCamera, styles.centerText]}>
+                  Choose a context to start scanning
+                </Text>
+                <Text style={[type.body, styles.onCameraMuted, styles.centerText]}>
+                  {"Pick where you're scanning people in from the context picker at the top."}
+                </Text>
+              </View>
             </View>
           ) : null}
         </View>
@@ -453,9 +436,10 @@ export function ScannerScreen() {
               style={scan.flexSpacer}
             />
             {nfcSupported && Platform.OS === 'ios' ? (
-              <RoundButton
+              <OverlayIconButton
+                surface="camera"
                 icon="nfc"
-                label={nfcReading ? 'Reading NFC' : 'Scan NFC badge'}
+                accessibilityLabel={nfcReading ? 'Reading NFC' : 'Scan NFC badge'}
                 disabled={isProcessing || nfcReading || !contextsReady}
                 onPress={() => {
                   recordScannerActivity();
@@ -472,53 +456,6 @@ export function ScannerScreen() {
   );
 }
 
-const ON_CAMERA = '#f9f9fa';
-const ON_CAMERA_MUTED = '#c6c6cd';
-const CAMERA_CONTROL = 'rgba(15,20,26,0.82)';
-
-/** A 44pt round control on the camera. */
-function RoundButton({
-  icon,
-  label,
-  onPress,
-  active,
-  disabled,
-}: {
-  icon: IconName;
-  label: string;
-  onPress: () => void;
-  active?: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        scan.round,
-        active && scan.roundActive,
-        disabled && scan.disabled,
-        pressedStyle(pressed && !disabled),
-      ]}
-      android_ripple={ripple('rgba(255,255,255,0.24)', { borderless: true, radius: 24 })}
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled: !!disabled, selected: !!active }}
-    >
-      <Icon name={icon} size={20} color={active ? '#0f141a' : ON_CAMERA} />
-    </Pressable>
-  );
-}
-
-/** RoundButton's look without the press handling, for a native menu's trigger. */
-function RoundGlyph({ icon, active }: { icon: IconName; active?: boolean }) {
-  return (
-    <View style={[scan.round, active && scan.roundActive]}>
-      <Icon name={icon} size={20} color={active ? '#0f141a' : ON_CAMERA} />
-    </View>
-  );
-}
-
 const scan = StyleSheet.create({
   header: {
     flexDirection: 'row',
@@ -527,79 +464,84 @@ const scan = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 8,
   },
-  pill: { height: 44, borderRadius: 22, backgroundColor: CAMERA_CONTROL },
+  pill: { height: 44, borderRadius: 22, backgroundColor: overlayTokens.cameraControl },
   pillContent: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16 },
   contextPill: { flexShrink: 1, maxWidth: '72%' },
-  pillMuted: { color: ON_CAMERA_MUTED, fontSize: 14, lineHeight: 20, flexShrink: 1 },
-  pillStrong: { color: ON_CAMERA, fontSize: 14, lineHeight: 20, fontWeight: '700', flexShrink: 1 },
-  pillWarning: { color: '#fbd332' },
-  round: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: CAMERA_CONTROL,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  roundActive: { backgroundColor: '#fbd332' },
-  disabled: { opacity: 0.4 },
+  pillMuted: { color: overlayTokens.onMuted, flexShrink: 1 },
+  pillStrong: { color: overlayTokens.on, flexShrink: 1 },
+  pillWarning: { color: overlayTokens.active },
   dock: { paddingHorizontal: 10 },
   flexSpacer: { flex: 1 },
   dockRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 });
 
+/** Before the camera can run: no permission yet, or no event. */
 function CenteredState({
+  icon,
   title,
   message,
   loading,
   actionLabel,
   onAction,
 }: {
+  icon: IconName;
   title: string;
   message?: string;
   loading?: boolean;
   actionLabel?: string;
   onAction?: () => void;
 }) {
+  const { tokens, type } = useTheme();
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.fill, { backgroundColor: tokens.bg }]}>
       <View style={styles.centered}>
-        {loading ? <ActivityIndicator color={colors.white} size="large" /> : null}
-        <Text style={styles.messageTitle}>{title}</Text>
-        {message ? <Text style={styles.messageText}>{message}</Text> : null}
+        <View style={[styles.stateIcon, { backgroundColor: tokens.tint.grey.bg }]}>
+          {loading ? (
+            <ActivityIndicator color={tokens.tint.grey.fg} />
+          ) : (
+            <Icon name={icon} size={28} color={tokens.tint.grey.fg} />
+          )}
+        </View>
+        <Text style={[type.h2, styles.centerText, { color: tokens.textH }]} accessibilityRole="header">
+          {title}
+        </Text>
+        {message ? (
+          <Text style={[type.body, styles.centerText, styles.stateMessage, { color: tokens.text2 }]}>
+            {message}
+          </Text>
+        ) : null}
         {actionLabel && onAction ? (
-          <Pressable style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]} onPress={onAction}>
-            <Text style={styles.primaryButtonText}>{actionLabel}</Text>
-          </Pressable>
+          <Button variant="primary" title={actionLabel} onPress={onAction} style={styles.stateAction} />
         ) : null}
       </View>
     </SafeAreaView>
   );
 }
 
+const CORNER = { width: 40, height: 40, thickness: 5, radius: 18 };
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[900] },
+  fill: { flex: 1 },
+  container: { flex: 1, backgroundColor: overlayTokens.cameraStage },
   overlay: { flex: 1 },
-  cameraScrim: { ...StyleSheet.absoluteFill },
-  scrim: { position: 'absolute', backgroundColor: 'rgba(15,23,42,0.52)' },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 14 },
-  messageTitle: { color: colors.white, fontSize: 23, lineHeight: 29, fontWeight: '800', textAlign: 'center' },
-  messageText: { color: colors.gray[300], fontSize: 16, lineHeight: 23, textAlign: 'center', maxWidth: 360 },
-  primaryButton: { minHeight: 48, paddingHorizontal: 22, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.red },
-  primaryButtonText: { color: colors.white, fontSize: 16, fontWeight: '700' },
-  scanStage: { flex: 1, minHeight: 150, alignItems: 'center', justifyContent: 'center', gap: 14, paddingHorizontal: 18, paddingVertical: 12 },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 8 },
+  centerText: { textAlign: 'center' },
+  stateIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  stateMessage: { maxWidth: 360 },
+  stateAction: { marginTop: 16 },
+  onCamera: { color: overlayTokens.on },
+  onCameraMuted: { color: overlayTokens.onMuted },
+  scanStage: { flex: 1, minHeight: 150, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, paddingVertical: 12 },
   scanArea: { position: 'relative' },
-  contextRequired: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 26, backgroundColor: 'rgba(15,23,42,0.94)' },
-  contextRequiredTitle: { color: colors.white, fontSize: 17, lineHeight: 23, fontWeight: '800', textAlign: 'center' },
-  contextRequiredText: { color: colors.gray[300], fontSize: 14, lineHeight: 20, textAlign: 'center', maxWidth: 340 },
-  corner: { position: 'absolute', width: 46, height: 46, borderColor: colors.white },
-  topLeft: { top: 0, left: 0, borderTopWidth: 4, borderLeftWidth: 4, borderTopLeftRadius: 15 },
-  topRight: { top: 0, right: 0, borderTopWidth: 4, borderRightWidth: 4, borderTopRightRadius: 15 },
-  bottomLeft: { bottom: 0, left: 0, borderBottomWidth: 4, borderLeftWidth: 4, borderBottomLeftRadius: 15 },
-  bottomRight: { bottom: 0, right: 0, borderBottomWidth: 4, borderRightWidth: 4, borderBottomRightRadius: 15 },
-  processingIndicator: { position: 'absolute', left: '50%', top: '50%', width: 48, height: 48, marginLeft: -24, marginTop: -24, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15,23,42,0.78)' },
+  contextRequired: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
+  contextRequiredCard: { alignItems: 'center', gap: 6, padding: 20, maxWidth: 360, backgroundColor: overlayTokens.cameraControl },
+  corner: { position: 'absolute', width: CORNER.width, height: CORNER.height, borderColor: overlayTokens.scanFrame },
+  topLeft: { top: 0, left: 0, borderTopWidth: CORNER.thickness, borderLeftWidth: CORNER.thickness, borderTopLeftRadius: CORNER.radius },
+  topRight: { top: 0, right: 0, borderTopWidth: CORNER.thickness, borderRightWidth: CORNER.thickness, borderTopRightRadius: CORNER.radius },
+  bottomLeft: { bottom: 0, left: 0, borderBottomWidth: CORNER.thickness, borderLeftWidth: CORNER.thickness, borderBottomLeftRadius: CORNER.radius },
+  bottomRight: { bottom: 0, right: 0, borderBottomWidth: CORNER.thickness, borderRightWidth: CORNER.thickness, borderBottomRightRadius: CORNER.radius },
+  processingIndicator: { position: 'absolute', left: '50%', top: '50%', width: 48, height: 48, marginLeft: -24, marginTop: -24, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: overlayTokens.cameraControl },
   // Anchored above the dock, outside layout flow, so the scan frame never shifts
   resultCardOverlay: { position: 'absolute', left: 14, right: 14 },
   resultCardScroll: { width: '100%', maxWidth: 620, alignSelf: 'center' },
-  pressed: { opacity: 0.72 },
 });
