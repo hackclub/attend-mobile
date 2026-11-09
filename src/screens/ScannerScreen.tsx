@@ -762,7 +762,7 @@ function SearchSheet({
             >
               <View style={styles.searchResultText}>
                 <Text style={styles.searchResultName} numberOfLines={1}>Scan as attendee ID</Text>
-                <Text style={styles.searchResultEmail} numberOfLines={1}>{idCandidate}</Text>
+                <Text style={styles.searchResultDetail} numberOfLines={1}>{idCandidate}</Text>
               </View>
               <View style={styles.searchResultAction}>
                 {isProcessing ? (
@@ -790,7 +790,11 @@ function SearchSheet({
                 <Text style={styles.searchResultName} numberOfLines={1}>
                   {item.display_name || item.full_name}
                 </Text>
-                <Text style={styles.searchResultEmail} numberOfLines={1}>{item.email}</Text>
+                {/* Name and pronouns only: this list is read at the door,
+                    over the scanner's shoulder, so no contact details. */}
+                {item.pronouns ? (
+                  <Text style={styles.searchResultDetail} numberOfLines={1}>{item.pronouns}</Text>
+                ) : null}
               </View>
               <View style={styles.searchResultAction}>
                 <Text style={styles.searchResultActionText}>Scan</Text>
@@ -859,7 +863,7 @@ const styles = StyleSheet.create({
   sheetNoticeText: { flex: 1, color: colors.gray[100], fontSize: 13, lineHeight: 19, fontWeight: '600' },
   searchResultText: { flex: 1, gap: 3 },
   searchResultName: { color: colors.white, fontSize: 16, fontWeight: '700' },
-  searchResultEmail: { color: colors.gray[400], fontSize: 13 },
+  searchResultDetail: { color: colors.gray[400], fontSize: 13 },
   searchResultAction: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 5 },
   searchResultActionText: { color: colors.green, fontSize: 14, fontWeight: '800' },
   searchEmptyText: { paddingVertical: 34, color: colors.gray[400], fontSize: 15, textAlign: 'center' },

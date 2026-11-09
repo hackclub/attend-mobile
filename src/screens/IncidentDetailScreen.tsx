@@ -13,6 +13,7 @@ import {
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
+import { BiometricGate } from '../components/BiometricGate';
 import { api } from '../services/api';
 import {
   Badge,
@@ -310,13 +311,18 @@ export function IncidentDetailScreen() {
         {incident.category === 'medical' ? (
           <Container title="Medication dispensed" bodyStyle={styles.containerBody}>
             {incident.medication_dispensed && incident.medications.length ? (
-              incident.medications.map((m, i) => (
-                <View key={m.id ?? i} style={[styles.medication, i > 0 && styles.divider]}>
-                  <Text style={styles.bold}>{m.name}</Text>
-                  <Text style={styles.value}>{m.dose}</Text>
-                  {m.notes ? <Text style={styles.muted}>{m.notes}</Text> : null}
-                </View>
-              ))
+              // Medication, dose and notes are a participant's health data:
+              // they sit behind the same unlock as participant details. The
+              // rest of the incident stays readable.
+              <BiometricGate reason="Authenticate to view medication details">
+                {incident.medications.map((m, i) => (
+                  <View key={m.id ?? i} style={[styles.medication, i > 0 && styles.divider]}>
+                    <Text style={styles.bold}>{m.name}</Text>
+                    <Text style={styles.value}>{m.dose}</Text>
+                    {m.notes ? <Text style={styles.muted}>{m.notes}</Text> : null}
+                  </View>
+                ))}
+              </BiometricGate>
             ) : (
               <Text style={styles.muted}>None</Text>
             )}
