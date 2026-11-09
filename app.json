@@ -135,7 +135,8 @@
         }
       ],
       "./plugins/withScannerOrientationFix",
-      "./plugins/withKotlinJvmTargetFix"
+      "./plugins/withKotlinJvmTargetFix",
+      "./plugins/withAppShortcuts"
     ],
     "extra": {
       "eas": {
