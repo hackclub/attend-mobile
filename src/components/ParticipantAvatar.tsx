@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { AccessibilityInfo, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
+import { useReduceMotion } from '../hooks/useReduceMotion';
 import type { Participant } from '../types';
 import { overlayTokens, useThemedStyles, withAlpha, type Theme } from '../theme';
 
@@ -21,20 +22,11 @@ export function ParticipantAvatar({ participant, size = 84 }: ParticipantAvatarP
   const uri = participant?.headshot_url;
   const styles = useThemedStyles(makeStyles);
   const [imageFailed, setImageFailed] = useState(false);
-  const [reduceMotion, setReduceMotion] = useState(false);
+  const reduceMotion = useReduceMotion();
 
   useEffect(() => {
     setImageFailed(false);
   }, [uri]);
-
-  useEffect(() => {
-    void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
-    const subscription = AccessibilityInfo.addEventListener(
-      'reduceMotionChanged',
-      setReduceMotion
-    );
-    return () => subscription.remove();
-  }, []);
 
   const sharedStyle = {
     width: size,

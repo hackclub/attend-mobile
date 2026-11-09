@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AccessibilityInfo, Animated, PanResponder, Platform, StyleSheet, Text, View } from 'react-native';
 import { ParticipantAvatar } from './ParticipantAvatar';
+import { useReduceMotion } from '../hooks/useReduceMotion';
 import { Badge, Button, StatusGlyph, type BadgeColor, type StatusType } from './ui';
 import type { ScannerOutcome, ScannerResult } from '../services/scannerCore';
 import { useTheme, type ThemeTokens } from '../theme';
@@ -63,21 +64,33 @@ export function ScannerResultCard({
   const firstScan = result.outcome === 'already_scanned' ? formattedFirstScan(result.firstScannedAt) : null;
   const isFinal = result.outcome !== 'confirming';
   const [translateY] = useState(() => new Animated.Value(0));
+  const reduceMotion = useReduceMotion();
 
   useEffect(() => {
     translateY.setValue(0);
   }, [result.attemptId, translateY]);
 
+  // With Reduce Motion on, the card jumps back or goes, without the spring
+  // or the slide away.
   const settleBack = useCallback(() => {
+    if (reduceMotion) {
+      translateY.setValue(0);
+      return;
+    }
     Animated.spring(translateY, { toValue: 0, bounciness: 4, useNativeDriver: true }).start();
-  }, [translateY]);
+  }, [reduceMotion, translateY]);
 
   const dismiss = useCallback(() => {
+    if (reduceMotion) {
+      translateY.setValue(0);
+      onClear();
+      return;
+    }
     Animated.timing(translateY, { toValue: 320, duration: 150, useNativeDriver: true }).start(() => {
       translateY.setValue(0);
       onClear();
     });
-  }, [onClear, translateY]);
+  }, [onClear, reduceMotion, translateY]);
 
   const releaseOrSettle = useCallback((dy: number, vy: number) => {
     if (dy > 64 || vy > 0.7) dismiss();
