@@ -24,6 +24,8 @@ type Nav = NativeStackNavigationProp<AppStackParamList, 'MessagePreview'>;
 type Route = RouteProp<AppStackParamList, 'MessagePreview'>;
 
 const TITLE = 'Preview & send';
+/** Back to the composer, which still holds the draft. */
+const EDIT_BAR = { cancelLabel: 'Edit' };
 
 /** Step 2 of 2: who it reaches, how each channel renders, then send. */
 export function MessagePreviewScreen() {
@@ -52,7 +54,7 @@ export function MessagePreviewScreen() {
 
   if (!event || !preview) {
     return (
-      <Screen modal title={TITLE} scroll={false}>
+      <Screen modal modalBar={EDIT_BAR} title={TITLE} scroll={false}>
         {!event ? (
           <ErrorView message="Pick an event on the Overview tab first." />
         ) : error ? (
@@ -109,7 +111,22 @@ export function MessagePreviewScreen() {
   const more = preview.total_count - shown.length;
 
   return (
-    <Screen modal title={TITLE}>
+    <Screen
+      modal
+      title={TITLE}
+      modalBar={{
+        ...EDIT_BAR,
+        confirm: (
+          <Button
+            title={scheduling ? 'Schedule' : 'Send'}
+            variant="primary"
+            onPress={send}
+            loading={sending}
+            disabled={preview.total_count === 0}
+          />
+        ),
+      }}
+    >
       <Text style={[type.body, { color: tokens.muted }]}>Step 2 of 2 — Review and send your message</Text>
 
       <Container title={`Audience: ${preview.audience_label}`} bodyStyle={styles.section}>
@@ -174,17 +191,6 @@ export function MessagePreviewScreen() {
           message={`This message will be sent on ${formatDateTime(preview.scheduled_at)}`}
         />
       ) : null}
-
-      <View style={styles.actions}>
-        <Button title="Edit message" variant="link" onPress={() => navigation.goBack()} />
-        <Button
-          title={scheduling ? 'Schedule message' : 'Send now'}
-          variant="primary"
-          onPress={send}
-          loading={sending}
-          disabled={preview.total_count === 0}
-        />
-      </View>
     </Screen>
   );
 }
@@ -218,5 +224,4 @@ const styles = StyleSheet.create({
   },
   smsText: { ...typography.body, color: previewTokens.on },
   smsMeta: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 6 },
-  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
 });
