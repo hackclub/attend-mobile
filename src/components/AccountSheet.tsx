@@ -15,6 +15,7 @@ import {
   Badge,
   Button,
   Container,
+  Divider,
   Icon,
   ListRow,
   SegmentedControl,
@@ -187,7 +188,7 @@ export function AccountSheet() {
       title="Account"
       contentContainerStyle={{ gap: spacing.lg, paddingHorizontal: SHEET_INSET - spacing.xs }}
     >
-        <Container bodyStyle={{ gap: 14 }}>
+        <Container flush>
           <View style={styles.identity}>
             <Avatar name={name} uri={user?.avatarUrl} size={56} tint="red" decorative />
             <View style={styles.identityText}>
@@ -202,11 +203,12 @@ export function AccountSheet() {
               ) : null}
             </View>
           </View>
-          <Button
-            title="Edit profile on attend.hackclub.com"
-            icon="external-link"
-            iconPosition="end"
-            fullWidth
+          <Divider />
+          <ListRow
+            title="Edit profile"
+            subtitle="attend.hackclub.com"
+            external
+            divider={false}
             onPress={() => void Linking.openURL(PROFILE_URL)}
             accessibilityHint="Opens in your browser"
           />
@@ -229,24 +231,21 @@ export function AccountSheet() {
             disabled={pushEnabled === null || pushBusy}
             toggle={{ value: !!pushEnabled, onValueChange: (next) => void togglePush(next) }}
           />
-          <View style={styles.settingRow}>
-            <View style={styles.settingText}>
-              <Text style={[type.label, { color: tokens.textH }]}>Biometric lock</Text>
-              <View style={styles.lockStatus}>
-                <Icon
-                  name={unlocked ? 'check-circle' : 'lock-closed'}
-                  size={16}
-                  color={unlocked ? tokens.success : tokens.text2}
-                />
-                <Text style={[type.body, { color: unlocked ? tokens.success : tokens.text2 }]}>
-                  {unlocked
-                    ? `Unlocked for ${minutesLeft(remaining)} more minute${minutesLeft(remaining) === 1 ? '' : 's'}`
-                    : 'Locked'}
-                </Text>
-              </View>
-            </View>
-            {unlocked ? <Button title="Lock now" onPress={lockNow} /> : null}
-          </View>
+          <ListRow
+            title="Biometric lock"
+            subtitle={unlocked
+              ? `Unlocked for ${minutesLeft(remaining)} more minute${minutesLeft(remaining) === 1 ? '' : 's'}`
+              : 'Locked'}
+            leading={(
+              <Icon
+                name={unlocked ? 'check-circle' : 'lock-closed'}
+                size={20}
+                color={unlocked ? tokens.success : tokens.text2}
+              />
+            )}
+            trailing={unlocked ? <Button title="Lock now" onPress={lockNow} /> : undefined}
+            divider={false}
+          />
         </Container>
 
         <Container flush>
@@ -270,17 +269,8 @@ export function AccountSheet() {
 
 const styles = StyleSheet.create({
   bannerRing: { borderWidth: 2, borderColor: 'rgba(255,255,255,0.45)' },
-  identity: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  identity: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 20, paddingVertical: 16 },
   identityText: { flex: 1, minWidth: 0 },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
-  settingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-  },
-  settingText: { flex: 1, minWidth: 0 },
-  lockStatus: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   center: { textAlign: 'center' },
 });
