@@ -57,7 +57,6 @@ describe('ThemeProvider', () => {
     expect(get().pref.preference).toBe('system');
     expect(get().theme.scheme).toBe('dark');
     expect(get().theme.tokens).toBe(darkTokens);
-    expect(get().theme.colors.text.primary).toBe(darkTokens.textH);
   });
 
   it('applies and persists an override', async () => {

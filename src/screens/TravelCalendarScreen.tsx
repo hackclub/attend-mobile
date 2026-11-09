@@ -15,7 +15,7 @@ import { ApiError, api } from '../services/api';
 import { useApp } from '../context/AppContext';
 import { useEventAccess } from '../hooks/useEventAccess';
 import { travelClock } from '../services/travelTimes';
-import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
+import { useTheme, useThemedStyles, type Theme } from '../theme';
 import {
   Badge,
   Flashbar,
@@ -486,7 +486,7 @@ export function TravelCalendarScreen() {
   );
 }
 
-const makeStyles = (_colors: ThemeColors, theme: Theme) => {
+const makeStyles = (theme: Theme) => {
   const { tokens: t, type, spacing, radii } = theme;
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: t.bg },

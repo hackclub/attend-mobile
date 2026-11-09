@@ -31,7 +31,7 @@ import { SearchScreen } from './src/screens/SearchScreen';
 import { ParticipantDetailScreen } from './src/screens/ParticipantDetailScreen';
 import { MyTicketsScreen } from './src/screens/MyTicketsScreen';
 import { TicketDetailScreen } from './src/screens/TicketDetailScreen';
-import { ThemeProvider, useTheme, useThemedStyles, type ThemeColors } from './src/theme';
+import { ThemeProvider, useTheme, useThemedStyles, withAlpha, type Theme } from './src/theme';
 import type {
   MainTabParamList,
   OverviewStackParamList,
@@ -123,7 +123,7 @@ const STACK_OPTIONS = { headerShown: false } as const;
 const FORM_MODAL_OPTIONS = { presentation: 'modal' } as const;
 
 function useNavigationTheme() {
-  const { colors, isDark } = useTheme();
+  const { tokens, isDark } = useTheme();
   // Memoized: NavigationContainer re-renders the whole tree when `theme`
   // changes identity.
   return useMemo(() => {
@@ -132,13 +132,13 @@ function useNavigationTheme() {
       ...base,
       colors: {
         ...base.colors,
-        background: colors.background,
-        card: isDark ? 'rgba(21,30,46,0.8)' : 'rgba(255,255,255,0.8)',
-        border: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
-        primary: colors.text.accent,
+        background: tokens.bg,
+        card: tokens.bg,
+        border: tokens.div2,
+        primary: tokens.accent,
       },
     };
-  }, [colors, isDark]);
+  }, [tokens, isDark]);
 }
 
 // iOS renders SF Symbols in the native (liquid glass) tab bar; Android's
@@ -153,15 +153,15 @@ const tabIcon = (sfSymbol: AppleIcon['sfSymbol'], androidSource: number) => () =
 // bar is created, and an in-app light/dark override doesn't recreate it. So
 // the colours that change between schemes still come from the active palette.
 function useAndroidTabBarProps() {
-  const { colors } = useTheme();
+  const { tokens } = useTheme();
   if (Platform.OS !== 'android') return {};
   return {
     // The native barTintColor is read from tabBarStyle.backgroundColor.
-    tabBarStyle: { backgroundColor: colors.surface },
+    tabBarStyle: { backgroundColor: tokens.bg },
     // Unset, the library falls back to android:textColorSecondary.
-    tabBarInactiveTintColor: colors.gray[500],
+    tabBarInactiveTintColor: tokens.muted,
     // Translucent, so it reads on either surface.
-    activeIndicatorColor: `${colors.red}1F`,
+    activeIndicatorColor: withAlpha(tokens.brand, 0.12),
   };
 }
 
@@ -237,12 +237,12 @@ function MainTabs() {
   // Every organizer gets Overview, Scan and People; Travel only shows for an
   // event that runs travel.
   const { showTravel } = useEventAccess();
-  const { colors } = useTheme();
+  const { tokens } = useTheme();
   const androidTabBarProps = useAndroidTabBarProps();
 
   return (
     <Tab.Navigator
-      tabBarActiveTintColor={colors.text.accent}
+      tabBarActiveTintColor={tokens.accent}
       {...androidTabBarProps}
     >
       <Tab.Screen
@@ -285,14 +285,14 @@ function MainTabs() {
 
 function RootNavigator() {
   const { state } = useApp();
-  const { colors } = useTheme();
+  const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const sheetScreens = useSheetScreens();
 
   if (state.auth.isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.text.accent} />
+        <ActivityIndicator size="large" color={tokens.accent} />
       </View>
     );
   }
@@ -475,11 +475,11 @@ function ThemedNavigationContainer({
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+const makeStyles = ({ tokens }: Theme) => StyleSheet.create({
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.background,
+    backgroundColor: tokens.bg,
   },
 });

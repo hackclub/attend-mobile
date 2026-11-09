@@ -22,7 +22,7 @@ jest.mock('react-native', () => ({
   Pressable: 'Pressable',
   ActivityIndicator: 'ActivityIndicator',
 }));
-jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
+jest.mock('../ui/Icon', () => ({ Icon: 'Icon' }));
 jest.mock('expo-screen-capture', () => ({
   preventScreenCaptureAsync: jest.fn().mockResolvedValue(undefined),
   allowScreenCaptureAsync: jest.fn().mockResolvedValue(undefined),
@@ -32,7 +32,7 @@ jest.mock('../../hooks/useBiometricGate', () => ({
   useBiometricGate: jest.fn(),
 }));
 jest.mock('../../theme', () => ({
-  useTheme: () => ({ colors: {} }),
+  useTheme: () => ({ tokens: {} }),
   useThemedStyles: () => ({}),
 }));
 

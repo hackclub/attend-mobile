@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AppState, View, Text, StyleSheet, ActivityIndicator, Pressable, Platform } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import * as ScreenCapture from 'expo-screen-capture';
 import { useBiometricGate, DEFAULT_GATE_REASON } from '../hooks/useBiometricGate';
-import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
+import { useTheme, useThemedStyles, type Theme } from '../theme';
+import { Icon } from './ui/Icon';
 
 let nextGateId = 0;
 
@@ -33,7 +33,7 @@ export function BiometricGate({
   // Offers a way out from a locked screen that can't be swiped away.
   onCancel?: () => void;
 }) {
-  const { colors } = useTheme();
+  const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const { status, unlock, isUnlocked } = useBiometricGate(reason);
   useSecureWindowWhile(isUnlocked);
@@ -46,12 +46,12 @@ export function BiometricGate({
     <View style={[styles.container, { paddingTop: topInset }]} testID="biometric-gate-locked">
       {status === 'authenticating' ? (
         <>
-          <ActivityIndicator size="large" color={colors.text.accent} />
+          <ActivityIndicator size="large" color={tokens.accent} />
           <Text style={styles.body}>Authenticating…</Text>
         </>
       ) : (
         <>
-          <Ionicons name="lock-closed" size={36} color={colors.text.secondary} />
+          <Icon name="lock-closed" size={36} color={tokens.text2} />
           <Text style={styles.title}>Participant details are locked</Text>
           <Text style={styles.body}>
             Unlock with your device’s biometrics or passcode to view them.
@@ -106,44 +106,42 @@ export function useSecureWindowWhile(active: boolean) {
   }, [active, key]);
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+const makeStyles = ({ tokens, type, radii }: Theme) => StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 32,
     gap: 12,
-    backgroundColor: colors.background,
+    backgroundColor: tokens.bg,
   },
   title: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: colors.text.primary,
+    ...type.h3,
+    color: tokens.textH,
     textAlign: 'center',
   },
   body: {
-    fontSize: 15,
-    color: colors.text.secondary,
+    ...type.body,
+    color: tokens.text2,
     textAlign: 'center',
   },
   button: {
     marginTop: 8,
     paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: colors.red,
+    borderRadius: radii.pill,
+    backgroundColor: tokens.accent,
   },
   buttonPressed: {
     opacity: 0.8,
   },
   cancelText: {
+    ...type.label,
     marginTop: 4,
-    fontSize: 16,
-    color: colors.text.accent,
+    color: tokens.accent,
   },
   buttonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.white,
+    ...type.label,
+    color: tokens.accentOn,
   },
 });

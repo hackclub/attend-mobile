@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
+import { useTheme, useThemedStyles, type Theme } from '../theme';
+import { Icon } from './ui/Icon';
 
 interface SplitViewProps {
   sidebar: React.ReactNode;
@@ -30,13 +30,13 @@ export function SplitView({ sidebar, detail, sidebarWidth = 360, placeholder }: 
 }
 
 function DefaultPlaceholder() {
-  const { colors } = useTheme();
+  const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
 
   return (
     <View style={styles.placeholder}>
       <View style={styles.placeholderIcon}>
-        <Ionicons name="person-outline" size={44} color={colors.gray[400]} />
+        <Icon name="user" size={44} color={tokens.disabled} />
       </View>
       <Text style={styles.placeholderTitle}>No participant selected</Text>
       <Text style={styles.placeholderText}>
@@ -46,11 +46,11 @@ function DefaultPlaceholder() {
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+const makeStyles = ({ tokens, type, radii }: Theme) => StyleSheet.create({
   container: {
     flex: 1,
     flexDirection: 'row',
-    backgroundColor: colors.background,
+    backgroundColor: tokens.bg,
   },
   sidebar: {
     flexBasis: '36%',
@@ -58,12 +58,12 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     flexShrink: 0,
     minWidth: 300,
     borderRightWidth: 1,
-    borderRightColor: colors.gray[200],
-    backgroundColor: colors.background,
+    borderRightColor: tokens.div2,
+    backgroundColor: tokens.bg,
   },
   detail: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: tokens.bg,
   },
   placeholder: {
     flex: 1,
@@ -74,23 +74,21 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   placeholderIcon: {
     width: 96,
     height: 96,
-    borderRadius: 48,
-    backgroundColor: colors.gray[100],
+    borderRadius: radii.pill,
+    backgroundColor: tokens.shaded,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
   },
   placeholderTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text.secondary,
+    ...type.h2,
+    color: tokens.text2,
     marginBottom: 6,
   },
   placeholderText: {
-    fontSize: 14,
-    color: colors.text.muted,
+    ...type.body,
+    color: tokens.muted,
     textAlign: 'center',
     maxWidth: 280,
-    lineHeight: 20,
   },
 });

@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import {
   ActionMenu,
@@ -25,7 +24,6 @@ import {
   StatusGlyph,
   StatusIndicator,
   Toggle,
-  icons,
   pressedStyle,
   PressableSurface,
   ripple,
@@ -35,7 +33,7 @@ import {
   type IconName,
   type StatusType,
 } from './ui';
-import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
+import { useTheme, useThemedStyles, type Theme } from '../theme';
 import type { AppStackParamList, IncidentLevel, SelectOption } from '../types';
 import { multiSelectSheet, optionsSheet, type MultiSelectSheetItem } from '../navigation/sheetData';
 
@@ -429,25 +427,6 @@ export function DateTimeField({
 
 type ButtonVariant = 'primary' | 'secondary' | 'destructive' | 'link';
 
-// Ionicons names callers used before the kit; mapped onto the kit's glyphs.
-const LEGACY_ICONS: Record<string, IconName> = {
-  add: 'plus',
-  'add-circle': 'plus',
-  'ticket-outline': 'ticket',
-  'images-outline': 'camera',
-  'camera-outline': 'camera',
-  'trash-outline': 'trash',
-  'create-outline': 'pencil',
-  'mail-outline': 'mail',
-  refresh: 'refresh',
-};
-
-function kitIcon(name?: string): IconName | undefined {
-  if (!name) return undefined;
-  if (name in icons) return name as IconName;
-  return LEGACY_ICONS[name];
-}
-
 /** The kit's pill Button, with this module's older variant names. */
 export function Button({
   title,
@@ -464,7 +443,7 @@ export function Button({
   variant?: ButtonVariant;
   disabled?: boolean;
   loading?: boolean;
-  icon?: IconName | keyof typeof Ionicons.glyphMap;
+  icon?: IconName;
   fullWidth?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
@@ -475,7 +454,7 @@ export function Button({
       variant={variant === 'primary' ? 'primary' : variant === 'link' ? 'link' : 'normal'}
       disabled={disabled}
       loading={loading}
-      icon={kitIcon(icon)}
+      icon={icon}
       fullWidth={fullWidth}
       style={style}
     />
@@ -695,7 +674,7 @@ export function formatRelative(iso?: string | null, now: Date = new Date()): str
   return seconds < 0 ? `in ${label}` : `${label} ago`;
 }
 
-function makeStyles(_colors: ThemeColors, theme: Theme) {
+function makeStyles(theme: Theme) {
   const { tokens: t, type, radii, spacing, hitTarget } = theme;
   return StyleSheet.create({
     flex: { flex: 1 },

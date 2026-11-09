@@ -6,7 +6,7 @@ import { SvgCss } from 'react-native-svg/css';
 import { appleWalletBadgeXml, googleWalletBadgeXml } from '../assets/walletBadges';
 import { addPassFromUrl, canAddPasses } from '../../modules/wallet/src';
 import { api } from '../services/api';
-import { colors } from '../theme/colors';
+import { overlayTokens, radii } from '../theme';
 import type { Ticket } from '../types';
 
 // The official badges have a ~110:35 aspect ratio. We render them at a fixed
@@ -85,7 +85,7 @@ export function WalletButtons({ ticket }: Props) {
             <SvgCss xml={appleWalletBadgeXml} height={BADGE_HEIGHT} width={BADGE_WIDTH} />
             {loadingApple ? (
               <View style={styles.loadingOverlay}>
-                <ActivityIndicator color={colors.white} />
+                <ActivityIndicator color={overlayTokens.on} />
               </View>
             ) : null}
           </TouchableOpacity>
@@ -100,7 +100,7 @@ export function WalletButtons({ ticket }: Props) {
           <SvgCss xml={googleWalletBadgeXml} height={BADGE_HEIGHT} width={BADGE_WIDTH} />
           {loadingGoogle ? (
             <View style={styles.loadingOverlay}>
-              <ActivityIndicator color={colors.white} />
+              <ActivityIndicator color={overlayTokens.on} />
             </View>
           ) : null}
         </TouchableOpacity>
@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    borderRadius: 8,
+    backgroundColor: overlayTokens.imageControl,
+    borderRadius: radii.item,
   },
 });

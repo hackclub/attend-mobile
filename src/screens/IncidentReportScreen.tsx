@@ -11,7 +11,6 @@ import { useNavigation } from '@react-navigation/native';
 import { eventHomeState } from '../navigation/routes';
 import { resetRoot } from '../navigation/rootNavigation';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useApp } from '../context/AppContext';
@@ -30,7 +29,7 @@ import {
   TextField,
 } from '../components/forms';
 import { Button as KitButton, Container, Icon, Screen, pressedStyle } from '../components/ui';
-import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
+import { useTheme, useThemedStyles, type Theme } from '../theme';
 import type { IncidentReportOptions, ReportAttachment, AppStackParamList } from '../types';
 
 type Nav = NativeStackNavigationProp<AppStackParamList, 'IncidentReport'>;
@@ -404,7 +403,7 @@ export function IncidentReportScreen() {
         >
           {attachments.map((file, i) => (
             <View key={`${file.uri}-${i}`} style={styles.file}>
-              <Ionicons name={file.mimeType.startsWith('image/') ? 'image-outline' : 'document-outline'} size={18} color={tokens.text2} />
+              <Icon name={file.mimeType.startsWith('image/') ? 'photograph' : 'document'} size={18} color={tokens.text2} />
               <Text style={styles.fileName} numberOfLines={1}>{file.name}</Text>
               <Pressable
                 onPress={() => setAttachments(list => list.filter((_, j) => j !== i))}
@@ -418,7 +417,7 @@ export function IncidentReportScreen() {
             </View>
           ))}
           <View style={styles.pickers}>
-            <Button title="Add photos" icon="images-outline" onPress={pickPhotos} />
+            <Button title="Add photos" icon="photograph" onPress={pickPhotos} />
             <Button title="Add files" icon="attach" onPress={pickFiles} />
           </View>
         </Section>
@@ -440,7 +439,7 @@ export function IncidentReportScreen() {
   );
 }
 
-const makeStyles = (_colors: ThemeColors, theme: Theme) => {
+const makeStyles = (theme: Theme) => {
   const { tokens: t, type, spacing, radii } = theme;
   return StyleSheet.create({
     flex: { flex: 1 },

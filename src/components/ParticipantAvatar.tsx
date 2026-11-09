@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AccessibilityInfo, StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import type { Participant } from '../types';
-import { useThemedStyles, type Theme, type ThemeColors } from '../theme';
+import { overlayTokens, useThemedStyles, withAlpha, type Theme } from '../theme';
 
 interface ParticipantAvatarProps {
   participant?: Participant;
@@ -73,19 +73,19 @@ export function ParticipantAvatar({ participant, size = 84 }: ParticipantAvatarP
   );
 }
 
-const makeStyles = (colors: ThemeColors, { isDark }: Theme) => StyleSheet.create({
+const makeStyles = ({ isDark, tokens }: Theme) => StyleSheet.create({
   avatar: {
     borderWidth: 2,
-    borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.72)',
+    borderColor: withAlpha(overlayTokens.on, isDark ? 0.18 : 0.72),
     overflow: 'hidden',
   },
   fallback: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: isDark ? colors.gray[300] : colors.gray[700],
+    backgroundColor: isDark ? tokens.div : tokens.text2,
   },
   initials: {
-    color: colors.white,
+    color: overlayTokens.on,
     fontWeight: '800',
     letterSpacing: -0.5,
   },

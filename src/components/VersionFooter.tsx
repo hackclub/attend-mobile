@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import * as Updates from 'expo-updates';
-import { useThemedStyles, type ThemeColors } from '../theme';
+import { useThemedStyles, type Theme } from '../theme';
 
 function updateLabel(): string {
   if (__DEV__) {
@@ -42,13 +42,13 @@ export function VersionFooter() {
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+const makeStyles = ({ tokens, type }: Theme) => StyleSheet.create({
   container: {
     alignItems: 'center',
     paddingVertical: 16,
   },
   text: {
-    fontSize: 12,
-    color: colors.text.secondary,
+    ...type.small,
+    color: tokens.text2,
   },
 });

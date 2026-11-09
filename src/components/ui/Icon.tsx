@@ -45,6 +45,13 @@ import UsersIcon from 'react-native-heroicons/outline/UsersIcon';
 import WifiIcon from 'react-native-heroicons/outline/WifiIcon';
 import XCircleIcon from 'react-native-heroicons/outline/XCircleIcon';
 import XIcon from 'react-native-heroicons/outline/XIcon';
+import ChatAltIcon from 'react-native-heroicons/outline/ChatAltIcon';
+import DocumentIcon from 'react-native-heroicons/outline/DocumentIcon';
+import LinkIcon from 'react-native-heroicons/outline/LinkIcon';
+import PaperClipIcon from 'react-native-heroicons/outline/PaperClipIcon';
+import PhotographIcon from 'react-native-heroicons/outline/PhotographIcon';
+import UserIcon from 'react-native-heroicons/outline/UserIcon';
+import ViewListIcon from 'react-native-heroicons/outline/ViewListIcon';
 import { useTheme } from '../../theme';
 
 // Heroicons v1 outline (what the Attend admin uses), all at stroke 2 on a
@@ -97,6 +104,16 @@ const CameraFlipIcon = custom(
     <Circle cx={12} cy={12.5} r={3} />
     <Path d="M15 21l-2-2 2-2" />
     <Path d="M9 2l2 2-2 2" />
+  </>,
+);
+
+const NumberedListIcon = custom(
+  <>
+    <Path d="M10 6h11" />
+    <Path d="M10 12h11" />
+    <Path d="M10 18h11" />
+    <Path d="M4 4.5l1.5-1V9" />
+    <Path d="M3.5 14.5a1.5 1.5 0 012.6 1L3.5 20h3" />
   </>,
 );
 
@@ -157,6 +174,18 @@ export const icons = {
   flashlight: TorchIcon,
   nfc: NfcIcon,
   'camera-flip': CameraFlipIcon,
+  user: UserIcon,
+  person: UserIcon,
+  link: LinkIcon,
+  'paper-clip': PaperClipIcon,
+  attach: PaperClipIcon,
+  photograph: PhotographIcon,
+  document: DocumentIcon,
+  'view-list': ViewListIcon,
+  'bulleted-list': ViewListIcon,
+  'numbered-list': NumberedListIcon,
+  'chat-alt': ChatAltIcon,
+  quote: ChatAltIcon,
 } satisfies Record<string, IconComponent>;
 
 export type IconName = keyof typeof icons;

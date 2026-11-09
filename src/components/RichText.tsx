@@ -3,12 +3,12 @@ import { Linking, Platform, StyleSheet, Text, View, type TextStyle } from 'react
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { PressableSurface } from './ui/PressableSurface';
-import { Ionicons } from '@expo/vector-icons';
+import { Icon, type IconName } from './ui/Icon';
 import { parseHtml, type Block, type Inline } from '../services/richText';
 import { TextField } from './forms';
 import { linkSheet } from '../navigation/sheetData';
 import type { AppStackParamList } from '../types';
-import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
+import { useTheme, useThemedStyles, type Theme } from '../theme';
 
 /** Renders a message body's HTML natively. */
 export function RichText({ html, size = 15 }: { html: string | null | undefined; size?: number }) {
@@ -142,14 +142,14 @@ export function MarkupEditor({
     navigation.navigate('LinkSheet');
   };
 
-  const tools: { icon: keyof typeof Ionicons.glyphMap | null; label: string; text?: string; onPress: () => void }[] = [
+  const tools: { icon: IconName | null; label: string; text?: string; onPress: () => void }[] = [
     { icon: null, text: 'B', label: 'Bold', onPress: () => wrap('**', 'bold text') },
     { icon: null, text: 'I', label: 'Italic', onPress: () => wrap('_', 'italic text') },
     { icon: null, text: 'S', label: 'Strikethrough', onPress: () => wrap('~~', 'struck text') },
     { icon: 'link', label: 'Link', onPress: openLinkSheet },
-    { icon: 'list', label: 'Bulleted list', onPress: () => prefixLines(() => '- ') },
-    { icon: 'list-circle-outline', label: 'Numbered list', onPress: () => prefixLines(i => `${i + 1}. `) },
-    { icon: 'chatbox-ellipses-outline', label: 'Quote', onPress: () => prefixLines(() => '> ') },
+    { icon: 'bulleted-list', label: 'Bulleted list', onPress: () => prefixLines(() => '- ') },
+    { icon: 'numbered-list', label: 'Numbered list', onPress: () => prefixLines(i => `${i + 1}. `) },
+    { icon: 'quote', label: 'Quote', onPress: () => prefixLines(() => '> ') },
   ];
 
   return (
@@ -166,7 +166,7 @@ export function MarkupEditor({
             accessibilityLabel={tool.label}
           >
             {tool.icon ? (
-              <Ionicons name={tool.icon} size={18} color={tokens.text2} />
+              <Icon name={tool.icon} size={18} color={tokens.text2} />
             ) : (
               <Text
                 style={[
@@ -194,7 +194,7 @@ export function MarkupEditor({
   );
 }
 
-const makeStyles = (_colors: ThemeColors, { tokens }: Theme) => StyleSheet.create({
+const makeStyles = ({ tokens }: Theme) => StyleSheet.create({
   flex: { flex: 1 },
   blocks: { gap: 10 },
   text: { color: tokens.text },

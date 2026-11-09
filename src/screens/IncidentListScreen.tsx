@@ -16,7 +16,7 @@ import {
 } from '../components/ui';
 import { EmptyState, ErrorView, LevelBadge, LevelChart, LoadingView, formatDateTime } from '../components/forms';
 import { humanize } from '../services/statusDisplay';
-import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
+import { useTheme, useThemedStyles, type Theme } from '../theme';
 import type { IncidentLevel, IncidentStatus, IncidentSummary, AppStackParamList } from '../types';
 import { useScreenInsets } from '../hooks/useScreenInsets';
 
@@ -295,7 +295,7 @@ export function IncidentListScreen() {
   );
 }
 
-const makeStyles = (_colors: ThemeColors, theme: Theme) => {
+const makeStyles = (theme: Theme) => {
   const { tokens: t, type, spacing, radii } = theme;
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: t.bg },

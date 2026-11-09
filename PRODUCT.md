@@ -57,7 +57,7 @@ Attend is not positioned as a general event product for other organizations.
 
 - The parent product authority is [`PRODUCT.md` in hackclub/attend](https://github.com/hackclub/attend/blob/main/PRODUCT.md).
 - Existing organizer, participant, scanner, travel, kiosk, ticket, and participant-detail flows under `src/`.
-- Existing Hack Club color tokens in `src/theme/colors.ts` and product assets under `assets/`.
+- Existing Hack Club color tokens in `src/theme/tokens.ts` and product assets under `assets/`.
 - Participant records already expose `headshot_url`, operational alerts, and per-context scan summaries.
 - The repository contains no approved performance benchmark, throughput claim, testimonial, or third-party customer evidence. Future work must not fabricate them.
 

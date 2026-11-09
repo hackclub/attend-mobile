@@ -29,7 +29,7 @@ export function shouldCoverApp(state: AppStateStatus | string | null | undefined
  * Render it once, after the navigator, so it sits on top.
  */
 export function PrivacyCover() {
-  const { colors } = useTheme();
+  const { tokens } = useTheme();
   const [covered, setCovered] = useState(() => shouldCoverApp(AppState.currentState));
 
   useEffect(() => {
@@ -47,7 +47,7 @@ export function PrivacyCover() {
       pointerEvents="none"
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      style={[StyleSheet.absoluteFill, styles.cover, { backgroundColor: colors.background }]}
+      style={[StyleSheet.absoluteFill, styles.cover, { backgroundColor: tokens.bg }]}
       testID="privacy-cover"
     />
   );

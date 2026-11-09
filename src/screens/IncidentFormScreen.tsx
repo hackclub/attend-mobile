@@ -21,7 +21,7 @@ import {
   TextField,
 } from '../components/forms';
 import { Button as KitButton, Container, Screen } from '../components/ui';
-import { useThemedStyles, type Theme, type ThemeColors } from '../theme';
+import { useThemedStyles, type Theme } from '../theme';
 import type {
   IncidentFormOptions,
   IncidentInput,
@@ -315,7 +315,7 @@ export function IncidentFormScreen() {
                 ))
               : null}
             {medicationDispensed ? (
-              <Button title="Add another medication" icon="add" onPress={() => setMedications(rows => [...rows, blankMedication()])} />
+              <Button title="Add another medication" icon="plus" onPress={() => setMedications(rows => [...rows, blankMedication()])} />
             ) : null}
           </Section>
         ) : null}
@@ -372,7 +372,7 @@ export function IncidentFormScreen() {
   );
 }
 
-const makeStyles = (_colors: ThemeColors, theme: Theme) => {
+const makeStyles = (theme: Theme) => {
   const { tokens: t, type, spacing, radii } = theme;
   return StyleSheet.create({
     sections: { marginHorizontal: -spacing.lg, marginTop: -spacing.lg },

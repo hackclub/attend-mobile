@@ -1,4 +1,3 @@
-export { colors, lightColors, darkColors, type ThemeColors, type ColorName } from './colors';
 export { withAlpha } from './alpha';
 export {
   lightTokens,
