@@ -6,8 +6,8 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Pressable,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -29,7 +29,8 @@ import {
   SelectField,
   TextField,
 } from '../components/forms';
-import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
+import { Button as KitButton, Container, Icon, pressedStyle } from '../components/ui';
+import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
 import type { IncidentReportOptions, ReportAttachment, RootStackParamList } from '../types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'IncidentReport'>;
@@ -42,7 +43,7 @@ const CONTACT_EMAIL = 'deven@hackclub.com';
  * anyone signed in: participants, parents, volunteers and staff.
  */
 export function IncidentReportScreen() {
-  const { colors } = useTheme();
+  const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<Nav>();
   const { state, selectEvent } = useApp();
@@ -220,8 +221,8 @@ export function IncidentReportScreen() {
   if (submitted) {
     return (
       <ScrollView style={styles.container} contentContainerStyle={styles.thanks}>
-        <View style={[styles.thanksIcon, { backgroundColor: `${colors.green}26` }]}>
-          <Ionicons name="checkmark" size={30} color={colors.green} />
+        <View style={styles.thanksIcon}>
+          <Icon name="check" size={30} color={tokens.success} />
         </View>
         <Text style={styles.thanksTitle}>Thank you — your report has been received.</Text>
         <Text style={styles.thanksText}>
@@ -249,7 +250,7 @@ export function IncidentReportScreen() {
       >
         <View style={styles.intro}>
           <Text style={styles.title}>File a Confidential Incident Report</Text>
-          <Text style={[styles.response, { color: colors.status.success }]}>Average response time: 4–5 hours</Text>
+          <Text style={styles.response}>Average response time: 4–5 hours</Text>
         </View>
 
         <Notice tone="info">
@@ -259,7 +260,7 @@ export function IncidentReportScreen() {
             is not accessible to other Hack Club staff members. Please file your report freely and candidly — we
             assure you that we will fully and thoroughly investigate the incident.
           </Text>
-          <Text style={[styles.noticeText, styles.emergency, { color: colors.status.error }]}>
+          <Text style={[styles.noticeText, styles.emergency]}>
             For medical emergencies, call 911 (or your local emergency number) and get the affected person the help
             they need before filling out this form.
           </Text>
@@ -350,13 +351,22 @@ export function IncidentReportScreen() {
               isOptionDisabled={o => o.value === emergencyLevel && !emergencyAllowed}
             />
             {forced ? (
-              <Text style={[styles.hint, { color: colors.status.error }]}>Set to S0 because emergency services have been called.</Text>
+              <Text style={styles.hint}>Set to S0 because emergency services have been called.</Text>
             ) : null}
           </Field>
-          <TouchableOpacity onPress={() => setShowChart(v => !v)}>
-            <Text style={styles.link}>{showChart ? 'Hide the triage chart' : 'Which level? The triage chart'}</Text>
-          </TouchableOpacity>
-          {showChart ? <LevelChart levels={options.levels} /> : null}
+          <KitButton
+            title={showChart ? 'Hide the triage chart' : 'Which level? The triage chart'}
+            variant="link"
+            icon={showChart ? 'chevron-up' : 'chevron-down'}
+            iconPosition="end"
+            onPress={() => setShowChart(v => !v)}
+            style={styles.chartToggle}
+          />
+          {showChart ? (
+            <Container>
+              <LevelChart levels={options.levels} />
+            </Container>
+          ) : null}
           <Field label="Describe the incident in one line">
             <TextField value={summary} onChangeText={setSummary} />
           </Field>
@@ -371,15 +381,17 @@ export function IncidentReportScreen() {
         >
           {attachments.map((file, i) => (
             <View key={`${file.uri}-${i}`} style={styles.file}>
-              <Ionicons name={file.mimeType.startsWith('image/') ? 'image-outline' : 'document-outline'} size={18} color={colors.gray[600]} />
+              <Ionicons name={file.mimeType.startsWith('image/') ? 'image-outline' : 'document-outline'} size={18} color={tokens.text2} />
               <Text style={styles.fileName} numberOfLines={1}>{file.name}</Text>
-              <TouchableOpacity
+              <Pressable
                 onPress={() => setAttachments(list => list.filter((_, j) => j !== i))}
-                hitSlop={8}
+                hitSlop={12}
+                accessibilityRole="button"
                 accessibilityLabel={`Remove ${file.name}`}
+                style={({ pressed }) => pressedStyle(pressed)}
               >
-                <Ionicons name="close-circle" size={20} color={colors.gray[400]} />
-              </TouchableOpacity>
+                <Icon name="x-circle" size={20} color={tokens.muted} />
+              </Pressable>
             </View>
           ))}
           <View style={styles.pickers}>
@@ -392,7 +404,7 @@ export function IncidentReportScreen() {
           <Notice tone="error">
             <Text style={[styles.noticeText, styles.bold]}>Please fix the following:</Text>
             {errors.map(message => (
-              <Text key={message} style={[styles.noticeText, { color: colors.status.error }]}>{message}</Text>
+              <Text key={message} style={[styles.noticeText, styles.errorText]}>{message}</Text>
             ))}
           </Notice>
         ) : null}
@@ -405,26 +417,46 @@ export function IncidentReportScreen() {
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  flex: { flex: 1 },
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { paddingBottom: 40 },
-  intro: { paddingHorizontal: 16, paddingTop: 10, gap: 4 },
-  title: { fontSize: 22, fontWeight: '800', color: colors.gray[900] },
-  response: { fontSize: 14, fontWeight: '700' },
-  noticeText: { fontSize: 14, color: colors.gray[800], lineHeight: 20, marginBottom: 6 },
-  emergency: { fontWeight: '600' },
-  bold: { fontWeight: '700', color: colors.gray[900] },
-  muted: { fontSize: 13, color: colors.gray[600] },
-  link: { color: colors.text.accent, fontWeight: '600' },
-  hint: { fontSize: 13 },
-  details: { minHeight: 160 },
-  file: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  fileName: { flex: 1, fontSize: 14, color: colors.gray[800] },
-  pickers: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  actions: { flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 16, paddingTop: 18 },
-  thanks: { alignItems: 'center', padding: 24, paddingTop: 48, gap: 12 },
-  thanksIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
-  thanksTitle: { fontSize: 21, fontWeight: '800', color: colors.gray[900], textAlign: 'center' },
-  thanksText: { fontSize: 15, color: colors.gray[700], textAlign: 'center', lineHeight: 21 },
-});
+const makeStyles = (_colors: ThemeColors, theme: Theme) => {
+  const { tokens: t, type, spacing, radii } = theme;
+  return StyleSheet.create({
+    flex: { flex: 1 },
+    container: { flex: 1, backgroundColor: t.bg },
+    content: { paddingBottom: 40 },
+    intro: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.xs },
+    title: { ...type.h1, color: t.textH },
+    response: { ...type.label, color: t.success },
+    noticeText: { ...type.body, color: t.text, marginBottom: 6 },
+    emergency: { fontWeight: '700', color: t.error },
+    errorText: { color: t.error },
+    bold: { fontWeight: '700', color: t.textH },
+    muted: { ...type.body, color: t.muted },
+    link: { color: t.accent, fontWeight: '700' },
+    hint: { ...type.body, color: t.error },
+    chartToggle: { alignSelf: 'flex-start', paddingHorizontal: 0 },
+    details: { minHeight: 160 },
+    file: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      minHeight: 44,
+      paddingHorizontal: spacing.md,
+      borderRadius: radii.item,
+      backgroundColor: t.shaded,
+    },
+    fileName: { ...type.body, flex: 1, color: t.text },
+    pickers: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
+    actions: { flexDirection: 'row', paddingHorizontal: spacing.lg, paddingTop: spacing.xl },
+    thanks: { alignItems: 'center', padding: spacing.xxl, paddingTop: 48, gap: spacing.md },
+    thanksIcon: {
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: t.successBg,
+    },
+    thanksTitle: { ...type.h2, color: t.textH, textAlign: 'center' },
+    thanksText: { ...type.body, fontSize: 15, lineHeight: 21, color: t.text2, textAlign: 'center' },
+  });
+};

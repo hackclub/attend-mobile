@@ -5,7 +5,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
 import { BiometricGate } from '../components/BiometricGate';
-import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
+import { useTheme } from '../theme';
 import { ParticipantDetailContent } from './ParticipantDetailContent';
 import type { Participant, RootStackParamList } from '../types';
 
@@ -16,11 +16,11 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ParticipantDetail'>;
 // biometric gate (ParticipantDetailContent carries its own); a deep link is
 // gated before the lookup too, so nothing is fetched for a locked device.
 export function ParticipantDetailScreen({ route }: Props) {
-  const styles = useThemedStyles(makeStyles);
+  const { tokens } = useTheme();
   const params = route.params;
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: tokens.bg }]} edges={['bottom']}>
       {'participant' in params && params.participant ? (
         <ParticipantDetailContent participant={params.participant} />
       ) : (
@@ -33,8 +33,7 @@ export function ParticipantDetailScreen({ route }: Props) {
 }
 
 function ParticipantById({ id }: { id: string | undefined }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
+  const { tokens, type } = useTheme();
   const { state } = useApp();
   const eventId = state.currentEvent?.id;
   const cached = id
@@ -72,18 +71,17 @@ function ParticipantById({ id }: { id: string | undefined }) {
   return (
     <View style={styles.centered}>
       {message ? (
-        <Text style={styles.message}>{message}</Text>
+        <Text style={[type.body, styles.message, { color: tokens.text2 }]}>{message}</Text>
       ) : (
-        <ActivityIndicator size="large" color={colors.text.accent} />
+        <ActivityIndicator size="large" color={tokens.accent} />
       )}
     </View>
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   centered: {
     flex: 1,
@@ -92,8 +90,6 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     padding: 32,
   },
   message: {
-    fontSize: 16,
-    color: colors.text.secondary,
     textAlign: 'center',
   },
 });
