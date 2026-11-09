@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Animated, Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+import React from 'react';
+import { Platform, Switch, type StyleProp, type ViewStyle } from 'react-native';
 import { useTheme } from '../../theme';
 import { haptics } from '../../services/haptics';
 
@@ -10,80 +10,46 @@ export interface ToggleProps {
   accessibilityLabel: string;
   accessibilityHint?: string;
   disabled?: boolean;
+  /** Hide it from assistive tech when the row around it is the control. */
+  decorative?: boolean;
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }
 
-const TRACK_W = 44;
-const TRACK_H = 26;
-const THUMB = 20;
-const TRAVEL = TRACK_W - THUMB - 6;
-
-/** Pill switch: accent track when on, 20pt thumb. */
+/**
+ * The platform switch (UISwitch on iOS, the Material switch on Android),
+ * tinted with the accent. In a row, prefer ListRow's `toggle` so the whole
+ * row flips it.
+ */
 export function Toggle({
   value,
   onValueChange,
   accessibilityLabel,
   accessibilityHint,
   disabled = false,
+  decorative = false,
   style,
   testID,
 }: ToggleProps) {
   const { tokens } = useTheme();
-  const [progress] = useState(() => new Animated.Value(value ? 1 : 0));
-
-  useEffect(() => {
-    Animated.timing(progress, {
-      toValue: value ? 1 : 0,
-      duration: 160,
-      useNativeDriver: false,
-    }).start();
-  }, [progress, value]);
-
-  const trackColor = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [tokens.input, tokens.accent],
-  });
-  const translateX = progress.interpolate({ inputRange: [0, 1], outputRange: [0, TRAVEL] });
-
   return (
-    <Pressable
-      onPress={() => {
+    <Switch
+      value={value}
+      onValueChange={(next) => {
         haptics.selection();
-        onValueChange(!value);
+        onValueChange(next);
       }}
       disabled={disabled}
-      accessibilityRole="switch"
+      trackColor={{ false: tokens.inputDisabled, true: tokens.accent }}
+      // iOS keeps its white thumb; Android's follows the Material switch.
+      thumbColor={Platform.OS === 'android' ? (value ? tokens.accentOn : tokens.bg) : undefined}
+      ios_backgroundColor={tokens.inputDisabled}
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={accessibilityHint}
-      accessibilityState={{ checked: value, disabled }}
-      hitSlop={{ top: 9, bottom: 9, left: 4, right: 4 }}
-      style={[disabled && styles.disabled, style]}
+      accessible={!decorative}
+      importantForAccessibility={decorative ? 'no-hide-descendants' : 'auto'}
+      style={style}
       testID={testID}
-    >
-      <Animated.View style={[styles.track, { backgroundColor: trackColor }]}>
-        <Animated.View
-          style={[
-            styles.thumb,
-            { backgroundColor: value ? tokens.accentOn : '#ffffff', transform: [{ translateX }] },
-          ]}
-        />
-      </Animated.View>
-    </Pressable>
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  track: { width: TRACK_W, height: TRACK_H, borderRadius: TRACK_H / 2, padding: 3 },
-  thumb: {
-    width: THUMB,
-    height: THUMB,
-    borderRadius: THUMB / 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  disabled: { opacity: 0.4 },
-});

@@ -7,7 +7,7 @@ import type { RouteProp } from '@react-navigation/native';
 import { haptics } from '../services/haptics';
 import { useBiometricLabel } from '../services/biometricLabel';
 import { useTheme } from '../theme';
-import { Button, Container, Flashbar, Icon, ListRow, Toggle } from '../components/ui';
+import { Button, Container, Flashbar, Icon, ListRow } from '../components/ui';
 import { useApp } from '../context/AppContext';
 import { useBiometric } from '../hooks/useBiometric';
 import type { AppStackParamList } from '../types';
@@ -175,13 +175,7 @@ export function KioskSetupScreen() {
               title={`Allow ${biometricLabel} to exit`}
               subtitle="Faster for staff. PIN still works as a fallback."
               divider={false}
-              trailing={
-                <Toggle
-                  value={useBiometricUnlock}
-                  onValueChange={setUseBiometricUnlock}
-                  accessibilityLabel={`Allow ${biometricLabel} to exit`}
-                />
-              }
+              toggle={{ value: useBiometricUnlock, onValueChange: setUseBiometricUnlock }}
             />
           </Container>
         )}

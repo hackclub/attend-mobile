@@ -1,11 +1,21 @@
 import React, { useCallback, useState } from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
 import { RichText } from '../components/RichText';
-import { Badge, Button, Container, KeyValue, Screen, Stat, StatusIndicator } from '../components/ui';
+import {
+  ActionMenu,
+  Badge,
+  Button,
+  Container,
+  KeyValue,
+  Screen,
+  Stat,
+  StatusIndicator,
+  type MenuAction,
+} from '../components/ui';
 import { ErrorView, LoadingView, formatDateTime, formatRelative } from '../components/forms';
 import { MESSAGE_STATUS_BADGE, channelList, statusType } from '../components/messageStatus';
 import { CHANNEL_LABELS, DELIVERY_STATUS_TONES, MESSAGE_STATUS_TONES, titleize } from '../services/statusDisplay';
@@ -124,8 +134,69 @@ export function MessageDetailScreen() {
     { label: 'Pending', value: message.pending_count },
   ];
 
+  const menuActions: MenuAction[] = [
+    ...(permissions.edit
+      ? [{
+        key: 'edit',
+        title: 'Edit',
+        iosIcon: 'pencil',
+        onSelect: () => navigation.navigate('MessageCompose', { messageId: message.id }),
+      }]
+      : []),
+    ...(permissions.retry_failed
+      ? [{
+        key: 'retry_failed',
+        title: `Retry failed (${message.failed_count})`,
+        iosIcon: 'arrow.clockwise',
+        onSelect: () => void run('retry_failed'),
+      }]
+      : []),
+    ...(permissions.send_to_new_recipients
+      ? [{
+        key: 'send_to_new_recipients',
+        title: `Send to ${plural(message.new_recipient_count, 'new recipient')}`,
+        iosIcon: 'paperplane',
+        onSelect: () =>
+          confirm(
+            'Send',
+            `Send this message to ${plural(message.new_recipient_count, 'new recipient')}? They match this audience now but haven't received it.`,
+            () => run('send_to_new_recipients')
+          ),
+      }]
+      : []),
+    ...(permissions.cancel
+      ? [{
+        key: 'cancel',
+        title: 'Cancel message',
+        iosIcon: 'xmark.circle',
+        destructive: true,
+        onSelect: () =>
+          confirm(
+            'Cancel message',
+            'Are you sure you want to cancel this scheduled message?',
+            () => run('cancel'),
+            true,
+            'Keep',
+          ),
+      }]
+      : []),
+    ...(permissions.destroy
+      ? [{ key: 'destroy', title: 'Delete', iosIcon: 'trash', destructive: true, onSelect: remove }]
+      : []),
+  ];
+
+  // The message's other actions sit in a native ⋯ menu; while one runs, a
+  // spinner stands in for it.
+  const menu = busy ? (
+    <View style={styles.menuBusy}>
+      <ActivityIndicator color={tokens.muted} accessibilityLabel="Working" />
+    </View>
+  ) : menuActions.length ? (
+    <ActionMenu accessibilityLabel="Message actions" actions={menuActions} />
+  ) : undefined;
+
   return (
-    <Screen refreshing={refreshing} onRefresh={refresh}>
+    <Screen refreshing={refreshing} onRefresh={refresh} action={menu}>
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <Text
@@ -139,61 +210,15 @@ export function MessageDetailScreen() {
         <Text style={[type.body, { color: tokens.muted }]}>{byline}</Text>
       </View>
 
-      <View style={styles.actionRow}>
-        {permissions.send_now ? (
+      {permissions.send_now ? (
+        <View style={styles.actionRow}>
           <Button
             title={message.scheduled_at && new Date(message.scheduled_at) > new Date() ? 'Schedule' : 'Send now'}
             variant="primary"
             onPress={() => navigation.navigate('MessagePreview', { messageId: message.id })}
           />
-        ) : null}
-        {permissions.edit ? (
-          <Button
-            title="Edit"
-            icon="pencil"
-            onPress={() => navigation.navigate('MessageCompose', { messageId: message.id })}
-          />
-        ) : null}
-        {permissions.cancel ? (
-          <Button
-            title="Cancel"
-            loading={busy === 'cancel'}
-            onPress={() =>
-              confirm(
-                'Cancel message',
-                'Are you sure you want to cancel this scheduled message?',
-                () => run('cancel'),
-                true,
-                'Keep',
-              )
-            }
-          />
-        ) : null}
-        {permissions.retry_failed ? (
-          <Button
-            title={`Retry failed (${message.failed_count})`}
-            icon="refresh"
-            loading={busy === 'retry_failed'}
-            onPress={() => run('retry_failed')}
-          />
-        ) : null}
-        {permissions.send_to_new_recipients ? (
-          <Button
-            title={`Send to ${plural(message.new_recipient_count, 'new recipient')}`}
-            loading={busy === 'send_to_new_recipients'}
-            onPress={() =>
-              confirm(
-                'Send',
-                `Send this message to ${plural(message.new_recipient_count, 'new recipient')}? They match this audience now but haven't received it.`,
-                () => run('send_to_new_recipients')
-              )
-            }
-          />
-        ) : null}
-        {permissions.destroy ? (
-          <Button title="Delete" icon="trash" loading={busy === 'destroy'} onPress={remove} />
-        ) : null}
-      </View>
+        </View>
+      ) : null}
 
       <Container title="Overview">
         <KeyValue
@@ -294,6 +319,7 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
   badge: { marginTop: 5 },
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  menuBusy: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   stats: {
     flexDirection: 'row',
     flexWrap: 'wrap',

@@ -331,15 +331,24 @@ export function SwitchRow({
   value: boolean;
   onChange: (value: boolean) => void;
 }) {
+  const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
+  // The whole row flips the switch.
   return (
-    <View style={styles.checkRow}>
+    <Pressable
+      style={({ pressed }) => [styles.checkRow, pressedStyle(pressed)]}
+      android_ripple={ripple(tokens.text, { alpha: ROW_STATE_LAYER_ALPHA })}
+      onPress={() => onChange(!value)}
+      accessibilityRole="switch"
+      accessibilityLabel={[label, description].filter(Boolean).join(', ')}
+      accessibilityState={{ checked: value }}
+    >
       <View style={styles.flex}>
         <Text style={styles.optionLabel}>{label}</Text>
         {description ? <Text style={styles.optionSubtitle}>{description}</Text> : null}
       </View>
-      <Toggle value={value} onValueChange={onChange} accessibilityLabel={label} />
-    </View>
+      <Toggle value={value} onValueChange={onChange} accessibilityLabel={label} decorative />
+    </Pressable>
   );
 }
 

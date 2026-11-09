@@ -1,13 +1,17 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import NativeSegmentedControlClass, {
+  type SegmentedControlProps as NativeSegmentedControlProps,
+} from '@react-native-segmented-control/segmented-control';
 import { useTheme } from '../../theme';
 import { haptics } from '../../services/haptics';
+import { Icon } from './Icon';
 import { ripple, STATE_LAYER_ALPHA } from './pressFeedback';
 
 export interface SegmentOption<T extends string> {
   value: T;
   label: string;
-  /** Optional second line, e.g. a count. */
+  /** Shown after the label on the same line: "Arrivals · 14". */
   count?: string | number;
   accessibilityLabel?: string;
 }
@@ -24,8 +28,51 @@ export interface SegmentedControlProps<T extends string> {
   testID?: string;
 }
 
-/** Console segmented control: bordered strip, selected segment tinted. */
-export function SegmentedControl<T extends string>({
+// The package types its class against older React typings.
+const NativeSegmentedControl =
+  NativeSegmentedControlClass as unknown as React.ComponentType<NativeSegmentedControlProps>;
+
+const segmentLabel = (option: SegmentOption<string>) =>
+  option.count != null ? `${option.label} · ${option.count}` : option.label;
+
+/**
+ * A segmented control: the native UISegmentedControl on iOS, Material 3
+ * segmented buttons on Android. Labels stay on one line.
+ */
+export function SegmentedControl<T extends string>(props: SegmentedControlProps<T>) {
+  return Platform.OS === 'ios' ? <IosSegmentedControl {...props} /> : <MaterialSegmentedButtons {...props} />;
+}
+
+function IosSegmentedControl<T extends string>({
+  options,
+  value,
+  onChange,
+  accessibilityLabel,
+  style,
+  testID,
+}: SegmentedControlProps<T>) {
+  const { tokens, isDark } = useTheme();
+  return (
+    <NativeSegmentedControl
+      values={options.map(segmentLabel)}
+      selectedIndex={Math.max(0, options.findIndex((option) => option.value === value))}
+      onChange={(event) => {
+        const next = options[event.nativeEvent.selectedSegmentIndex];
+        if (!next || next.value === value) return;
+        haptics.selection();
+        onChange(next.value);
+      }}
+      appearance={isDark ? 'dark' : 'light'}
+      fontStyle={{ color: tokens.text }}
+      activeFontStyle={{ color: tokens.textH, fontWeight: '600' }}
+      accessibilityLabel={accessibilityLabel}
+      style={[styles.ios, style]}
+      testID={testID}
+    />
+  );
+}
+
+function MaterialSegmentedButtons<T extends string>({
   options,
   value,
   onChange,
@@ -35,17 +82,16 @@ export function SegmentedControl<T extends string>({
   testID,
 }: SegmentedControlProps<T>) {
   const { tokens, type, radii } = useTheme();
-  const hasCounts = options.some((o) => o.count != null);
-
   return (
     <View
       accessibilityRole={role === 'tab' ? 'tablist' : 'radiogroup'}
       accessibilityLabel={accessibilityLabel}
-      style={[styles.strip, { borderColor: tokens.input, borderRadius: radii.input }, style]}
+      style={[styles.strip, { borderColor: tokens.input, borderRadius: radii.pill }, style]}
       testID={testID}
     >
       {options.map((option, index) => {
         const selected = option.value === value;
+        const label = segmentLabel(option);
         return (
           <Pressable
             key={option.value}
@@ -55,30 +101,22 @@ export function SegmentedControl<T extends string>({
               onChange(option.value);
             }}
             accessibilityRole={role}
-            accessibilityLabel={
-              option.accessibilityLabel ??
-              (option.count != null ? `${option.label}, ${option.count}` : option.label)
-            }
+            accessibilityLabel={option.accessibilityLabel ?? label}
             accessibilityState={role === 'tab' ? { selected } : { checked: selected }}
             android_ripple={ripple(tokens.text, { alpha: STATE_LAYER_ALPHA })}
             style={[
               styles.segment,
-              hasCounts ? styles.withCount : styles.single,
               index > 0 && { borderLeftWidth: 1, borderLeftColor: tokens.input },
               selected && { backgroundColor: tokens.selected },
             ]}
           >
+            {selected ? <Icon name="check" size={16} color={tokens.textH} /> : null}
             <Text
-              style={[selected || hasCounts ? type.label : type.body, { color: selected ? tokens.accent : tokens.text }]}
+              style={[type.label, styles.label, { color: selected ? tokens.textH : tokens.text }]}
               numberOfLines={1}
             >
-              {option.label}
+              {label}
             </Text>
-            {option.count != null ? (
-              <Text style={[type.body, { color: selected ? tokens.accent : tokens.text2 }]} numberOfLines={1}>
-                {option.count}
-              </Text>
-            ) : null}
           </Pressable>
         );
       })}
@@ -87,8 +125,16 @@ export function SegmentedControl<T extends string>({
 }
 
 const styles = StyleSheet.create({
-  strip: { flexDirection: 'row', borderWidth: 1, overflow: 'hidden' },
-  segment: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  single: { minHeight: 40 },
-  withCount: { paddingVertical: 6, minHeight: 44 },
+  ios: { height: 32 },
+  strip: { flexDirection: 'row', borderWidth: 1, overflow: 'hidden', minHeight: 40 },
+  segment: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    minHeight: 40,
+  },
+  label: { flexShrink: 1 },
 });

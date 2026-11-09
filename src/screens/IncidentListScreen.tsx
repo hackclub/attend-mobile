@@ -5,6 +5,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
 import {
+  ActionMenu,
   Badge,
   Button,
   Container,
@@ -198,18 +199,8 @@ export function IncidentListScreen() {
         Private to your event team. Turn on “Escalate to Hack Club HQ” on a new incident, or escalate an
         existing one from its page, to involve HQ’s safeguarding team.
       </Text>
-      {levels.length ? (
-        <Button
-          title={showChart ? 'Hide the triage chart' : 'Which level? The triage chart'}
-          variant="link"
-          icon={showChart ? 'chevron-up' : 'chevron-down'}
-          iconPosition="end"
-          onPress={() => setShowChart(v => !v)}
-          style={styles.chartToggle}
-        />
-      ) : null}
-      {showChart ? (
-        <Container>
+      {showChart && levels.length ? (
+        <Container title="Which level? The triage chart">
           <LevelChart levels={levels} />
         </Container>
       ) : null}
@@ -231,7 +222,22 @@ export function IncidentListScreen() {
     <Screen
       title="Incidents"
       scroll={false}
-      action={<Button title="New incident" variant="primary" icon="plus" onPress={newIncident} />}
+      action={
+        <View style={styles.headerActions}>
+          <Button title="New incident" variant="primary" icon="plus" onPress={newIncident} />
+          {levels.length ? (
+            <ActionMenu
+              accessibilityLabel="More"
+              actions={[{
+                key: 'chart',
+                title: 'Triage chart',
+                checked: showChart,
+                onSelect: () => setShowChart(shown => !shown),
+              }]}
+            />
+          ) : null}
+        </View>
+      }
     >
       <SectionList
         style={styles.container}
@@ -298,7 +304,7 @@ const makeStyles = (_colors: ThemeColors, theme: Theme) => {
     list: { paddingHorizontal: spacing.lg, width: '100%', maxWidth: 620, alignSelf: 'center' },
     header: { gap: spacing.md },
     description: { ...type.body, color: t.text2 },
-    chartToggle: { alignSelf: 'flex-start', paddingHorizontal: 0 },
+    headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     sectionHeader: {
       flexDirection: 'row',
       alignItems: 'center',

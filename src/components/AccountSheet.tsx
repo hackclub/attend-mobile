@@ -20,7 +20,6 @@ import {
   SegmentedControl,
   Sheet,
   SHEET_INSET,
-  Toggle,
   pressedStyle,
   ripple,
   STATE_LAYER_ALPHA,
@@ -224,18 +223,12 @@ export function AccountSheet() {
         </Container>
 
         <Container flush>
-          <View style={[styles.settingRow, { borderBottomColor: tokens.div2, borderBottomWidth: 1 }]}>
-            <View style={styles.settingText}>
-              <Text style={[type.label, { color: tokens.textH }]}>Notifications</Text>
-              <Text style={[type.body, { color: tokens.text2 }]}>Messages and updates on this device</Text>
-            </View>
-            <Toggle
-              value={!!pushEnabled}
-              onValueChange={(next) => void togglePush(next)}
-              disabled={pushEnabled === null || pushBusy}
-              accessibilityLabel="Notifications"
-            />
-          </View>
+          <ListRow
+            title="Notifications"
+            subtitle="Messages and updates on this device"
+            disabled={pushEnabled === null || pushBusy}
+            toggle={{ value: !!pushEnabled, onValueChange: (next) => void togglePush(next) }}
+          />
           <View style={styles.settingRow}>
             <View style={styles.settingText}>
               <Text style={[type.label, { color: tokens.textH }]}>Biometric lock</Text>

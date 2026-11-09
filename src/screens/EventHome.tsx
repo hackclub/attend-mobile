@@ -22,9 +22,9 @@ import {
   Container,
   Flashbar,
   Icon,
+  ListRow,
   QuickActionTile,
   Stat,
-  Toggle,
   PressableSurface,
   type IconName,
 } from '../components/ui';
@@ -610,7 +610,6 @@ function ArrivalRow({ group }: { group: ArrivalGroup }) {
 }
 
 function LiveActivityRow() {
-  const { tokens, type } = useTheme();
   const { startLiveActivity, stopLiveActivity } = useApp();
   const supported = liveActivityService.isSupported();
   // Keyed by event where it's rendered, so this re-reads on a switch.
@@ -626,13 +625,12 @@ function LiveActivityRow() {
 
   return (
     <Container flush>
-      <View style={styles.settingRow}>
-        <View style={styles.flex}>
-          <Text style={[type.label, { color: tokens.textH }]}>Live Activity</Text>
-          <Text style={[type.body, { color: tokens.text2 }]}>Check-in progress on the Lock Screen</Text>
-        </View>
-        <Toggle value={running} onValueChange={(next) => void toggle(next)} accessibilityLabel="Live Activity" />
-      </View>
+      <ListRow
+        title="Live Activity"
+        subtitle="Check-in progress on the Lock Screen"
+        divider={false}
+        toggle={{ value: running, onValueChange: (next) => void toggle(next) }}
+      />
     </Container>
   );
 }
@@ -665,5 +663,4 @@ const styles = StyleSheet.create({
   placeholderIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   arrivalRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
   arrivalTime: { width: 64 },
-  settingRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 14 },
 });

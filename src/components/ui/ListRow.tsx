@@ -1,8 +1,10 @@
 import React, { type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useTheme } from '../../theme';
+import { haptics } from '../../services/haptics';
 import { Icon, type IconName } from './Icon';
 import { isAndroid, ripple, ROW_STATE_LAYER_ALPHA } from './pressFeedback';
+import { Toggle } from './Toggle';
 
 export interface ListRowProps {
   title: string;
@@ -10,8 +12,10 @@ export interface ListRowProps {
   /** Leading slot: an Avatar, StatusGlyph or icon. `icon` is a shorthand. */
   leading?: ReactNode;
   icon?: IconName;
-  /** Trailing slot: a Badge, Toggle or Button. */
+  /** Trailing slot: a Badge or Button. For a switch use `toggle`. */
   trailing?: ReactNode;
+  /** A trailing switch; the whole row is then the control. */
+  toggle?: { value: boolean; onValueChange: (next: boolean) => void };
   /** Muted trailing text, e.g. a version number or count. */
   value?: string;
   onPress?: () => void;
@@ -35,6 +39,7 @@ export function ListRow({
   leading,
   icon,
   trailing,
+  toggle,
   value,
   onPress,
   chevron,
@@ -47,7 +52,7 @@ export function ListRow({
   testID,
 }: ListRowProps) {
   const { tokens, type } = useTheme();
-  const showChevron = chevron ?? (Boolean(onPress) && !trailing);
+  const showChevron = !toggle && (chevron ?? (Boolean(onPress) && !trailing));
   const titleColor = destructive ? tokens.error : subtitle ? tokens.textH : tokens.text;
 
   const content = (
@@ -61,6 +66,15 @@ export function ListRow({
       </View>
       {value ? <Text style={[type.body, { color: tokens.muted }]}>{value}</Text> : null}
       {trailing}
+      {toggle ? (
+        <Toggle
+          value={toggle.value}
+          onValueChange={toggle.onValueChange}
+          disabled={disabled}
+          accessibilityLabel={title}
+          decorative
+        />
+      ) : null}
       {showChevron || external ? (
         <Icon name={external ? 'external-link' : 'chevron-right'} size={16} color={tokens.muted} />
       ) : null}
@@ -72,6 +86,27 @@ export function ListRow({
     divider && { borderBottomWidth: 1, borderBottomColor: tokens.div2 },
     disabled && styles.disabled,
   ];
+
+  if (toggle) {
+    return (
+      <Pressable
+        onPress={() => {
+          haptics.selection();
+          toggle.onValueChange(!toggle.value);
+        }}
+        disabled={disabled}
+        accessibilityRole="switch"
+        accessibilityLabel={[title, subtitle].filter(Boolean).join(', ')}
+        accessibilityHint={accessibilityHint}
+        accessibilityState={{ checked: toggle.value, disabled }}
+        android_ripple={ripple(tokens.text, { alpha: ROW_STATE_LAYER_ALPHA })}
+        style={({ pressed }) => [rowStyle, !isAndroid && pressed && { backgroundColor: tokens.shaded }, style]}
+        testID={testID}
+      >
+        {content}
+      </Pressable>
+    );
+  }
 
   if (!onPress) {
     return (

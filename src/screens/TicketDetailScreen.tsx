@@ -35,7 +35,6 @@ import {
   Container,
   ListRow,
   QuickActionTile,
-  Toggle,
 } from '../components/ui';
 import type { AppStackParamList, Ticket } from '../types';
 
@@ -215,13 +214,7 @@ export function TicketDetailScreen() {
                 icon="lock-closed"
                 title="Show on Lock Screen"
                 divider={false}
-                trailing={
-                  <Toggle
-                    value={liveActivityOn}
-                    onValueChange={toggleLiveActivity}
-                    accessibilityLabel="Show on Lock Screen"
-                  />
-                }
+                toggle={{ value: liveActivityOn, onValueChange: toggleLiveActivity }}
               />
             </Container>
           ) : null}

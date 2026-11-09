@@ -14,6 +14,7 @@ import { useApp } from '../context/AppContext';
 import { BiometricGate } from '../components/BiometricGate';
 import { api } from '../services/api';
 import {
+  ActionMenu,
   Badge,
   Button,
   Container,
@@ -22,12 +23,14 @@ import {
   StatusGlyph,
   StatusIndicator,
   statusColor,
+  type MenuAction,
 } from '../components/ui';
 import {
   CheckboxRow,
   ErrorView,
   Field,
   LevelBadge,
+  LevelChart,
   LoadingView,
   SelectField,
   TextField,
@@ -60,6 +63,7 @@ export function IncidentDetailScreen() {
   const [posting, setPosting] = useState(false);
 
   const [escalateOpen, setEscalateOpen] = useState(false);
+  const [showChart, setShowChart] = useState(false);
   const [phone, setPhone] = useState('');
   const [emergency, setEmergency] = useState(false);
   const [escalating, setEscalating] = useState(false);
@@ -202,6 +206,35 @@ export function IncidentDetailScreen() {
     </View>
   );
 
+  // Edit, escalation and the triage chart live in a native ⋯ menu.
+  const levels = options?.levels ?? [];
+  const menuActions: MenuAction[] = [
+    ...(incident.permissions.update
+      ? [{
+        key: 'edit',
+        title: 'Edit',
+        iosIcon: 'pencil',
+        onSelect: () => navigation.navigate('IncidentForm', { incidentId }),
+      }]
+      : []),
+    ...(!incident.hq_report && incident.permissions.escalate
+      ? [{
+        key: 'escalate',
+        title: 'Escalate to Hack Club HQ',
+        iosIcon: 'exclamationmark.shield',
+        onSelect: () => setEscalateOpen(true),
+      }]
+      : []),
+    ...(levels.length
+      ? [{
+        key: 'chart',
+        title: 'Triage chart',
+        checked: showChart,
+        onSelect: () => setShowChart(shown => !shown),
+      }]
+      : []),
+  ];
+
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen
@@ -209,9 +242,7 @@ export function IncidentDetailScreen() {
         onRefresh={refresh}
         scrollViewProps={{ keyboardShouldPersistTaps: 'handled' }}
         action={
-          incident.permissions.update ? (
-            <Button title="Edit" onPress={() => navigation.navigate('IncidentForm', { incidentId })} />
-          ) : undefined
+          menuActions.length ? <ActionMenu accessibilityLabel="Incident actions" actions={menuActions} /> : undefined
         }
       >
         <View style={styles.intro}>
@@ -238,14 +269,13 @@ export function IncidentDetailScreen() {
               <Text style={styles.hqStatus}>HQ status: {humanize(incident.hq_report.status)}</Text>
             </View>
           </View>
-        ) : incident.permissions.escalate ? (
+        ) : incident.permissions.escalate && escalateOpen ? (
           <Container
             title="Escalate to Hack Club HQ"
             description="Files a confidential report with HQ's safeguarding team. They see this incident's summary, details and actions taken."
             bodyStyle={styles.containerBody}
           >
-            {escalateOpen ? (
-              <>
+            <>
                 <Field label="Number HQ can call you on" description="Include the country code, for example +1 555 555 0100.">
                   <TextField
                     value={phone}
@@ -268,12 +298,13 @@ export function IncidentDetailScreen() {
                   <Button title="Escalate to HQ" variant="primary" onPress={escalateNow} loading={escalating} />
                   <Button title="Cancel" variant="link" onPress={() => setEscalateOpen(false)} />
                 </View>
-              </>
-            ) : (
-              <View style={styles.actions}>
-                <Button title="Escalate…" onPress={() => setEscalateOpen(true)} />
-              </View>
-            )}
+            </>
+          </Container>
+        ) : null}
+
+        {showChart && levels.length ? (
+          <Container title="Which level? The triage chart" bodyStyle={styles.containerBody}>
+            <LevelChart levels={levels} />
           </Container>
         ) : null}
 

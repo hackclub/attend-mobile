@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
@@ -50,6 +50,10 @@ export function MessageComposeScreen() {
   const [body, setBody] = useState('');
   const [schedule, setSchedule] = useState(false);
   const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
+  const toggleSchedule = (on: boolean) => {
+    setSchedule(on);
+    if (on && !scheduledAt) setScheduledAt(new Date(Date.now() + 60 * 60 * 1000));
+  };
 
   const load = useCallback(async () => {
     if (!event) return;
@@ -243,17 +247,17 @@ export function MessageComposeScreen() {
         </Container>
 
         <Container title="Delivery" bodyStyle={styles.section}>
-          <View style={styles.toggleRow}>
+          {/* The whole row flips the switch. */}
+          <Pressable
+            style={styles.toggleRow}
+            onPress={() => toggleSchedule(!schedule)}
+            accessibilityRole="switch"
+            accessibilityLabel="Schedule for later"
+            accessibilityState={{ checked: schedule }}
+          >
             <Text style={[type.body, styles.flex, { color: tokens.text }]}>Schedule for later</Text>
-            <Toggle
-              accessibilityLabel="Schedule for later"
-              value={schedule}
-              onValueChange={on => {
-                setSchedule(on);
-                if (on && !scheduledAt) setScheduledAt(new Date(Date.now() + 60 * 60 * 1000));
-              }}
-            />
-          </View>
+            <Toggle accessibilityLabel="Schedule for later" value={schedule} onValueChange={toggleSchedule} decorative />
+          </Pressable>
           {schedule ? (
             <Field label="Send at" optional>
               <DateTimeField value={scheduledAt} onChange={setScheduledAt} minimumDate={new Date()} />
