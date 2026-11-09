@@ -21,6 +21,9 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { haptics } from '../services/haptics';
+import { EventCover } from '../components/EventBanner';
+import { Button, Icon, pressedStyle, ripple } from '../components/ui';
+import { useTheme } from '../theme';
 import { ParticipantAvatar } from '../components/ParticipantAvatar';
 import { useScanFeedback } from '../hooks/useScanFeedback';
 import { useScanner } from '../hooks/useScanner';
@@ -47,6 +50,7 @@ export function KioskScreen() {
     scanContextId,
   } = route.params;
   const { state } = useApp();
+  const { tokens, type, radii } = useTheme();
   // Read from the provider rather than a native SafeAreaView: presented as a
   // full-screen modal, the native view under-reported the top inset on
   // iPhone and the header ran into the Dynamic Island.
@@ -54,7 +58,7 @@ export function KioskScreen() {
   // Measured per render, not once at import: the scene resizes under us every
   // time iPhone Duo is folded, unfolded or rotated.
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const scanSize = Math.min(windowWidth, windowHeight) * 0.55;
+  const scanSize = Math.min(windowWidth - 48, windowHeight * 0.42, 420);
   const {
     handleScan,
     isProcessing,
@@ -134,101 +138,67 @@ export function KioskScreen() {
     );
   }
 
+  const prompt = !contextsReady
+    ? 'Loading scan context'
+    : !contextValid
+      ? 'Scan context unavailable'
+      : !isFeedbackReady
+        ? 'Preparing scanner'
+        : 'Scan your QR code';
+  const event = state.currentEvent;
+
   return (
-    <View style={styles.container} onTouchStart={recordScannerActivity}>
-      {/* The camera stage is always dark, whatever the system appearance. */}
+    <View
+      style={[kiosk.screen, { backgroundColor: tokens.bg, paddingLeft: insets.left, paddingRight: insets.right }]}
+      onTouchStart={recordScannerActivity}
+    >
+      {/* White type on the banner, whatever the system appearance. */}
       <StatusBar style="light" />
-      <CameraView
-        style={StyleSheet.absoluteFill}
-        facing={facing}
-        barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-        onBarcodeScanned={contextValid && !escapeOpen ? onBarcode : undefined}
-      />
-
-      {/* Dim overlay to make UI readable */}
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        <View style={styles.scrim} />
-      </View>
-
-      <View
-        style={[
-          styles.overlay,
-          {
-            paddingTop: insets.top,
-            paddingBottom: insets.bottom,
-            paddingLeft: insets.left,
-            paddingRight: insets.right,
-          },
-        ]}
-      >
-        {/* Hidden escape hatch in top-left. Absolutely placed, so it takes
-            the inset itself rather than from the padding above. */}
+      <View style={[kiosk.banner, { paddingTop: insets.top + 64 }]}>
+        {event ? <EventCover event={event} /> : null}
+        <Text style={kiosk.eventName} numberOfLines={2}>{event?.name}</Text>
+        {selectedContext ? <Text style={[type.body, kiosk.onBanner]}>{selectedContext.name}</Text> : null}
         <Pressable
           onPress={() => setEscapeOpen(true)}
-          style={[styles.escapeHotspot, { top: insets.top + 4, left: insets.left + 8 }]}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          style={({ pressed }) => [kiosk.lock, { top: insets.top + 8 }, pressedStyle(pressed)]}
+          android_ripple={ripple('rgba(255,255,255,0.3)', { borderless: true, radius: 24 })}
+          hitSlop={8}
+          accessibilityRole="button"
           accessibilityLabel="Exit kiosk mode"
+          accessibilityHint={biometricUnlock ? 'Asks for the PIN or biometrics' : 'Asks for the PIN'}
         >
-          <Ionicons name="lock-closed" size={14} color="rgba(255,255,255,0.25)" />
+          <Icon name="lock-closed" size={20} color="#ffffff" />
         </Pressable>
-
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.eventName} numberOfLines={1}>
-            {state.currentEvent?.name}
-          </Text>
-          {selectedContext && (
-            <View style={styles.contextRow}>
-              <Ionicons
-                name={selectedContext.is_airport ? 'airplane' : 'scan'}
-                size={15}
-                color="rgba(255,255,255,0.6)"
-              />
-              <Text style={styles.contextLabel}>{selectedContext.name}</Text>
-            </View>
-          )}
-        </View>
-
-        {/* Big prompt */}
-        <View style={styles.promptWrap}>
-          <Text style={styles.bigPrompt}>
-            {!contextsReady
-              ? 'Loading scan context'
-              : !contextValid
-                ? 'Scan context unavailable'
-                : !isFeedbackReady
-                  ? 'Preparing scanner'
-                  : 'Scan your QR code'}
-          </Text>
-        </View>
-
-        {/* Scan area */}
-        <View style={styles.scanAreaContainer}>
-          <View style={[styles.scanArea, { width: scanSize, height: scanSize }]}>
-            <View style={[styles.corner, styles.tl]} />
-            <View style={[styles.corner, styles.tr]} />
-            <View style={[styles.corner, styles.bl]} />
-            <View style={[styles.corner, styles.br]} />
-          </View>
-        </View>
-
-        {/* Camera flip */}
-        <View style={styles.bottomRow}>
-          <TouchableOpacity
-            style={styles.flipBtn}
-            onPress={() => setFacing(f => (f === 'front' ? 'back' : 'front'))}
-          >
-            <Ionicons name="camera-reverse" size={22} color={colors.white} />
-            <Text style={styles.flipBtnText}>
-              {facing === 'front' ? 'Front camera' : 'Rear camera'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {lastScan ? <KioskResult result={lastScan} /> : null}
       </View>
 
-      {/* Escape modal */}
+      <View style={[kiosk.body, { paddingBottom: insets.bottom + 24 }]}>
+        <Text style={[type.h1, kiosk.center, { color: tokens.textH }]} accessibilityRole="header" accessibilityLiveRegion="polite">
+          {prompt}
+        </Text>
+        <View style={[kiosk.camera, { width: scanSize, height: scanSize, borderRadius: radii.container }]}>
+          <CameraView
+            style={StyleSheet.absoluteFill}
+            facing={facing}
+            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+            onBarcodeScanned={contextValid && !escapeOpen ? onBarcode : undefined}
+          />
+          <View style={kiosk.frame} pointerEvents="none">
+            <View style={[styles.corner, kiosk.corner, styles.tl]} />
+            <View style={[styles.corner, kiosk.corner, styles.tr]} />
+            <View style={[styles.corner, kiosk.corner, styles.bl]} />
+            <View style={[styles.corner, kiosk.corner, styles.br]} />
+          </View>
+        </View>
+        <Button
+          icon="camera-flip"
+          title={facing === 'front' ? 'Front camera' : 'Rear camera'}
+          accessibilityHint="Switches between the front and rear camera"
+          onPress={() => setFacing(f => (f === 'front' ? 'back' : 'front'))}
+        />
+      </View>
+
+      {lastScan ? <KioskResult result={lastScan} /> : null}
+
       <EscapeModal
         visible={escapeOpen}
         onClose={() => setEscapeOpen(false)}
@@ -239,6 +209,28 @@ export function KioskScreen() {
     </View>
   );
 }
+
+const kiosk = StyleSheet.create({
+  screen: { flex: 1 },
+  banner: { paddingHorizontal: 16, paddingBottom: 16, overflow: 'hidden' },
+  eventName: { color: '#ffffff', fontSize: 30, lineHeight: 36, fontWeight: '700', paddingRight: 56 },
+  onBanner: { color: '#ffffff' },
+  lock: {
+    position: 'absolute',
+    right: 16,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(15,20,26,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  body: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 24, paddingHorizontal: 24, paddingTop: 24 },
+  center: { textAlign: 'center' },
+  camera: { overflow: 'hidden', backgroundColor: '#0b0b0f' },
+  frame: { position: 'absolute', top: '14%', left: '14%', right: '14%', bottom: '14%' },
+  corner: { borderColor: '#5be0b5' },
+});
 
 function KioskResult({ result }: { result: ScannerResult }) {
   const status = {
@@ -437,8 +429,6 @@ function EscapeModal({ visible, onClose, onUnlocked, kioskPin, biometricUnlock }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.black },
-  scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.35)' },
-  overlay: { flex: 1 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   permTitle: { color: colors.white, fontSize: 20, fontWeight: '700', marginBottom: 16 },
   permBtn: {
@@ -449,58 +439,15 @@ const styles = StyleSheet.create({
   },
   permBtnText: { color: colors.white, fontSize: 16, fontWeight: '600' },
 
-  escapeHotspot: {
-    position: 'absolute',
-    width: 48,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 50,
-  },
 
-  header: { alignItems: 'center', paddingTop: 24, paddingHorizontal: 24 },
-  eventName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.85)',
-  },
-  contextLabel: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.6)',
-  },
-  contextRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 5 },
 
-  promptWrap: { paddingHorizontal: 24, marginTop: 32, alignItems: 'center' },
-  bigPrompt: {
-    color: colors.white,
-    fontSize: 32,
-    fontWeight: '700',
-    textAlign: 'center',
-    lineHeight: 40,
-  },
 
-  scanAreaContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  scanArea: { position: 'relative' },
   corner: { position: 'absolute', width: 48, height: 48, borderColor: colors.white },
   tl: { top: 0, left: 0, borderTopWidth: 5, borderLeftWidth: 5, borderTopLeftRadius: 6 },
   tr: { top: 0, right: 0, borderTopWidth: 5, borderRightWidth: 5, borderTopRightRadius: 6 },
   bl: { bottom: 0, left: 0, borderBottomWidth: 5, borderLeftWidth: 5, borderBottomLeftRadius: 6 },
   br: { bottom: 0, right: 0, borderBottomWidth: 5, borderRightWidth: 5, borderBottomRightRadius: 6 },
 
-  bottomRow: {
-    alignItems: 'center',
-    paddingBottom: 24,
-  },
-  flipBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-  },
-  flipBtnText: { color: colors.white, fontSize: 14, fontWeight: '600' },
 
   resultBackdrop: {
     ...StyleSheet.absoluteFill,
