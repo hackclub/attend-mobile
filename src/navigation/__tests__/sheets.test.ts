@@ -48,7 +48,7 @@ describe('isRouteUnderSheets', () => {
   it('is false under a full-screen route', () => {
     const state = {
       index: 2,
-      routes: [main('Scanner', 'scan'), { key: 'k', name: 'KioskSetup' }, { key: 's', name: 'OptionsSheet' }],
+      routes: [main('Scanner', 'scan'), { key: 'k', name: 'Kiosk' }, { key: 's', name: 'OptionsSheet' }],
     };
     expect(isRouteUnderSheets(state, 'scan')).toBe(false);
   });
@@ -81,6 +81,7 @@ describe('sheetDetents', () => {
     const fitted = SHEET_ROUTES.filter((name) => name !== 'ScannerSearchSheet' && name !== 'MultiSelectSheet');
     expect(fitted).toContain('FilterSheet');
     expect(fitted).toContain('AccountSheet');
+    expect(fitted).toContain('KioskSetupSheet');
     for (const name of fitted) {
       expect(sheetDetents(name)).toBe('fitToContents');
       expect(composeSheetHeight(sheetDetents(name))).toBe('fit');

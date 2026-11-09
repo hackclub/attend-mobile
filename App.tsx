@@ -344,11 +344,6 @@ function RootNavigator() {
             />
           ) : null}
           <Stack.Screen
-            name="KioskSetup"
-            getComponent={lazyScreens.KioskSetup}
-            options={{ presentation: 'modal' }}
-          />
-          <Stack.Screen
             name="Kiosk"
             getComponent={lazyScreens.Kiosk}
             options={{

@@ -11,7 +11,6 @@ type ScreenGetter = () => React.ComponentType<any>;
 export const lazyScreens = {
   IdCheck: () => require('../screens/IdCheckScreen').IdCheckScreen,
   Kiosk: () => require('../screens/KioskScreen').KioskScreen,
-  KioskSetup: () => require('../screens/KioskSetupScreen').KioskSetupScreen,
   IncidentList: () => require('../screens/IncidentListScreen').IncidentListScreen,
   IncidentDetail: () => require('../screens/IncidentDetailScreen').IncidentDetailScreen,
   IncidentForm: () => require('../screens/IncidentFormScreen').IncidentFormScreen,

@@ -33,6 +33,7 @@ export const SHEETS: Record<SheetRouteName, SheetConfig> = {
   OptionsSheet: sheet('OptionsSheet', () => require('../screens/sheets/OptionsSheet').OptionsSheet),
   MultiSelectSheet: sheet('MultiSelectSheet', () => require('../screens/sheets/MultiSelectSheet').MultiSelectSheet),
   LinkSheet: sheet('LinkSheet', () => require('../screens/sheets/LinkSheet').LinkSheet),
+  KioskSetupSheet: sheet('KioskSetupSheet', () => require('../screens/sheets/KioskSetupSheet').KioskSetupSheet),
 };
 
 /**

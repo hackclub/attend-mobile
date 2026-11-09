@@ -486,7 +486,6 @@ export type RootStackParamList = {
   Main: NavigatorScreenParams<MainTabParamList> | undefined;
   ParticipantMain: NavigatorScreenParams<PassStackParamList> | undefined;
   IdCheck: { participant: Participant; eventId: string };
-  KioskSetup: { scanContextId?: string; scanContextName?: string };
   Kiosk: {
     pin: string;
     biometricUnlock: boolean;
@@ -503,6 +502,7 @@ export type RootStackParamList = {
   OptionsSheet: undefined;
   MultiSelectSheet: undefined;
   LinkSheet: undefined;
+  KioskSetupSheet: undefined;
   /** The dev UI gallery (attend://ui-gallery), only in EXPO_PUBLIC_UI_GALLERY=1 builds. */
   UiGallery: undefined;
 };

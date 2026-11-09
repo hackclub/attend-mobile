@@ -37,6 +37,13 @@ export interface ScanContextSheetData {
 }
 export const scanContextSheet = createSheetChannel<ScanContextSheetData>();
 
+/** Kiosk mode's PIN setup, in the scanner's context. */
+export interface KioskSetupSheetData {
+  scanContextId?: string;
+  scanContextName?: string;
+}
+export const kioskSetupSheet = createSheetChannel<KioskSetupSheetData>();
+
 /** The scanner's search / Enter ID sheet. */
 export interface ScannerSearchSheetData {
   /** Without roster access it's an attendee-ID field only. */

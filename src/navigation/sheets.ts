@@ -15,6 +15,7 @@ export const SHEET_ROUTES = [
   'OptionsSheet',
   'MultiSelectSheet',
   'LinkSheet',
+  'KioskSetupSheet',
 ] as const satisfies readonly (keyof RootStackParamList)[];
 
 export type SheetRouteName = (typeof SHEET_ROUTES)[number];

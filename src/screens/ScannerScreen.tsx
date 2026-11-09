@@ -35,7 +35,7 @@ import {
 import { ScanFrame, ScannerDock } from '../components/ScannerChrome';
 import { scanFrameSize } from '../services/scannerLayout';
 import { CHROME_MAX_FONT_SCALE } from '../components/ui/fontScale';
-import { scanContextSheet, scannerSearchSheet } from '../navigation/sheetData';
+import { kioskSetupSheet, scanContextSheet, scannerSearchSheet } from '../navigation/sheetData';
 import { useIsUnderSheet } from '../navigation/useIsUnderSheet';
 import { useOpenSheet } from '../navigation/sheetPresenter';
 import { api } from '../services/api';
@@ -225,6 +225,13 @@ export function ScannerScreen() {
     openSheet('ScanContextSheet');
   }, [claimContextSheet, openSheet, recordScannerActivity]);
 
+  const claimKioskSetup = kioskSetupSheet.useOpener(
+    useMemo(
+      () => ({ scanContextId: selectedContext?.id, scanContextName: selectedContext?.name }),
+      [selectedContext?.id, selectedContext?.name]
+    )
+  );
+
   const viewDetails = useCallback(() => {
     if (!lastScan?.participant) return;
     recordScannerActivity();
@@ -297,11 +304,11 @@ export function ScannerScreen() {
       subtitle: canScan ? 'Self-serve check-in' : 'Choose a context first',
       iosIcon: 'lock',
       disabled: !canScan,
-      onSelect: () =>
-        navigation.navigate('KioskSetup', {
-          scanContextId: selectedContext?.id,
-          scanContextName: selectedContext?.name,
-        }),
+      onSelect: () => {
+        recordScannerActivity();
+        claimKioskSetup();
+        openSheet('KioskSetupSheet');
+      },
     },
   ];
 

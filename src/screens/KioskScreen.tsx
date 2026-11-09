@@ -89,7 +89,7 @@ export function KioskScreen() {
 
   // Android pins the screen while kiosk mode runs (the system asks to
   // confirm), so the device can't leave Attend; exiting through the PIN or
-  // biometrics unpins it. iOS relies on Guided Access, set up in KioskSetup.
+  // biometrics unpins it. iOS relies on Guided Access, suggested in kiosk setup.
   // Only once the camera is allowed: pinned on the permission prompt, the
   // kiosk couldn't scan and the device couldn't get to Settings either.
   const cameraGranted = !!permission?.granted;
