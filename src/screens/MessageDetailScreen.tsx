@@ -205,7 +205,10 @@ export function MessageDetailScreen() {
           >
             {message.subject || 'No subject'}
           </Text>
-          <Badge label={titleize(message.status)} color={MESSAGE_STATUS_BADGE[message.status] ?? 'grey'} style={styles.badge} />
+          {/* Centred on the title's first line, however tall the badge is. */}
+          <View style={[styles.badgeSlot, { height: type.h1.lineHeight }]}>
+            <Badge label={titleize(message.status)} color={MESSAGE_STATUS_BADGE[message.status] ?? 'grey'} />
+          </View>
         </View>
         <Text style={[type.body, { color: tokens.muted }]}>{byline}</Text>
       </View>
@@ -317,7 +320,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
   header: { gap: spacing.xs },
   titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
-  badge: { marginTop: 5 },
+  badgeSlot: { justifyContent: 'center' },
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   menuBusy: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   stats: {
