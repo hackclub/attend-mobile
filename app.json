@@ -118,7 +118,7 @@
         "expo-image-picker",
         {
           "photosPermission": "Attend lets you attach photos to a confidential incident report.",
-          "cameraPermission": false,
+          "cameraPermission": "Allow Attend to access your camera to scan QR codes and the code on ID documents.",
           "microphonePermission": false
         }
       ],
