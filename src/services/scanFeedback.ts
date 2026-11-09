@@ -1,11 +1,11 @@
-import * as Haptics from 'expo-haptics';
+import type { HapticNotification } from './haptics';
 import type { ScannerOutcome } from './scannerCore';
 
 export type ScanSound = 'scanned' | 'already-scanned' | 'not-scanned';
 
 export interface ScanFeedback {
   sound: ScanSound;
-  haptic: Haptics.NotificationFeedbackType;
+  haptic: HapticNotification;
 }
 
 export function feedbackForOutcome(outcome: ScannerOutcome): ScanFeedback | null {
@@ -13,17 +13,17 @@ export function feedbackForOutcome(outcome: ScannerOutcome): ScanFeedback | null
     case 'scanned':
       return {
         sound: 'scanned',
-        haptic: Haptics.NotificationFeedbackType.Success,
+        haptic: 'success',
       };
     case 'already_scanned':
       return {
         sound: 'already-scanned',
-        haptic: Haptics.NotificationFeedbackType.Warning,
+        haptic: 'warning',
       };
     case 'not_scanned':
       return {
         sound: 'not-scanned',
-        haptic: Haptics.NotificationFeedbackType.Error,
+        haptic: 'error',
       };
     case 'confirming':
       return null;

@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Platform, Alert } from 'react-native';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../services/haptics';
 import { nfcService, NFCReadResult, NFCWriteData } from '../services/nfc';
 
 interface UseNFCReturn {
@@ -52,9 +52,9 @@ export function useNFC(): UseNFCReturn {
       setLastRead(result);
 
       if (result.success) {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        haptics.success();
       } else if (result.error !== 'Cancelled') {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        haptics.error();
       }
 
       return result;
@@ -73,9 +73,9 @@ export function useNFC(): UseNFCReturn {
       const result = await nfcService.writeTag(data);
 
       if (result.success) {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        haptics.success();
       } else if (result.error !== 'Cancelled') {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        haptics.error();
       }
 
       return result;

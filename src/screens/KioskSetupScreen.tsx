@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../services/haptics';
 import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
 import { useApp } from '../context/AppContext';
 import { useBiometric } from '../hooks/useBiometric';
@@ -61,7 +61,7 @@ export function KioskSetupScreen() {
       if (step === 'enter') {
         setTimeout(() => {
           setStep('confirm');
-          Haptics.selectionAsync();
+          haptics.selection();
         }, 120);
       } else {
         setTimeout(() => validateAndContinue(pin, digits), 120);
@@ -71,14 +71,14 @@ export function KioskSetupScreen() {
 
   const validateAndContinue = (entered: string, confirmed: string) => {
     if (entered !== confirmed) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptics.error();
       setError('PINs don’t match. Try again.');
       setPin('');
       setConfirmPin('');
       setStep('enter');
       return;
     }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    haptics.success();
     navigation.replace('Kiosk', {
       pin: entered,
       biometricUnlock: biometricAvailable && useBiometricUnlock,

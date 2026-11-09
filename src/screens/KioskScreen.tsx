@@ -20,7 +20,7 @@ import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
-import * as Haptics from 'expo-haptics';
+import { haptics } from '../services/haptics';
 import { ParticipantAvatar } from '../components/ParticipantAvatar';
 import { useScanFeedback } from '../hooks/useScanFeedback';
 import { useScanner } from '../hooks/useScanner';
@@ -323,7 +323,7 @@ function EscapeModal({ visible, onClose, onUnlocked, kioskPin, biometricUnlock }
         disableDeviceFallback: true,
       });
       if (result.success) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        haptics.success();
         onUnlocked();
       } else {
         setTimeout(() => inputRef.current?.focus(), 100);
@@ -339,10 +339,10 @@ function EscapeModal({ visible, onClose, onUnlocked, kioskPin, biometricUnlock }
     setEntry(digits);
     if (digits.length === PIN_LENGTH) {
       if (digits === kioskPin) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        haptics.success();
         onUnlocked();
       } else {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        haptics.error();
         const next = attempts + 1;
         setAttempts(next);
         setEntry('');
