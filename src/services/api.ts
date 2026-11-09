@@ -4,7 +4,6 @@ import type { IdCheckPayload } from './idCheck/verdict';
 import type {
   TravelCalendarData,
   TravelCalendarEntry,
-  ApiResponse,
   BroadcastMessage,
   CreateScanOptions,
   CreateScanResponse,
@@ -231,11 +230,6 @@ class ApiClient {
     // before any screen asks for participants.
     forbiddenParticipants.applyEventRoles(events);
     return events;
-  }
-
-  async getEvent(eventId: string): Promise<Event> {
-    const response = await this.request<ApiResponse<Event>>(`/api/v1/events/${eventId}`);
-    return response.data;
   }
 
   async getParticipants(eventId: string, updatedSince?: string): Promise<ParticipantsSyncPage> {
