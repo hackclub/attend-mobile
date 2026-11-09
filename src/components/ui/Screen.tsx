@@ -185,33 +185,37 @@ export function Screen({
   }
 
   const Scroller = keyboardAware ? KeyboardAwareScrollView : ScrollView;
+  // The status bar is transparent, so the scroller starts below it: content
+  // scrolling up then disappears under a strip of the screen's background
+  // instead of showing through the status bar.
   return (
-    <Scroller
-      bottomOffset={keyboardAware ? spacing.xxl : undefined}
-      style={[styles.screen, background]}
-      contentInsetAdjustmentBehavior="never"
-      {...scrollViewProps}
-      contentContainerStyle={[
-        styles.column,
-        { paddingTop: insets.top, paddingBottom: insets.bottom + spacing.xxl, gap: spacing.lg },
-        contentContainerStyle,
-      ]}
-      refreshControl={
-        onRefresh ? (
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={tokens.accent}
-            colors={[tokens.accent]}
-            progressBackgroundColor={tokens.bg}
-            progressViewOffset={Platform.OS === 'android' ? insets.top : undefined}
-          />
-        ) : undefined
-      }
-    >
-      <ScreenHeading {...heading} />
-      {children}
-    </Scroller>
+    <View style={[styles.screen, background, { paddingTop: insets.top }]}>
+      <Scroller
+        bottomOffset={keyboardAware ? spacing.xxl : undefined}
+        style={styles.screen}
+        contentInsetAdjustmentBehavior="never"
+        {...scrollViewProps}
+        contentContainerStyle={[
+          styles.column,
+          { paddingBottom: insets.bottom + spacing.xxl, gap: spacing.lg },
+          contentContainerStyle,
+        ]}
+        refreshControl={
+          onRefresh ? (
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={tokens.accent}
+              colors={[tokens.accent]}
+              progressBackgroundColor={tokens.bg}
+            />
+          ) : undefined
+        }
+      >
+        <ScreenHeading {...heading} />
+        {children}
+      </Scroller>
+    </View>
   );
 }
 
