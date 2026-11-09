@@ -10,6 +10,7 @@ export { Flashbar, type FlashbarProps, type FlashbarType } from './Flashbar';
 export { Icon, icons, type IconName, type IconProps } from './Icon';
 export { KeyValue, type KeyValueProps } from './KeyValue';
 export { ListRow, type ListRowProps } from './ListRow';
+export { OverlayIconButton, type OverlayIconButtonProps } from './OverlayIconButton';
 export { QuickActionTile, type QuickActionTileProps } from './QuickActionTile';
 export {
   SegmentedControl,

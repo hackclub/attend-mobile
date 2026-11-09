@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View, useWindowDimensions, type StyleProp,
 import { Image } from 'expo-image';
 import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
 import { useEventPassColor } from '../hooks/useEventPassColor';
-import { Badge, Icon, PressableSurface, pressedStyle, ripple, type BadgeColor, type IconName } from './ui';
+import { Badge, Icon, OverlayIconButton, PressableSurface, pressedStyle, ripple, type BadgeColor, type IconName } from './ui';
 import { useTheme } from '../theme';
 import { bannerHeight } from '../services/eventBanner';
 import type { Event } from '../types';
@@ -136,16 +136,13 @@ export function EventBanner({
         <View accessible accessibilityLabel={label}>{content}</View>
       )}
       {onBack ? (
-        <Pressable
-          onPress={onBack}
-          accessibilityRole="button"
+        <OverlayIconButton
+          icon="chevron-left"
           accessibilityLabel="Back"
-          android_ripple={ripple(ON_BANNER, { alpha: 0.3, borderless: true, radius: 22 })}
-          style={({ pressed }) => [styles.back, { top: topInset + 8 }, pressedStyle(pressed)]}
+          onPress={onBack}
           hitSlop={4}
-        >
-          <Icon name="chevron-left" size={22} color={ON_BANNER} />
-        </Pressable>
+          style={[styles.back, { top: topInset + 8 }]}
+        />
       ) : null}
       {accessory ? <View style={[styles.accessory, { top: topInset + 8 }]}>{accessory}</View> : null}
     </View>
@@ -215,16 +212,7 @@ const styles = StyleSheet.create({
   },
   meta: { marginTop: 2 },
   accessory: { position: 'absolute', right: 16 },
-  back: {
-    position: 'absolute',
-    left: 12,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.22)',
-  },
+  back: { position: 'absolute', left: 12 },
   card: { height: 150 },
   cardContent: { justifyContent: 'flex-end' },
   selectedMark: {

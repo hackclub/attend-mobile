@@ -181,6 +181,28 @@ export const darkTokens: ThemeTokens = {
   overlay: 'rgba(0, 0, 0, 0.6)',
 };
 
+/**
+ * Fixed colours for controls over a photo, a brand banner or the live camera.
+ * Those surfaces are dark whatever the appearance, so these don't change
+ * with the scheme.
+ */
+export const overlayTokens = {
+  /** Text and icons over imagery. */
+  on: '#ffffff',
+  onMuted: '#c6c6cd',
+  /** Round control over a photo or a brand banner. */
+  imageControl: 'rgba(15, 20, 26, 0.35)',
+  /** Control over the live camera: denser, so it reads on any scene. */
+  cameraControl: 'rgba(15, 20, 26, 0.82)',
+  /** A control that is on, like the torch, and its icon. */
+  active: '#fbd332',
+  onActive: '#0f141a',
+  /** Scan frame corners. */
+  scanFrame: '#2bb534',
+  /** Behind the camera preview before it starts. */
+  cameraStage: '#0b0b0f',
+} as const;
+
 /** 4pt spacing scale. Containers pad 20 horizontally, pages 16. */
 export const spacing = {
   xxs: 2,

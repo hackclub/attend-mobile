@@ -3,6 +3,7 @@ export { withAlpha } from './alpha';
 export {
   lightTokens,
   darkTokens,
+  overlayTokens,
   spacing,
   radii,
   typography,
