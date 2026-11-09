@@ -15,7 +15,7 @@ import { useBrightnessBoost } from '../hooks/useBrightnessBoost';
 import { useOpenLink } from '../hooks/useOpenLink';
 import { passColorsFor } from '../services/eventPassColors';
 import { formatEventDay, formatEventTime } from '../services/eventStatus';
-import { lightTokens, useTheme } from '../theme';
+import { lightTokens, typography, useTheme } from '../theme';
 import { Button, Icon, pressedStyle, ripple, STATE_LAYER_ALPHA } from './ui';
 import { DashedDivider } from './ui/DashedDivider';
 import type { Ticket } from '../types';
@@ -49,24 +49,22 @@ export function TicketPass({ ticket, pageColor }: TicketPassProps) {
   const logoColor = useEventPassColor(event.logo_url, !!event.logo_url);
   const band = passColorsFor(event.logo_url ? logoColor ?? tokens.brand : tokens.brand);
   // On a dark page the pass sits a step lighter than the page; on a light
-  // one it's white with a soft shadow. Either way there's no border, so the
-  // notches read as cut out of it.
+  // one it's white with a hairline edge. The edge runs under the notches,
+  // which draw their own, so it follows the cut-outs rather than crossing
+  // them (a shadow would outline the full rectangle).
   const surface = isDark ? tokens.div2 : tokens.bg;
+  const edge = isDark ? undefined : { borderWidth: 1, borderColor: tokens.div2 };
 
   const parsedStart = event.starts_at ? new Date(event.starts_at) : null;
   const starts = parsedStart && !Number.isNaN(parsedStart.getTime()) ? parsedStart : null;
-  const venue = event.location_city || event.location_address || 'TBA';
-  const venueDetail = event.location_city ? event.location_country : undefined;
+  // The address, then the city, as on the Lock Screen pass.
+  const venue = event.location_address || event.location_city || event.location_country || 'TBA';
+  const venueDetail = event.location_address ? event.location_city || undefined : undefined;
 
   return (
-    <View
-      style={[
-        styles.shadow,
-        { backgroundColor: surface, borderRadius: radii.container, shadowColor: tokens.textH },
-        isDark && styles.flat,
-      ]}
-    >
+    <View style={{ backgroundColor: surface, borderRadius: radii.container }}>
       <View style={[styles.clip, { borderRadius: radii.container }]}>
+        {edge ? <View pointerEvents="none" style={[styles.edge, edge, { borderRadius: radii.container }]} /> : null}
         <View style={[styles.band, { backgroundColor: band.background, gap: spacing.xs }]}>
           <View style={styles.bandTop}>
             <Text style={[type.small, styles.eyebrow, { color: band.label }]} maxFontSizeMultiplier={1.4}>
@@ -95,7 +93,11 @@ export function TicketPass({ ticket, pageColor }: TicketPassProps) {
               <Pressable
                 onPress={() => setEnlarged(true)}
                 android_ripple={ripple(QR_INK, { alpha: STATE_LAYER_ALPHA })}
-                style={({ pressed }) => [styles.qrTile, { backgroundColor: QR_PAPER }, pressedStyle(pressed, 0.8)]}
+                style={({ pressed }) => [
+                  styles.qrTile,
+                  { backgroundColor: QR_PAPER, borderRadius: radii.container },
+                  pressedStyle(pressed, 0.8),
+                ]}
                 accessibilityRole="button"
                 accessibilityLabel="Check-in QR code"
                 accessibilityHint="Shows it full screen, with the screen turned up"
@@ -124,9 +126,9 @@ export function TicketPass({ ticket, pageColor }: TicketPassProps) {
         </View>
 
         <View style={styles.perforation}>
-          <View style={[styles.notch, styles.notchLeft, { backgroundColor: pageColor }]} />
+          <View style={[styles.notch, styles.notchLeft, edge, { backgroundColor: pageColor }]} />
           <DashedDivider color={tokens.div} style={styles.dashes} />
-          <View style={[styles.notch, styles.notchRight, { backgroundColor: pageColor }]} />
+          <View style={[styles.notch, styles.notchRight, edge, { backgroundColor: pageColor }]} />
         </View>
 
         <View style={styles.stub}>
@@ -230,21 +232,15 @@ function EnlargedQr({ ticket, visible, onClose }: { ticket: Ticket; visible: boo
 }
 
 const styles = StyleSheet.create({
-  shadow: {
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 2,
-  },
-  flat: { shadowOpacity: 0, elevation: 0 },
   clip: { overflow: 'hidden' },
+  edge: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
   band: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 20 },
   bandTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  eyebrow: { flex: 1, fontWeight: '700', letterSpacing: 1.5 },
+  eyebrow: { flex: 1, fontWeight: typography.label.fontWeight, letterSpacing: 1.5 },
   code: { letterSpacing: 1, fontVariant: ['tabular-nums'] },
-  attendee: { fontWeight: '500' },
+  attendee: { fontWeight: typography.body.fontWeight },
   body: { alignItems: 'center', paddingHorizontal: 20, paddingTop: 24, paddingBottom: 16 },
-  qrTile: { padding: 16, borderRadius: 20, overflow: 'hidden' },
+  qrTile: { padding: 16, overflow: 'hidden' },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
