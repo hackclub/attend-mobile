@@ -350,7 +350,7 @@ interface EscapeProps {
 }
 
 function EscapeModal({ visible, onClose, onUnlocked, kioskPin, biometricUnlock }: EscapeProps) {
-  const { tokens, type, radii } = useTheme();
+  const { tokens, type, radii, isDark } = useTheme();
   const [entry, setEntry] = useState('');
   const [attempts, setAttempts] = useState(0);
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
@@ -470,6 +470,7 @@ function EscapeModal({ visible, onClose, onUnlocked, kioskPin, biometricUnlock }
             value={entry}
             onChangeText={handleChange}
             keyboardType="number-pad"
+            keyboardAppearance={isDark ? 'dark' : 'light'}
             secureTextEntry
             maxLength={PIN_LENGTH}
             editable={!locked}

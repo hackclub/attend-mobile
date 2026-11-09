@@ -18,7 +18,7 @@ type KioskSetupRoute = RouteProp<AppStackParamList, 'KioskSetup'>;
 const PIN_LENGTH = 4;
 
 export function KioskSetupScreen() {
-  const { tokens, type, spacing, radii } = useTheme();
+  const { tokens, type, spacing, radii, isDark } = useTheme();
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<KioskSetupRoute>();
   const { state } = useApp();
@@ -156,6 +156,7 @@ export function KioskSetupScreen() {
             value={currentValue}
             onChangeText={setCurrentValue}
             keyboardType="number-pad"
+            keyboardAppearance={isDark ? 'dark' : 'light'}
             maxLength={PIN_LENGTH}
             secureTextEntry
             style={styles.hiddenInput}

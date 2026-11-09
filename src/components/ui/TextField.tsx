@@ -65,7 +65,7 @@ export const TextField = forwardRef<React.ComponentRef<typeof TextInput>, TextFi
           placeholderTextColor={tokens.muted}
           selectionColor={tokens.accent}
           cursorColor={tokens.accent}
-          keyboardAppearance={isDark ? 'dark' : 'light'}
+          keyboardAppearance={input.keyboardAppearance ?? (isDark ? 'dark' : 'light')}
           onFocus={(e) => {
             setFocused(true);
             input.onFocus?.(e);
