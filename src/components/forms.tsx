@@ -33,6 +33,7 @@ import {
   type IconName,
   type StatusType,
 } from './ui';
+import { CHROME_MAX_FONT_SCALE } from './ui/fontScale';
 import { useTheme, useThemedStyles, type Theme } from '../theme';
 import type { AppStackParamList, IncidentLevel, SelectOption } from '../types';
 import { multiSelectSheet, optionsSheet, type MultiSelectSheetItem } from '../navigation/sheetData';
@@ -484,7 +485,7 @@ export function Badge({ label, color }: { label: string; color?: string | null }
   return (
     <View style={[styles.badge, { backgroundColor: tokens.shaded, borderRadius: radii.badge }]}>
       <View style={[styles.badgeDot, { backgroundColor: color }]} />
-      <Text style={[styles.badgeText, { color: tokens.text }]} numberOfLines={1}>
+      <Text style={[styles.badgeText, { color: tokens.text }]} numberOfLines={1} maxFontSizeMultiplier={CHROME_MAX_FONT_SCALE}>
         {label}
       </Text>
     </View>

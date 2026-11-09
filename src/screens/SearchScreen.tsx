@@ -30,6 +30,7 @@ import {
   type IconName,
   type MenuAction,
 } from '../components/ui';
+import { CHROME_MAX_FONT_SCALE } from '../components/ui/fontScale';
 import {
   applyFilters,
   applySort,
@@ -500,7 +501,13 @@ function ToolChip({ label, icon, trailingIcon, active = false, onPress, accessib
       contentStyle={styles.chipContent}
     >
       {icon ? <Icon name={icon} size={16} color={color} /> : null}
-      <Text style={[type.label, styles.chipText, { color }]} numberOfLines={1}>{label}</Text>
+      <Text
+        style={[type.label, styles.chipText, { color }]}
+        numberOfLines={1}
+        maxFontSizeMultiplier={CHROME_MAX_FONT_SCALE}
+      >
+        {label}
+      </Text>
       {trailingIcon ? <Icon name={trailingIcon} size={14} color={color} /> : null}
     </PressableSurface>
   );

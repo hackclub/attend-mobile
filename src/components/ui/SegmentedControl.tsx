@@ -5,6 +5,7 @@ import NativeSegmentedControlClass, {
 } from '@react-native-segmented-control/segmented-control';
 import { useTheme } from '../../theme';
 import { haptics } from '../../services/haptics';
+import { CHROME_MAX_FONT_SCALE } from './fontScale';
 import { Icon } from './Icon';
 import { iosSegmentFontSize } from './segmentFontSize';
 import { ripple, STATE_LAYER_ALPHA } from './pressFeedback';
@@ -121,6 +122,7 @@ function MaterialSegmentedButtons<T extends string>({
             <Text
               style={[type.label, styles.label, { color: selected ? tokens.textH : tokens.text }]}
               numberOfLines={2}
+              maxFontSizeMultiplier={CHROME_MAX_FONT_SCALE}
             >
               {label}
             </Text>

@@ -14,6 +14,7 @@ import {
   Screen,
   TextField,
 } from '../components/ui';
+import { CHROME_MAX_FONT_SCALE } from '../components/ui/fontScale';
 import { formatDateTime } from '../components/forms';
 import { channelList } from '../components/messageStatus';
 import { spacing, useTheme } from '../theme';
@@ -209,7 +210,11 @@ function EventChip({ label, active, onPress }: { label: string; active: boolean;
       ]}
       contentStyle={styles.chipContent}
     >
-      <Text style={[type.label, { color: active ? tokens.accent : tokens.text }]} numberOfLines={1}>
+      <Text
+        style={[type.label, { color: active ? tokens.accent : tokens.text }]}
+        numberOfLines={1}
+        maxFontSizeMultiplier={CHROME_MAX_FONT_SCALE}
+      >
         {label}
       </Text>
     </PressableSurface>

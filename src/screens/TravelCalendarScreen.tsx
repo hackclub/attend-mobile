@@ -26,6 +26,7 @@ import {
   PressableSurface,
   type StatusType,
 } from '../components/ui';
+import { CHROME_MAX_FONT_SCALE } from '../components/ui/fontScale';
 import type {
   AppStackParamList,
   TravelCalendarData,
@@ -220,13 +221,13 @@ function LegRow({
                 accessibilityLabel={`${displayName(entry)}${entry.isUnaccompaniedMinor ? ', unaccompanied minor' : ''}`}
                 accessibilityHint="Opens their participant record"
               >
-                <Text style={styles.chipText} numberOfLines={1}>
+                <Text style={styles.chipText} numberOfLines={1} maxFontSizeMultiplier={CHROME_MAX_FONT_SCALE}>
                   {displayName(entry)}
                 </Text>
               </PressableSurface>
             ) : (
               <View key={entry.id} style={[styles.chipShape, styles.chipContent]}>
-                <Text style={styles.chipText} numberOfLines={1}>
+                <Text style={styles.chipText} numberOfLines={1} maxFontSizeMultiplier={CHROME_MAX_FONT_SCALE}>
                   {displayName(entry)}
                 </Text>
               </View>

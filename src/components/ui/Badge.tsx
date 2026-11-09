@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useTheme, type ThemeTokens } from '../../theme';
+import { CHROME_MAX_FONT_SCALE } from './fontScale';
 
 export type BadgeColor = 'grey' | 'green' | 'blue' | 'red' | 'yellow';
 
@@ -36,7 +37,7 @@ export function Badge({ label, color = 'grey', style, testID }: BadgeProps) {
       accessibilityRole="text"
       testID={testID}
     >
-      <Text style={[styles.label, { color: fg }]} numberOfLines={1}>
+      <Text style={[styles.label, { color: fg }]} numberOfLines={1} maxFontSizeMultiplier={CHROME_MAX_FONT_SCALE}>
         {label}
       </Text>
     </View>
