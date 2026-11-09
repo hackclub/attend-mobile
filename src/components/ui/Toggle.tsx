@@ -17,9 +17,9 @@ export interface ToggleProps {
 }
 
 /**
- * The platform switch (UISwitch on iOS, the Material switch on Android),
- * tinted with the accent. In a row, prefer ListRow's `toggle` so the whole
- * row flips it.
+ * The platform switch, tinted with the accent: UISwitch on iOS (the Material 3
+ * Compose switch on Android: Toggle.android.tsx). In a row, prefer ListRow's
+ * `toggle` so the whole row flips it.
  */
 export function Toggle({
   value,
