@@ -22,11 +22,13 @@ import { ParticipantDetailContent } from './ParticipantDetailContent';
 import { api } from '../services/api';
 import { useTheme } from '../theme';
 import {
+  ActionMenu,
   Icon,
   SegmentedControl,
   TextField,
   PressableSurface,
   type IconName,
+  type MenuAction,
 } from '../components/ui';
 import {
   applyFilters,
@@ -248,7 +250,9 @@ export function SearchScreen() {
   const presetActive = activeViewId !== null && activeViewId in SEGMENT_LABELS;
   const customRules = presetActive ? [] : activeRules;
   const customSort = presetActive ? null : sort;
-  const hasToolbar = savedViews.length > 0 || customRules.length > 0 || Boolean(customSort);
+  // Only what's in force shows as chips (tap one to remove it); everything
+  // else is behind the header's filter button.
+  const hasToolbar = customRules.length > 0 || Boolean(customSort);
 
   const emptyState = searchQuery.length >= 2 ? (
     { title: 'No Results', text: `No participants found matching "${searchQuery}"` }
@@ -267,12 +271,16 @@ export function SearchScreen() {
           <Text style={[type.h1, styles.title, { color: tokens.textH }]} accessibilityRole="header" numberOfLines={1}>
             Participants
           </Text>
-          <ToolChip
-            icon="filter"
-            label={customRules.length > 0 ? `Filter · ${customRules.length}` : 'Filter'}
-            active={customRules.length > 0 || customSort !== null}
-            onPress={openFilterSheet}
-            accessibilityLabel="Filter and sort"
+          <FilterButton
+            activeCount={customRules.length + (customSort ? 1 : 0)}
+            onOpenSheet={openFilterSheet}
+            savedViews={savedViews.map(view => ({
+              key: view.id,
+              title: view.name,
+              subtitle: `${viewCounts[view.id] ?? 0} participants`,
+              checked: activeViewId === view.id,
+              onSelect: () => applyView(view),
+            }))}
           />
         </View>
 
@@ -305,15 +313,6 @@ export function SearchScreen() {
           contentContainerStyle={styles.toolbarContent}
           keyboardShouldPersistTaps="handled"
         >
-          {savedViews.map(view => (
-            <ToolChip
-              key={view.id}
-              icon="clipboard-list"
-              label={`${view.name} · ${viewCounts[view.id] ?? 0}`}
-              active={activeViewId === view.id}
-              onPress={() => applyView(view)}
-            />
-          ))}
           {customSort && (
             <ToolChip
               label={`${sortField?.label ?? 'Sort'} ${customSort.direction === 'asc' ? '↑' : '↓'}`}
@@ -415,6 +414,60 @@ export function SearchScreen() {
   );
 }
 
+/**
+ * The header's filter button. It opens the filter sheet, or with saved views,
+ * a menu of them plus "Filter and sort…" (the sheet can't apply a view).
+ * Tinted when a filter or sort is in force.
+ */
+function FilterButton({
+  activeCount,
+  onOpenSheet,
+  savedViews,
+}: {
+  activeCount: number;
+  onOpenSheet: () => void;
+  savedViews: Omit<MenuAction, 'iosIcon'>[];
+}) {
+  const { tokens, hitTarget } = useTheme();
+  const active = activeCount > 0 || savedViews.some(view => view.checked);
+  const color = active ? tokens.accent : tokens.text;
+  const label = activeCount > 0 ? `Filter and sort, ${activeCount} active` : 'Filter and sort';
+  const glyph = (
+    <View style={[styles.filterButton, { width: hitTarget, height: hitTarget }]}>
+      <Icon name="filter" size={22} color={color} />
+      {active ? <View style={[styles.filterDot, { backgroundColor: tokens.accent, borderColor: tokens.bg }]} /> : null}
+    </View>
+  );
+
+  if (savedViews.length === 0) {
+    return (
+      <PressableSurface
+        onPress={onOpenSheet}
+        rippleColor={tokens.text}
+        rippleAlpha={0.1}
+        style={styles.filterSurface}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+      >
+        {glyph}
+      </PressableSurface>
+    );
+  }
+
+  return (
+    <ActionMenu
+      accessibilityLabel={label}
+      title="Saved views"
+      actions={[
+        ...savedViews,
+        { key: 'filter-sheet', title: 'Filter and sort…', onSelect: onOpenSheet, iosIcon: 'line.3.horizontal.decrease' },
+      ]}
+    >
+      {glyph}
+    </ActionMenu>
+  );
+}
+
 interface ToolChipProps {
   label: string;
   icon?: IconName;
@@ -478,6 +531,17 @@ const styles = StyleSheet.create({
   toolbarContent: {
     paddingHorizontal: 16,
     gap: 8,
+  },
+  filterSurface: { borderRadius: 22 },
+  filterButton: { alignItems: 'center', justifyContent: 'center' },
+  filterDot: {
+    position: 'absolute',
+    top: 9,
+    right: 8,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 2,
   },
   chip: { borderWidth: 1, maxWidth: 260 },
   chipContent: {
