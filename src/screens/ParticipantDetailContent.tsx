@@ -46,6 +46,7 @@ import { travelDayTime } from '../services/travelTimes';
 import { useTheme } from '../theme';
 import { BiometricGate } from '../components/BiometricGate';
 import { optionsSheet } from '../navigation/sheetData';
+import { useOpenSheet } from '../navigation/sheetPresenter';
 import type { AppStackParamList, Participant, ParticipantNote, Travel, Guardian, Consent, Accommodation, AccessibilityDetail, PersonalDetails, ScanByContext } from '../types';
 
 interface ParticipantDetailContentProps {
@@ -93,6 +94,7 @@ function ParticipantDetailBody({
   const { canViewParticipantRecords, canViewParticipantPii, roleLabel } = useEventAccess();
   const { isSupported: nfcSupported, writeTag } = useNFC();
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
+  const openSheet = useOpenSheet();
   // On-device passport/ID card check: global admins only (the server refuses
   // anyone else too), and only on an iPhone with an NFC reader to read the
   // document's chip — iPads and simulators have none.
@@ -375,7 +377,7 @@ function ParticipantDetailBody({
     }
 
     claimUndoSheet();
-    navigation.navigate('OptionsSheet');
+    openSheet('OptionsSheet');
   };
 
   const handleVerifyId = () => {

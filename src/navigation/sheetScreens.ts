@@ -4,18 +4,26 @@ import type React from 'react';
 import type { NativeStackNavigationOptions } from '@react-navigation/native-stack';
 import { useTheme } from '../theme';
 import { sheetOptions } from './sheetOptions';
-import type { SheetRouteName } from './sheets';
+import { COMPOSE_SHEETS } from './sheetPresenter';
+import type { ComposeSheetHeight, SheetRouteName } from './sheets';
 
 type ScreenGetter = () => React.ComponentType<any>;
 
-// Each sheet's screen, loaded on its first open, and its resting heights.
-const SHEETS: Record<
-  SheetRouteName,
-  { getComponent: ScreenGetter; detents: NativeStackNavigationOptions['sheetAllowedDetents'] }
-> = {
+export interface SheetConfig {
+  getComponent: ScreenGetter;
+  /** iOS: the form sheet's resting heights. */
+  detents: NativeStackNavigationOptions['sheetAllowedDetents'];
+  /** Android: the bottom sheet's height, when it isn't composeSheetHeight(detents). */
+  composeHeight?: ComposeSheetHeight;
+}
+
+/** Each sheet's screen, loaded on its first open, and its resting heights. */
+export const SHEETS: Record<SheetRouteName, SheetConfig> = {
   AccountSheet: {
     getComponent: () => require('../components/AccountSheet').AccountSheet,
     detents: [0.6, 0.95],
+    // A Material sheet has no 60% stop to rest at; it fits the settings.
+    composeHeight: 'fit',
   },
   ScanContextSheet: {
     getComponent: () => require('../screens/sheets/ScanContextSheet').ScanContextSheet,
@@ -43,12 +51,15 @@ const SHEETS: Record<
   },
 };
 
-/** The form-sheet routes for the root stack, themed. */
+/**
+ * The form-sheet routes for the root stack, themed. None on Android, where
+ * SheetHost shows the drawers as Material bottom sheets instead.
+ */
 export function useSheetScreens() {
   const { tokens } = useTheme();
   return useMemo(
     () =>
-      (Object.keys(SHEETS) as SheetRouteName[]).map((name) => ({
+      (COMPOSE_SHEETS ? [] : (Object.keys(SHEETS) as SheetRouteName[])).map((name) => ({
         name,
         getComponent: SHEETS[name].getComponent,
         options: sheetOptions(tokens.bg, SHEETS[name].detents),

@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigation } from '@react-navigation/native';
+import { useCloseSheet } from '../../navigation/sheetPresenter';
 import { Icon, ListRow, Sheet } from '../../components/ui';
 import { scanContextSheet } from '../../navigation/sheetData';
 import { useTheme } from '../../theme';
@@ -11,7 +11,7 @@ import { useSheetData } from './useSheetData';
  */
 export function ScanContextSheet() {
   const { tokens } = useTheme();
-  const navigation = useNavigation();
+  const close = useCloseSheet();
   const data = useSheetData(scanContextSheet);
   if (!data) return null;
   const { title, eventName, contexts, selectedId, onSelect } = data;
@@ -29,7 +29,7 @@ export function ScanContextSheet() {
             chevron={false}
             divider={index < contexts.length - 1}
             onPress={() => {
-              navigation.goBack();
+              close();
               onSelect(context);
             }}
           />

@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, Icon, PressableSurface, SheetHeader, SHEET_INSET, TextField } from '../../components/ui';
+import { Button, Icon, PressableSurface, SheetHeader, SHEET_INSET, TextField, useSheetBottomPadding } from '../../components/ui';
 import { multiSelectSheet } from '../../navigation/sheetData';
 import { useTheme } from '../../theme';
 import { useSheetData } from './useSheetData';
@@ -9,7 +8,7 @@ import { useSheetData } from './useSheetData';
 /** A searchable checklist for picking participants or staff; every tick applies at once. */
 export function MultiSelectSheet() {
   const { tokens, type, spacing } = useTheme();
-  const insets = useSafeAreaInsets();
+  const bottomPadding = useSheetBottomPadding();
   const data = useSheetData(multiSelectSheet);
   const [query, setQuery] = useState('');
   const items = data?.items;
@@ -33,7 +32,7 @@ export function MultiSelectSheet() {
   return (
     <FlatList
       style={{ backgroundColor: tokens.bg }}
-      contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, SHEET_INSET) }}
+      contentContainerStyle={{ paddingBottom: bottomPadding }}
       data={filtered}
       keyExtractor={(item) => item.id}
       keyboardShouldPersistTaps="handled"

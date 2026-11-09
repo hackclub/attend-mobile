@@ -1,4 +1,4 @@
-import { isRouteUnderSheets, isSheetRoute } from '../sheets';
+import { composeSheetHeight, isRouteUnderSheets, isSheetRoute } from '../sheets';
 
 const main = (tab: string, stackTop: string) => ({
   key: 'main',
@@ -50,5 +50,22 @@ describe('isRouteUnderSheets', () => {
       routes: [main('Scanner', 'scan'), { key: 'k', name: 'KioskSetup' }, { key: 's', name: 'OptionsSheet' }],
     };
     expect(isRouteUnderSheets(state, 'scan')).toBe(false);
+  });
+});
+
+describe('composeSheetHeight', () => {
+  it('fits content when the form sheet does', () => {
+    expect(composeSheetHeight('fitToContents')).toBe('fit');
+    expect(composeSheetHeight(undefined)).toBe('fit');
+    expect(composeSheetHeight([])).toBe('fit');
+  });
+
+  it('takes the largest detent', () => {
+    expect(composeSheetHeight([0.9])).toBe(0.9);
+    expect(composeSheetHeight([0.5, 0.95])).toBe(0.95);
+  });
+
+  it('never exceeds the screen', () => {
+    expect(composeSheetHeight([1.2])).toBe(1);
   });
 });

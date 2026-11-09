@@ -1,19 +1,19 @@
 import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useCloseSheet } from '../../navigation/sheetPresenter';
 import { Button, Sheet, SHEET_INSET, TextField } from '../../components/ui';
 import { linkSheet } from '../../navigation/sheetData';
 import { useSheetData } from './useSheetData';
 
 /** The message editor's "Add a link". */
 export function LinkSheet() {
-  const navigation = useNavigation();
+  const close = useCloseSheet();
   const data = useSheetData(linkSheet);
   const [url, setUrl] = useState('https://');
   if (!data) return null;
 
   const submit = () => {
-    navigation.goBack();
+    close();
     data.onSubmit(url.trim());
   };
 

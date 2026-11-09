@@ -1,9 +1,10 @@
 import type { RootStackParamList } from '../types';
 
 /**
- * Root-stack routes presented as native form sheets (a UISheetPresentation
- * sheet on iOS, a Material BottomSheetBehavior sheet on Android). Their data
- * and callbacks come through a sheet channel (navigation/sheetChannel).
+ * The drawers. On iOS they're root-stack routes presented as form sheets
+ * (UISheetPresentationController); on Android, Material 3 bottom sheets
+ * mounted by SheetHost (see navigation/sheetPresenter). Their data and
+ * callbacks come through a sheet channel (navigation/sheetChannel).
  */
 export const SHEET_ROUTES = [
   'AccountSheet',
@@ -45,4 +46,20 @@ export function isRouteUnderSheets(rootState: StateLike | undefined, routeKey: s
     route = child.routes[child.index ?? 0];
   }
   return false;
+}
+
+/**
+ * An Android bottom sheet's height: 'fit' sizes it to its content (up to
+ * nearly the screen), a number is that fraction of the space it can take.
+ */
+export type ComposeSheetHeight = 'fit' | number;
+
+/**
+ * The Android height that matches a form sheet's detents: a sheet that fits
+ * its content does there too, and the others are as tall as their largest
+ * detent.
+ */
+export function composeSheetHeight(detents: readonly number[] | 'fitToContents' | undefined): ComposeSheetHeight {
+  if (!detents || detents === 'fitToContents' || detents.length === 0) return 'fit';
+  return Math.min(1, Math.max(...detents));
 }

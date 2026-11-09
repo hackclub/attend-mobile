@@ -11,8 +11,6 @@ import {
   type TextInputProps,
   type ViewStyle,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import {
   ActionMenu,
@@ -35,8 +33,9 @@ import {
 } from './ui';
 import { CHROME_MAX_FONT_SCALE } from './ui/fontScale';
 import { hackClubColors, useTheme, useThemedStyles, type Theme } from '../theme';
-import type { AppStackParamList, IncidentLevel, SelectOption } from '../types';
+import type { IncidentLevel, SelectOption } from '../types';
 import { multiSelectSheet, optionsSheet, type MultiSelectSheetItem } from '../navigation/sheetData';
+import { useOpenSheet } from '../navigation/sheetPresenter';
 
 // Form and detail-page building blocks for the stack screens (incidents,
 // messages, inbox, the report form), drawn with the console tokens and the
@@ -162,7 +161,7 @@ export function SelectField({
 }) {
   const { tokens, radii } = useTheme();
   const styles = useThemedStyles(makeStyles);
-  const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
+  const openSheet = useOpenSheet();
   const selected = options.find(o => o.value === value);
   const label = selected?.label ?? placeholder;
   const claimSheet = optionsSheet.useOpener({
@@ -207,7 +206,7 @@ export function SelectField({
       rippleColor={tokens.text}
       onPress={() => {
         claimSheet();
-        navigation.navigate('OptionsSheet');
+        openSheet('OptionsSheet');
       }}
       disabled={disabled}
       accessibilityRole="button"
@@ -241,7 +240,7 @@ export function MultiSelectField({
 }) {
   const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
-  const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
+  const openSheet = useOpenSheet();
   const selectedSet = useMemo(() => new Set(selected), [selected]);
   const names = items.filter(i => selectedSet.has(i.id)).map(i => i.title);
   const claimSheet = multiSelectSheet.useOpener({ title, items, selected, onChange, noun, searchPlaceholder });
@@ -253,7 +252,7 @@ export function MultiSelectField({
       rippleColor={tokens.text}
       onPress={() => {
         claimSheet();
-        navigation.navigate('MultiSelectSheet');
+        openSheet('MultiSelectSheet');
       }}
       accessibilityRole="button"
       accessibilityLabel={`${title}: ${selected.length} ${selected.length === 1 ? noun[0] : noun[1]} selected`}

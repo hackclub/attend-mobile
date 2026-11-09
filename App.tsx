@@ -49,6 +49,8 @@ import { ROOT_NAVIGATOR } from './src/navigation/routes';
 import { linkingConfig } from './src/navigation/linking';
 import { lazyScreens } from './src/navigation/lazyScreens';
 import { useSheetScreens } from './src/navigation/sheetScreens';
+import { sheetStack } from './src/navigation/sheetStack';
+import { SheetHost } from './src/components/SheetHost';
 
 const REPLAY_ENABLED = Platform.OS === 'ios';
 
@@ -288,6 +290,12 @@ function RootNavigator() {
   const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const sheetScreens = useSheetScreens();
+  const isAuthenticated = state.auth.isAuthenticated;
+
+  // Signing out closes any drawer still open (Android's aren't routes).
+  useEffect(() => {
+    if (!isAuthenticated) sheetStack.clear();
+  }, [isAuthenticated]);
 
   if (state.auth.isLoading) {
     return (
@@ -489,6 +497,7 @@ function ThemedNavigationContainer({
           readable against whichever background the scheme paints. */}
       <StatusBar style="auto" />
       {children}
+      <SheetHost />
     </NavigationContainer>
   );
 }

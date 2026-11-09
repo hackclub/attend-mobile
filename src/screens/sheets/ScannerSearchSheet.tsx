@@ -1,7 +1,5 @@
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, Keyboard, StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Flashbar,
   Icon,
@@ -9,9 +7,11 @@ import {
   SheetHeader,
   SHEET_INSET,
   TextField,
+  useSheetBottomPadding,
 } from '../../components/ui';
 import { useParticipants } from '../../hooks/useParticipants';
 import { scannerSearchSheet } from '../../navigation/sheetData';
+import { useCloseSheet } from '../../navigation/sheetPresenter';
 import { useTheme } from '../../theme';
 import type { Participant } from '../../types';
 import { useSheetData } from './useSheetData';
@@ -31,8 +31,8 @@ export function looksLikeAttendeeId(query: string): boolean {
  */
 export function ScannerSearchSheet() {
   const { tokens, type, spacing } = useTheme();
-  const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
+  const bottomPadding = useSheetBottomPadding();
+  const close = useCloseSheet();
   const data = useSheetData(scannerSearchSheet);
   const { search, clearSearch, searchResults, isSearching } = useParticipants();
   const [query, setQuery] = useState('');
@@ -58,7 +58,7 @@ export function ScannerSearchSheet() {
     if (isProcessing || needsContext) return;
     Keyboard.dismiss();
     await run();
-    navigation.goBack();
+    close();
   };
 
   const results = canSearchRoster ? searchResults ?? [] : [];
@@ -75,7 +75,7 @@ export function ScannerSearchSheet() {
   return (
     <FlatList
       style={{ backgroundColor: tokens.bg }}
-      contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, SHEET_INSET) }}
+      contentContainerStyle={{ paddingBottom: bottomPadding }}
       data={results}
       keyExtractor={(item, index) => item.participant_event_id || item.participant_id || `attendee-${index}`}
       keyboardShouldPersistTaps="handled"

@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { BackHandler, View, Text, StyleSheet, TextInput } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../theme';
 import {
   Button,
@@ -28,6 +27,7 @@ import {
   type FieldOption,
 } from '../services/participantFilters';
 import { filterSheet, type FilterSheetData } from '../navigation/sheetData';
+import { useCloseSheet } from '../navigation/sheetPresenter';
 import { useSheetData } from '../screens/sheets/useSheetData';
 
 
@@ -44,7 +44,7 @@ const PICKER_TITLES: Record<PickerTarget['kind'], string> = {
   'sort-field': 'Sort by',
 };
 
-/** People's filter & sort, a form-sheet route opened through `filterSheet`. */
+/** People's filter & sort, a drawer opened through `filterSheet`. */
 export function FilterSheet() {
   const data = useSheetData(filterSheet);
   return data ? <FilterSheetBody {...data} /> : null;
@@ -63,7 +63,6 @@ function FilterSheetBody({
   filterContext,
 }: FilterSheetData) {
   const { tokens, type, radii } = useTheme();
-  const navigation = useNavigation();
   const [picker, setPicker] = useState<PickerTarget | null>(null);
   const [viewName, setViewName] = useState('');
   const [isNamingView, setIsNamingView] = useState(false);
@@ -156,11 +155,13 @@ function FilterSheetBody({
     }
   }, [viewName, onSaveView]);
 
-  const handleClose = useCallback(() => navigation.goBack(), [navigation]);
+  const handleClose = useCloseSheet();
 
-  // Android's back button leaves an option list for the filters, as the
-  // list's Back button does, rather than dismissing the whole sheet. This
-  // listener is newer than the navigator's, so it runs first.
+  // The back button leaves an option list for the filters, as the list's
+  // Back button does, rather than dismissing the whole sheet. This listener
+  // is newer than the navigator's, so it runs first. (Android's Material
+  // bottom sheet is a window of its own that takes back itself, so there
+  // back dismisses the sheet and this doesn't run.)
   useEffect(() => {
     if (!picker) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {

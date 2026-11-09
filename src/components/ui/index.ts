@@ -18,7 +18,14 @@ export {
   type SegmentedControlProps,
 } from './SegmentedControl';
 export { Screen, ScreenHeading, type ScreenProps, type ScreenHeadingProps } from './Screen';
-export { Sheet, SheetHeader, SHEET_INSET, type SheetProps, type SheetHeaderProps } from './Sheet';
+export {
+  Sheet,
+  SheetHeader,
+  SHEET_INSET,
+  useSheetBottomPadding,
+  type SheetProps,
+  type SheetHeaderProps,
+} from './Sheet';
 export { Stat, type StatProps } from './Stat';
 export {
   EmptyState,

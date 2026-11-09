@@ -1,14 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { Platform, StyleSheet, Text, View, type TextStyle } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { PressableSurface } from './ui/PressableSurface';
 import { Icon, type IconName } from './ui/Icon';
 import { parseHtml, type Block, type Inline } from '../services/richText';
 import { TextField } from './forms';
 import { linkSheet } from '../navigation/sheetData';
+import { useOpenSheet } from '../navigation/sheetPresenter';
 import { useOpenLink } from '../hooks/useOpenLink';
-import type { AppStackParamList } from '../types';
 import { useTheme, useThemedStyles, type Theme } from '../theme';
 
 /** Renders a message body's HTML natively. */
@@ -114,7 +112,7 @@ export function MarkupEditor({
   const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const [selection, setSelection] = useState<Selection>({ start: value.length, end: value.length });
-  const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
+  const openSheet = useOpenSheet();
 
   const wrap = (marker: string, fallback: string) => {
     const { start, end } = selection;
@@ -141,7 +139,7 @@ export function MarkupEditor({
   const claimLinkSheet = linkSheet.useOpener({ onSubmit: insertLink });
   const openLinkSheet = () => {
     claimLinkSheet();
-    navigation.navigate('LinkSheet');
+    openSheet('LinkSheet');
   };
 
   const tools: { icon: IconName | null; label: string; text?: string; onPress: () => void }[] = [

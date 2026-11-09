@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useCloseSheet } from '../../navigation/sheetPresenter';
 import { Icon, ListRow, PressableSurface, Sheet, SHEET_INSET } from '../../components/ui';
 import { optionsSheet } from '../../navigation/sheetData';
 import { useTheme } from '../../theme';
@@ -12,7 +12,7 @@ import { useSheetData } from './useSheetData';
  */
 export function OptionsSheet() {
   const { tokens } = useTheme();
-  const navigation = useNavigation();
+  const close = useCloseSheet();
   const data = useSheetData(optionsSheet);
   // The sheet stays on screen while it animates away, so a second tap could
   // land on another option: only the first choice counts.
@@ -23,7 +23,7 @@ export function OptionsSheet() {
   const choose = (value: string) => {
     if (chosen.current) return;
     chosen.current = true;
-    navigation.goBack();
+    close();
     onSelect(value);
   };
 

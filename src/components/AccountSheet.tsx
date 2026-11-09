@@ -1,16 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
 import { haptics } from '../services/haptics';
 import { useOpenLink } from '../hooks/useOpenLink';
+import { useCloseSheet, useOpenSheet } from '../navigation/sheetPresenter';
 import { biometricService } from '../services/biometric';
 import { notificationService } from '../services/notifications';
 import { overlayTokens, useTheme, useThemePreference, withAlpha, type ThemePreference } from '../theme';
 import { appVersionLabel } from './VersionFooter';
 import { signOutConfirmation } from './signOutConfirmation';
-import type { AppStackParamList } from '../types';
 import {
   Avatar,
   Badge,
@@ -50,7 +48,7 @@ export function AccountButton({
 }) {
   const { state } = useApp();
   const { tokens } = useTheme();
-  const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
+  const openSheet = useOpenSheet();
   const user = state.auth.user;
   const name = user?.name || user?.email || 'Account';
   // A borderless ripple draws on whatever is behind the avatar: white over a
@@ -60,7 +58,7 @@ export function AccountButton({
     : ripple(tokens.text, { alpha: STATE_LAYER_ALPHA, borderless: true, radius: size / 2 + 4 });
   return (
     <Pressable
-      onPress={onPress ?? (() => navigation.navigate('AccountSheet'))}
+      onPress={onPress ?? (() => openSheet('AccountSheet'))}
       hitSlop={4}
       android_ripple={rippleConfig}
       style={({ pressed }) => [
@@ -98,13 +96,12 @@ function useBiometricRemaining() {
 /**
  * Account and app settings: who is signed in, appearance, notifications, the
  * biometric lock, and sign out. Profile edits happen on the web; the API's
- * /me is read-only. A form-sheet route (AccountSheet).
+ * /me is read-only. A drawer (AccountSheet).
  */
 export function AccountSheet() {
   const { tokens, type, spacing } = useTheme();
   const openLink = useOpenLink();
-  const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
-  const onClose = useCallback(() => navigation.goBack(), [navigation]);
+  const onClose = useCloseSheet();
   const { state, logout, flushBeforeSignOut } = useApp();
   const [signingOut, setSigningOut] = useState(false);
   const { preference, setPreference } = useThemePreference();

@@ -35,6 +35,7 @@ import {
 import { CHROME_MAX_FONT_SCALE } from '../components/ui/fontScale';
 import { scanContextSheet, scannerSearchSheet } from '../navigation/sheetData';
 import { useIsUnderSheet } from '../navigation/useIsUnderSheet';
+import { useOpenSheet } from '../navigation/sheetPresenter';
 import { api } from '../services/api';
 import { haptics } from '../services/haptics';
 import { computeEventStats } from '../services/eventStats';
@@ -49,6 +50,7 @@ const SHEET_CLOSE_SCAN_COOLDOWN_MS = 400;
 
 export function ScannerScreen() {
   const navigation = useNavigation<NavigationProp>();
+  const openSheet = useOpenSheet();
   const { state, updateParticipant } = useApp();
   const {
     handleScan,
@@ -92,14 +94,16 @@ export function ScannerScreen() {
     ? scanContexts.find(context => context.id === selectedContextId)
     : undefined;
   const canScan = contextsReady && !needsContext;
-  // A form sheet (the context picker, search) blurs this screen but leaves
-  // it on show, so the camera stays mounted under it, paused: restarting it
-  // blanks the preview. It unmounts on a tab switch or a full-screen route.
+  // A sheet (the context picker, search) leaves this screen on show, so the
+  // camera stays mounted under it, paused: restarting it blanks the preview.
+  // It unmounts on a tab switch or a full-screen route. (An iOS form sheet
+  // blurs the screen; an Android bottom sheet is a window over a screen
+  // that stays focused, hence `!sheetOpen` below as well as `isFocused`.)
   const { underSheet: sheetOpen, checkUnderSheet } = useIsUnderSheet();
   const cameraMounted = isFocused || sheetOpen;
   // Until staff choose a context the camera sends nothing: the scan frame is
   // covered with the reason instead of failing a scan they lined up.
-  const cameraScanningEnabled = isFocused && canScan;
+  const cameraScanningEnabled = isFocused && !sheetOpen && canScan;
   // The camera always gets the same handler: toggling onBarcodeScanned makes
   // expo-camera rebuild its capture session, which blanks the preview every
   // time a sheet opens. Scans are gated here instead. A short cooldown after a
@@ -137,11 +141,11 @@ export function ScannerScreen() {
   );
 
   // Android reads NFC badges while the scanner is open, under the camera's
-  // conditions: not behind the context picker or search (which blur it).
+  // conditions: not behind the context picker or search.
   // Unlike the camera it stays on before a context is chosen, so a tap
   // explains that one is needed. iOS needs the NFC button's system sheet.
   useNfcAutoRead({
-    enabled: isFocused && hasEvent && contextsReady,
+    enabled: isFocused && !sheetOpen && hasEvent && contextsReady,
     onToken: (token, isBadge) => {
       recordScannerActivity();
       void handleNfcToken(token, isBadge);
@@ -200,8 +204,8 @@ export function ScannerScreen() {
   const openSearch = useCallback(() => {
     recordScannerActivity();
     claimSearchSheet();
-    navigation.navigate('ScannerSearchSheet');
-  }, [claimSearchSheet, navigation, recordScannerActivity]);
+    openSheet('ScannerSearchSheet');
+  }, [claimSearchSheet, openSheet, recordScannerActivity]);
 
   const claimContextSheet = scanContextSheet.useOpener({
     title: 'Scan context',
@@ -216,8 +220,8 @@ export function ScannerScreen() {
   const openContextPicker = useCallback(() => {
     recordScannerActivity();
     claimContextSheet();
-    navigation.navigate('ScanContextSheet');
-  }, [claimContextSheet, navigation, recordScannerActivity]);
+    openSheet('ScanContextSheet');
+  }, [claimContextSheet, openSheet, recordScannerActivity]);
 
   const viewDetails = useCallback(() => {
     if (!lastScan?.participant) return;

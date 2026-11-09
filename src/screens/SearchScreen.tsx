@@ -18,6 +18,7 @@ import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { ParticipantRow } from '../components/ParticipantRow';
 import { SplitView } from '../components/SplitView';
 import { filterSheet } from '../navigation/sheetData';
+import { useOpenSheet } from '../navigation/sheetPresenter';
 import { ParticipantDetailContent } from './ParticipantDetailContent';
 import { api } from '../services/api';
 import { radii, useTheme } from '../theme';
@@ -59,6 +60,7 @@ export function SearchScreen() {
   // Zero once the native bar is laid out as a side rail — see useTabBarInset.
   const tabBarInset = useTabBarInset();
   const navigation = useNavigation<NavigationProp>();
+  const openSheet = useOpenSheet();
   const { useSplitView } = useResponsiveLayout();
   const { canViewParticipantRecords, roleLabel } = useEventAccess();
   const {
@@ -214,8 +216,8 @@ export function SearchScreen() {
   });
   const openFilterSheet = useCallback(() => {
     claimFilterSheet();
-    navigation.navigate('FilterSheet');
-  }, [claimFilterSheet, navigation]);
+    openSheet('FilterSheet');
+  }, [claimFilterSheet, openSheet]);
 
   const removeRule = useCallback(
     (ruleId: string) => {

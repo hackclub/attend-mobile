@@ -8,9 +8,9 @@ jest.mock('react-native', () => ({
   StyleSheet: { create: <T,>(styles: T) => styles },
   View: 'View',
 }));
-const mockGoBack = jest.fn();
-jest.mock('@react-navigation/native', () => ({
-  useNavigation: () => ({ goBack: mockGoBack, canGoBack: () => true }),
+const mockClose = jest.fn();
+jest.mock('../../../navigation/sheetPresenter', () => ({
+  useCloseSheet: () => mockClose,
 }));
 jest.mock('../../../theme', () => ({
   useTheme: () => ({ tokens: { accent: 'accent', text: 'text', div2: 'div2' } }),
@@ -45,5 +45,5 @@ it('only takes the first choice when tapped twice', async () => {
   });
   expect(mockOnSelect).toHaveBeenCalledTimes(1);
   expect(mockOnSelect).toHaveBeenCalledWith('a');
-  expect(mockGoBack).toHaveBeenCalledTimes(1);
+  expect(mockClose).toHaveBeenCalledTimes(1);
 });
