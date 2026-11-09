@@ -25,6 +25,11 @@ function updateLabel(): string {
   return `update ${shortId} · ${date} ${time}`;
 }
 
+/** "1.0.0 · embedded build", for the Account sheet's Version row. */
+export function appVersionLabel(): string {
+  return `${Updates.runtimeVersion ?? '?'} · ${updateLabel()}`;
+}
+
 export function VersionFooter() {
   const styles = useThemedStyles(makeStyles);
 

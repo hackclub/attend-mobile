@@ -472,6 +472,7 @@ export interface AppState {
 export type RootStackParamList = {
   Login: undefined;
   Main: undefined;
+  SwitchEvent: undefined;
   ParticipantMain: undefined;
   // `id` (a participant_event id) comes from the attend://participant/:id
   // deep link; the screen looks it up once the gate is unlocked.
@@ -498,7 +499,7 @@ export type RootStackParamList = {
 };
 
 export type MainTabParamList = {
-  Events: undefined;
+  Overview: undefined;
   Scanner: undefined;
   Search: undefined;
   Travel: undefined;

@@ -12,7 +12,9 @@ import { notificationService } from './src/services/notifications';
 import { AppProvider, useApp } from './src/context/AppContext';
 import { useEventAccess } from './src/hooks/useEventAccess';
 import { LoginScreen } from './src/screens/LoginScreen';
-import { EventListScreen } from './src/screens/EventListScreen';
+import { EventHome } from './src/screens/EventHome';
+import { SwitchEventScreen } from './src/screens/SwitchEventScreen';
+import { RoleRestricted } from './src/components/RoleRestricted';
 import { ScannerScreen } from './src/screens/ScannerScreen';
 
 import { SearchScreen } from './src/screens/SearchScreen';
@@ -125,11 +127,17 @@ function useAndroidTabBarProps() {
   };
 }
 
+// People is the roster. A role without participant records keeps the tab but
+// sees why it's empty, rather than the tab vanishing.
+function PeopleTab() {
+  const { canViewParticipantRecords } = useEventAccess();
+  return canViewParticipantRecords ? <SearchScreen /> : <RoleRestricted fill />;
+}
+
 function MainTabs() {
-  // A role without participant records gets no Search tab at all: the roster,
-  // the search box, and every participant link behind it would only 403. An
-  // event that doesn't run travel gets no Travel tab.
-  const { canViewParticipantRecords, showTravel } = useEventAccess();
+  // Every organizer gets Overview, Scan and People; Travel only shows for an
+  // event that runs travel.
+  const { showTravel } = useEventAccess();
   const { colors } = useTheme();
   const androidTabBarProps = useAndroidTabBarProps();
 
@@ -139,11 +147,11 @@ function MainTabs() {
       {...androidTabBarProps}
     >
       <Tab.Screen
-        name="Events"
-        component={EventListScreen}
+        name="Overview"
+        component={EventHome}
         options={{
-          tabBarLabel: 'Events',
-          tabBarIcon: tabIcon('calendar', require('./assets/tabs/calendar.svg')),
+          tabBarLabel: 'Overview',
+          tabBarIcon: tabIcon('house', require('./assets/tabs/home.svg')),
         }}
       />
       <Tab.Screen
@@ -154,16 +162,14 @@ function MainTabs() {
           tabBarIcon: tabIcon('qrcode.viewfinder', require('./assets/tabs/scan.svg')),
         }}
       />
-      {canViewParticipantRecords ? (
-        <Tab.Screen
-          name="Search"
-          component={SearchScreen}
-          options={{
-            tabBarLabel: 'Search',
-            tabBarIcon: tabIcon('magnifyingglass', require('./assets/tabs/search.svg')),
-          }}
-        />
-      ) : null}
+      <Tab.Screen
+        name="Search"
+        component={PeopleTab}
+        options={{
+          tabBarLabel: 'People',
+          tabBarIcon: tabIcon('person.2', require('./assets/tabs/people.svg')),
+        }}
+      />
       {showTravel ? (
         <Tab.Screen
           name="Travel"
@@ -213,10 +219,9 @@ function RootNavigator() {
   }
 
   const user = state.auth.user;
-  // Organizers (global admins or anyone with a staff role) get the scanner
-  // experience. Everyone else lands on their tickets. A user who is both a
-  // participant and an organizer defaults to the scanner app but can reach
-  // their tickets from the Events header.
+  // Organizers (global admins or anyone with a staff role) get the event
+  // tabs. Everyone else lands on their tickets. A user who is both lands on
+  // the tabs and reaches the events they attend from the event switcher.
   const isOrganizer = !!(user?.is_organizer ?? user?.global_admin);
   const isParticipant = !!user?.is_participant;
   const showParticipant = isParticipant || !isOrganizer;
@@ -226,6 +231,13 @@ function RootNavigator() {
       {state.auth.isAuthenticated ? (
         <>
           {isOrganizer && <Stack.Screen name="Main" component={MainTabs} />}
+          {isOrganizer && (
+            <Stack.Screen
+              name="SwitchEvent"
+              component={SwitchEventScreen}
+              options={{ presentation: 'modal' }}
+            />
+          )}
           {showParticipant && (
             <Stack.Screen name="ParticipantMain" component={MyTicketsScreen} />
           )}
@@ -290,13 +302,15 @@ const linking = {
     screens: {
       Main: {
         screens: {
-          Scanner: 'scanner',
-          Events: 'events',
-          Search: 'search',
+          // attend://scan, attend://people and attend://tickets are the
+          // app shortcuts'; the older paths keep working.
+          Scanner: { path: 'scanner', alias: ['scan'] },
+          Overview: { path: 'overview', alias: ['events'] },
+          Search: { path: 'search', alias: ['people'] },
           Travel: 'travel',
         },
       },
-      ParticipantMain: 'my-tickets',
+      ParticipantMain: { path: 'my-tickets', alias: ['tickets'] },
       ParticipantDetail: 'participant/:id',
       IncidentList: 'incidents',
       IncidentReport: 'incident',
@@ -315,7 +329,7 @@ export default Sentry.wrap(function App() {
     // matched the Expo dev client's launch URL, which contains the app slug
     // ("attend-scanner") and fired before the navigator mounted.
     const isScannerLink = (url: string) =>
-      /^attend:\/\/(--\/)?scanner/.test(url);
+      /^attend:\/\/(--\/)?scan(ner)?(\/|\?|$)/.test(url);
 
     const openScanner = (url?: string | null) => {
       if (url && isScannerLink(url) && navigationRef.current?.isReady()) {
