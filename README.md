@@ -2,15 +2,15 @@
 
 The mobile companion app for [Attend](https://attend.hackclub.com), Hack Club's event attendance platform. Organizers use it to check participants in at the door; participants use it to carry their tickets.
 
-Built with Expo / React Native, with native Swift modules for Live Activities and Apple Wallet.
+Built with Expo / React Native, with native modules for Live Activities / Android Live Updates (Swift and Kotlin), Apple Wallet and home screen shortcuts.
 
 ## What it does
 
 **For organizers:**
 
 - **QR check-in** — scan participant QR codes (`attend:P:{uuid}`) for instant check-in
-- **NFC badges** — write and scan NFC badges for tap-to-check-in
-- **Offline-first** — scans queue locally when offline and sync automatically when connectivity returns
+- **NFC badges** — write and scan NFC badges for tap-to-check-in, on iOS and Android (Android reads badges automatically while the scanner is open)
+- **Offline scan queue** — when Attend can't be reached, a scan is saved on the device and shown as "Saved offline" (never as checked in); it syncs automatically when the connection returns or the app reopens, and the Overview shows how many scans are pending
 - **Participant search & filtering** — Airtable-style filtering across the participant list, with medical alerts (anaphylaxis risk, high support needs) surfaced prominently
 - **Emergency contacts** — tap-to-call from a participant's detail view
 - **Travel** — arrivals and departures by plane, train, bus or car, with unaccompanied-minor pickup tracking
@@ -18,13 +18,13 @@ Built with Expo / React Native, with native Swift modules for Live Activities an
 - **Biometric lock** — full participant details, wherever they appear (including the iPad split view and ID checks), need the device's biometrics or passcode; an unlock lasts five minutes and ends when the app goes to the background or you sign out. The app is covered in the app switcher, and on Android screenshots are blocked while details are on screen
 - **Incident log** — log, edit, comment on and escalate event incidents to Hack Club HQ, with the same role-based visibility as the web
 - **Messages** — compose, preview, schedule and send email / SMS / Slack / push broadcasts, and follow each delivery
-- **Live Activities** — the event's check-in count on the Lock Screen and Dynamic Island (iOS)
+- **Live Activities / Live Updates** — the event's check-in count on the Lock Screen and Dynamic Island (iOS), or as a promoted live notification (Android 16+, ongoing notification on older Android)
 
 **For participants:**
 
 - **My tickets** — view event tickets with QR codes
 - **Apple Wallet & Google Wallet** — add tickets as wallet passes
-- **Live Activities** — event-day ticket status on the Lock Screen and Dynamic Island (iOS)
+- **Live Activities / Live Updates** — event-day ticket status on the Lock Screen and Dynamic Island (iOS) or as a live notification (Android)
 - **Push notifications** — event updates from organizers
 - **Inbox** — every organizer message, searchable by event, opened straight from its push notification
 - **Incident reports** — the confidential report to Hack Club HQ, with photo and file attachments
@@ -86,7 +86,8 @@ src/
   hooks/       useScanner, useParticipants, useNFC, useAuth, ...
   components/  shared UI
 modules/
-  activity-controller/  native Swift module for starting/updating Live Activities
+  activity-controller/  native module for Live Activities (Swift) and Live Updates (Kotlin)
+  app-shortcuts/        iOS home screen quick actions (Android shortcuts come from plugins/withAppShortcuts.js)
   wallet/               native Swift module for adding Apple Wallet passes
   mrtd-reader/          native Swift module that reads passport and ID card chips for ID checks
 targets/

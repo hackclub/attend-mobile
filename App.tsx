@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useMemo, useCallback } from 'react';
 import { ActivityIndicator, View, StyleSheet, Platform } from 'react-native';
+import { useAppShortcutLaunch } from './src/hooks/useAppShortcutLaunch';
 import { NavigationContainer, DefaultTheme, DarkTheme, NavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
@@ -323,6 +324,9 @@ const linking = {
 
 export default Sentry.wrap(function App() {
   const navigationRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
+
+  // iOS home screen quick actions (Android shortcuts arrive as plain links).
+  useAppShortcutLaunch();
 
   useEffect(() => {
     // Only genuine attend:// deep links count. A loose substring check also

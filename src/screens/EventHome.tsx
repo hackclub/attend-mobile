@@ -572,7 +572,7 @@ function ArrivalRow({ group }: { group: ArrivalGroup }) {
 function LiveActivityRow() {
   const { tokens, type } = useTheme();
   const { startLiveActivity, stopLiveActivity } = useApp();
-  const supported = Platform.OS === 'ios' && liveActivityService.isSupported();
+  const supported = liveActivityService.isSupported();
   // Keyed by event where it's rendered, so this re-reads on a switch.
   const [running, setRunning] = useState(() => liveActivityService.isRunning());
 
