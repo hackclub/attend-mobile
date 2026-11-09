@@ -17,7 +17,7 @@ import {
   StatusIndicator,
 } from '../components/ui';
 import { formatDateTime } from '../components/forms';
-import { spacing, useTheme } from '../theme';
+import { previewTokens, radii, spacing, typography, useTheme } from '../theme';
 import type { MessagePreview, AppStackParamList } from '../types';
 
 type Nav = NativeStackNavigationProp<AppStackParamList, 'MessagePreview'>;
@@ -104,7 +104,7 @@ export function MessagePreviewScreen() {
     ]);
   };
 
-  const bold = { fontWeight: '700' as const, color: tokens.textH };
+  const bold = { fontWeight: typography.label.fontWeight, color: tokens.textH };
   const shown = preview.recipient_names;
   const more = preview.total_count - shown.length;
 
@@ -194,14 +194,29 @@ const styles = StyleSheet.create({
   section: { gap: spacing.md },
   tokens: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   // Mocks of Slack's dark message view and an SMS bubble, so they keep those apps' colours.
-  slack: { flexDirection: 'row', gap: 10, backgroundColor: '#1a1d21', borderRadius: 10, padding: 14 },
-  slackAvatar: { width: 36, height: 36, borderRadius: 6, backgroundColor: '#d42f46', alignItems: 'center', justifyContent: 'center' },
-  slackAvatarText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  slackName: { color: '#fff', fontWeight: '700' },
-  slackApp: { color: '#9ca3af', fontSize: 12, fontWeight: '400' },
-  slackBody: { color: '#f3f4f6', fontSize: 15, marginTop: 4, lineHeight: 21 },
-  sms: { alignSelf: 'flex-start', maxWidth: '85%', backgroundColor: '#22c55e', borderRadius: 18, borderBottomLeftRadius: 4, paddingHorizontal: 14, paddingVertical: 9 },
-  smsText: { color: '#fff', fontSize: 14 },
+  slack: { flexDirection: 'row', gap: 10, backgroundColor: previewTokens.slackBg, borderRadius: radii.item, padding: 14 },
+  slackAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: radii.badge,
+    backgroundColor: previewTokens.slackAvatar,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  slackAvatarText: { ...typography.small, fontWeight: typography.label.fontWeight, color: previewTokens.on },
+  slackName: { ...typography.label, color: previewTokens.on },
+  slackApp: { ...typography.small, color: previewTokens.slackMuted },
+  slackBody: { ...typography.body, color: previewTokens.slackText, marginTop: 4 },
+  sms: {
+    alignSelf: 'flex-start',
+    maxWidth: '85%',
+    backgroundColor: previewTokens.smsBubble,
+    borderRadius: radii.container,
+    borderBottomLeftRadius: radii.badge,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  smsText: { ...typography.body, color: previewTokens.on },
   smsMeta: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 6 },
   actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
 });

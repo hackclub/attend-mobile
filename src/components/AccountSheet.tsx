@@ -6,7 +6,7 @@ import { useApp } from '../context/AppContext';
 import { useOpenLink } from '../hooks/useOpenLink';
 import { biometricService } from '../services/biometric';
 import { notificationService } from '../services/notifications';
-import { useTheme, useThemePreference, type ThemePreference } from '../theme';
+import { overlayTokens, useTheme, useThemePreference, withAlpha, type ThemePreference } from '../theme';
 import { appVersionLabel } from './VersionFooter';
 import { signOutConfirmation } from './signOutConfirmation';
 import type { AppStackParamList } from '../types';
@@ -55,7 +55,7 @@ export function AccountButton({
   // A borderless ripple draws on whatever is behind the avatar: white over a
   // banner photo, the text colour over the page so it shows in light mode.
   const rippleConfig = onBanner
-    ? ripple('#ffffff', { alpha: 0.3, borderless: true, radius: size / 2 + 4 })
+    ? ripple(overlayTokens.on, { alpha: 0.3, borderless: true, radius: size / 2 + 4 })
     : ripple(tokens.text, { alpha: STATE_LAYER_ALPHA, borderless: true, radius: size / 2 + 4 });
   return (
     <Pressable
@@ -269,7 +269,7 @@ export function AccountSheet() {
 }
 
 const styles = StyleSheet.create({
-  bannerRing: { borderWidth: 2, borderColor: 'rgba(255,255,255,0.45)' },
+  bannerRing: { borderWidth: 2, borderColor: withAlpha(overlayTokens.on, 0.45) },
   identity: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 20, paddingVertical: 16 },
   identityText: { flex: 1, minWidth: 0 },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
