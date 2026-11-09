@@ -36,7 +36,6 @@ jest.mock('react-native', () => ({
 
 jest.mock('expo-system-ui', () => ({ setBackgroundColorAsync: jest.fn() }));
 jest.mock('expo-image', () => ({ Image: 'ExpoImage' }));
-jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 // The kit's controls render as host elements carrying their props.
 jest.mock('../ui', () => ({
   Badge: 'Badge',
