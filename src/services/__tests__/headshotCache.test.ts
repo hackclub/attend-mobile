@@ -21,6 +21,7 @@ jest.mock('../storage', () => ({
 
 import type { Participant } from '../../types';
 import {
+  PREFETCH_MAX_AGE_MS,
   clearHeadshotCache,
   prefetchHeadshots,
   scheduleHeadshotPrefetch,
@@ -125,6 +126,59 @@ describe('remembered headshots', () => {
 
     expect(mockPrefetch).toHaveBeenCalledTimes(2);
     expect(mockPrefetch.mock.calls[1][0]).toEqual(['https://images.example/b']);
+  });
+
+  it('fetches again once the remembered fetch is older than the max age', async () => {
+    const now = jest.spyOn(Date, 'now').mockReturnValue(1_000_000_000);
+    const person = participant('a', 'https://images.example/a');
+    await prefetchHeadshots([person]);
+
+    now.mockReturnValue(1_000_000_000 + PREFETCH_MAX_AGE_MS - 1);
+    await prefetchHeadshots([person]);
+    expect(mockPrefetch).toHaveBeenCalledTimes(1);
+
+    now.mockReturnValue(1_000_000_000 + PREFETCH_MAX_AGE_MS);
+    await prefetchHeadshots([person]);
+    expect(mockPrefetch).toHaveBeenCalledTimes(2);
+    now.mockRestore();
+  });
+
+  it('ignores expired entries remembered from an earlier launch', async () => {
+    const now = jest.spyOn(Date, 'now').mockReturnValue(1_000_000_000);
+    await prefetchHeadshots([participant('a', 'https://images.example/a')]);
+
+    now.mockReturnValue(1_000_000_000 + PREFETCH_MAX_AGE_MS + 1);
+    let relaunched: typeof import('../headshotCache') | undefined;
+    await jest.isolateModulesAsync(async () => {
+      relaunched = await import('../headshotCache');
+    });
+    await relaunched!.prefetchHeadshots([participant('a', 'https://images.example/a')]);
+
+    expect(mockPrefetch).toHaveBeenCalledTimes(2);
+    now.mockRestore();
+  });
+
+  it('ignores the older list without times', async () => {
+    mockStore.set('headshot_prefetched_urls', ['https://images.example/a']);
+    let relaunched: typeof import('../headshotCache') | undefined;
+    await jest.isolateModulesAsync(async () => {
+      relaunched = await import('../headshotCache');
+    });
+    await relaunched!.prefetchHeadshots([participant('a', 'https://images.example/a')]);
+
+    expect(mockPrefetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('remembers at most 5000, keeping the most recent', async () => {
+    const people = Array.from({ length: 5_001 }, (_, index) =>
+      participant(String(index), `https://images.example/${index}`)
+    );
+    await prefetchHeadshots(people);
+
+    const stored = mockStore.get('headshot_prefetched_urls') as Record<string, number>;
+    expect(Object.keys(stored)).toHaveLength(5_000);
+    expect(stored['https://images.example/0']).toBeUndefined();
+    expect(stored['https://images.example/5000']).toEqual(expect.any(Number));
   });
 
   it('forgets them on clear', async () => {

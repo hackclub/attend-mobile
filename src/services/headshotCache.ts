@@ -7,35 +7,65 @@ const PREFETCH_BATCH_SIZE = 8;
 // first screens have settled.
 export const HEADSHOT_PREFETCH_DELAY_MS = 3_000;
 // URLs already on disk, remembered across launches so only new or changed
-// headshots are fetched. Capped so a long-lived install can't grow it forever.
+// headshots are fetched, with when each was fetched. Capped so a long-lived
+// install can't grow it forever. Stored as { url: fetchedAtMs }; an older
+// plain list has no times, so it's ignored and everything fetched once more.
 const PREFETCHED_URLS_KEY = 'headshot_prefetched_urls';
 const MAX_REMEMBERED_URLS = 5_000;
+// expo-image's disk cache evicts on its own (size and age), and nothing
+// tells us when. Past this age an entry may be gone, so it's fetched again.
+export const PREFETCH_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 
-const prefetchedUrls = new Set<string>();
+// Insertion order is fetch order (an entry is moved to the end when fetched
+// again), so the cap keeps the most recent.
+const prefetchedUrls = new Map<string, number>();
+
+function isPrefetched(url: string, now: number): boolean {
+  const at = prefetchedUrls.get(url);
+  return at !== undefined && now - at < PREFETCH_MAX_AGE_MS;
+}
+
+function markPrefetched(url: string, at: number): void {
+  prefetchedUrls.delete(url);
+  prefetchedUrls.set(url, at);
+}
 let prefetchQueue: Promise<void> = Promise.resolve();
 let cacheGeneration = 0;
 let hydration: Promise<void> | null = null;
 
 function hydrate(): Promise<void> {
   const generation = cacheGeneration;
-  hydration ??= asyncStorage.get<string[]>(PREFETCHED_URLS_KEY)
-    .then(urls => {
-      if (generation !== cacheGeneration || !Array.isArray(urls)) return;
-      urls.forEach(url => prefetchedUrls.add(url));
+  hydration ??= asyncStorage.get<Record<string, number>>(PREFETCHED_URLS_KEY)
+    .then(stored => {
+      if (generation !== cacheGeneration) return;
+      if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return;
+      const now = Date.now();
+      Object.entries(stored)
+        .filter(([, at]) => typeof at === 'number' && now - at < PREFETCH_MAX_AGE_MS)
+        .sort(([, a], [, b]) => a - b)
+        .forEach(([url, at]) => {
+          // Fetched this launch before hydrating: that time is newer.
+          if (!prefetchedUrls.has(url)) markPrefetched(url, at);
+        });
     })
     .catch(() => undefined);
   return hydration;
 }
 
 function persist(): Promise<void> {
-  const urls = [...prefetchedUrls].slice(-MAX_REMEMBERED_URLS);
-  return asyncStorage.set(PREFETCHED_URLS_KEY, urls).catch(() => undefined);
+  const now = Date.now();
+  const entries = [...prefetchedUrls]
+    .filter(([, at]) => now - at < PREFETCH_MAX_AGE_MS)
+    .slice(-MAX_REMEMBERED_URLS);
+  prefetchedUrls.clear();
+  entries.forEach(([url, at]) => prefetchedUrls.set(url, at));
+  return asyncStorage.set(PREFETCHED_URLS_KEY, Object.fromEntries(entries)).catch(() => undefined);
 }
 
 /**
  * Saves the participants' headshots to the disk cache (not memory: most are
  * never shown this session), skipping any already fetched, on this launch
- * or an earlier one.
+ * or an earlier one within PREFETCH_MAX_AGE_MS.
  */
 export function prefetchHeadshots(participants: Participant[]): Promise<void> {
   const requestedUrls = [...new Set(
@@ -48,7 +78,8 @@ export function prefetchHeadshots(participants: Participant[]): Promise<void> {
   const run = prefetchQueue.catch(() => undefined).then(async () => {
     if (generation !== cacheGeneration) return;
     await hydrate();
-    const urls = requestedUrls.filter(url => !prefetchedUrls.has(url));
+    const now = Date.now();
+    const urls = requestedUrls.filter(url => !isPrefetched(url, now));
     let added = false;
 
     try {
@@ -57,7 +88,8 @@ export function prefetchHeadshots(participants: Participant[]): Promise<void> {
         const batch = urls.slice(index, index + PREFETCH_BATCH_SIZE);
         const succeeded = await Image.prefetch(batch, { cachePolicy: 'disk' });
         if (succeeded && generation === cacheGeneration) {
-          batch.forEach(url => prefetchedUrls.add(url));
+          const at = Date.now();
+          batch.forEach(url => markPrefetched(url, at));
           added = true;
         }
       }
