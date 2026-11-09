@@ -28,22 +28,8 @@ import { ScannerScreen } from './src/screens/ScannerScreen';
 
 import { SearchScreen } from './src/screens/SearchScreen';
 import { ParticipantDetailScreen } from './src/screens/ParticipantDetailScreen';
-import { TravelCalendarScreen } from './src/screens/TravelCalendarScreen';
-import { KioskSetupScreen } from './src/screens/KioskSetupScreen';
-import { KioskScreen } from './src/screens/KioskScreen';
 import { MyTicketsScreen } from './src/screens/MyTicketsScreen';
 import { TicketDetailScreen } from './src/screens/TicketDetailScreen';
-import { IncidentListScreen } from './src/screens/IncidentListScreen';
-import { IncidentDetailScreen } from './src/screens/IncidentDetailScreen';
-import { IncidentFormScreen } from './src/screens/IncidentFormScreen';
-import { IncidentReportScreen } from './src/screens/IncidentReportScreen';
-import { MessageListScreen } from './src/screens/MessageListScreen';
-import { MessageDetailScreen } from './src/screens/MessageDetailScreen';
-import { MessageComposeScreen } from './src/screens/MessageComposeScreen';
-import { MessagePreviewScreen } from './src/screens/MessagePreviewScreen';
-import { InboxScreen } from './src/screens/InboxScreen';
-import { InboxMessageScreen } from './src/screens/InboxMessageScreen';
-import { IdCheckScreen } from './src/screens/IdCheckScreen';
 import { ThemeProvider, useTheme, useThemedStyles, type ThemeColors } from './src/theme';
 import type {
   MainTabParamList,
@@ -60,6 +46,9 @@ import { stripHttpBreadcrumbQuery } from './src/services/breadcrumbScrub';
 import { fallbackToRegisteredRoute, preferOrganizerTabs } from './src/services/deepLinks';
 import { ROOT_NAVIGATOR } from './src/navigation/routes';
 import { linkingConfig } from './src/navigation/linking';
+import { lazyScreens } from './src/navigation/lazyScreens';
+
+const REPLAY_ENABLED = Platform.OS === 'ios';
 
 Sentry.init({
   dsn: 'https://6a7370567b34299ea8bb4ecf2aec3628@o4509680631087104.ingest.us.sentry.io/4510470752043008',
@@ -75,19 +64,23 @@ Sentry.init({
   // Enable Tracing
   tracesSampleRate: 0.2,
 
-  // Configure Session Replay
-  replaysSessionSampleRate: 0.1,
-  replaysOnErrorSampleRate: 1,
+  // Session Replay only on iOS: on Android it costs startup time and memory
+  // on the lower-end devices organizers scan with.
+  replaysSessionSampleRate: REPLAY_ENABLED ? 0.1 : 0,
+  replaysOnErrorSampleRate: REPLAY_ENABLED ? 1 : 0,
   // Replays must never show participant data, so masking is spelled out
-  // here rather than left to the SDK's defaults.
-  integrations: [
-    Sentry.mobileReplayIntegration({
-      maskAllText: true,
-      maskAllImages: true,
-      maskAllVectors: true,
-    }),
-    Sentry.feedbackIntegration(),
-  ],
+  // here rather than left to the SDK's defaults. The feedback integration
+  // isn't listed: the app shows no feedback UI, and the SDK adds it on demand
+  // if one ever opens.
+  integrations: REPLAY_ENABLED
+    ? [
+        Sentry.mobileReplayIntegration({
+          maskAllText: true,
+          maskAllImages: true,
+          maskAllVectors: true,
+        }),
+      ]
+    : [],
 
   // Keep anything logged during an on-device ID check out of Sentry, and
   // strip query strings (search terms) from HTTP breadcrumb URLs.
@@ -173,14 +166,14 @@ function OverviewTab() {
   return (
     <OverviewStack.Navigator screenOptions={STACK_OPTIONS}>
       <OverviewStack.Screen name="EventHome" component={EventHome} />
-      <OverviewStack.Screen name="IncidentList" component={IncidentListScreen} />
-      <OverviewStack.Screen name="IncidentDetail" component={IncidentDetailScreen} />
-      <OverviewStack.Screen name="IncidentForm" component={IncidentFormScreen} />
-      <OverviewStack.Screen name="IncidentReport" component={IncidentReportScreen} />
-      <OverviewStack.Screen name="MessageList" component={MessageListScreen} />
-      <OverviewStack.Screen name="MessageDetail" component={MessageDetailScreen} />
-      <OverviewStack.Screen name="MessageCompose" component={MessageComposeScreen} />
-      <OverviewStack.Screen name="MessagePreview" component={MessagePreviewScreen} />
+      <OverviewStack.Screen name="IncidentList" getComponent={lazyScreens.IncidentList} />
+      <OverviewStack.Screen name="IncidentDetail" getComponent={lazyScreens.IncidentDetail} />
+      <OverviewStack.Screen name="IncidentForm" getComponent={lazyScreens.IncidentForm} />
+      <OverviewStack.Screen name="IncidentReport" getComponent={lazyScreens.IncidentReport} />
+      <OverviewStack.Screen name="MessageList" getComponent={lazyScreens.MessageList} />
+      <OverviewStack.Screen name="MessageDetail" getComponent={lazyScreens.MessageDetail} />
+      <OverviewStack.Screen name="MessageCompose" getComponent={lazyScreens.MessageCompose} />
+      <OverviewStack.Screen name="MessagePreview" getComponent={lazyScreens.MessagePreview} />
     </OverviewStack.Navigator>
   );
 }
@@ -213,7 +206,7 @@ function PeopleTab() {
 function TravelTab() {
   return (
     <TravelStack.Navigator screenOptions={STACK_OPTIONS}>
-      <TravelStack.Screen name="TravelHome" component={TravelCalendarScreen} />
+      <TravelStack.Screen name="TravelHome" getComponent={lazyScreens.TravelCalendar} />
       <TravelStack.Screen name="ParticipantDetail" component={ParticipantDetailScreen} />
     </TravelStack.Navigator>
   );
@@ -228,9 +221,9 @@ function PassStackNavigator() {
     <PassStack.Navigator screenOptions={STACK_OPTIONS}>
       <PassStack.Screen name="MyTickets" component={MyTicketsScreen} />
       <PassStack.Screen name="TicketDetail" component={TicketDetailScreen} />
-      <PassStack.Screen name="Inbox" component={InboxScreen} />
-      <PassStack.Screen name="InboxMessage" component={InboxMessageScreen} />
-      <PassStack.Screen name="IncidentReport" component={IncidentReportScreen} />
+      <PassStack.Screen name="Inbox" getComponent={lazyScreens.Inbox} />
+      <PassStack.Screen name="InboxMessage" getComponent={lazyScreens.InboxMessage} />
+      <PassStack.Screen name="IncidentReport" getComponent={lazyScreens.IncidentReport} />
     </PassStack.Navigator>
   );
 }
@@ -321,18 +314,18 @@ function RootNavigator() {
           {user?.global_admin ? (
             <Stack.Screen
               name="IdCheck"
-              component={IdCheckScreen}
+              getComponent={lazyScreens.IdCheck}
               options={{ presentation: 'modal', gestureEnabled: false }}
             />
           ) : null}
           <Stack.Screen
             name="KioskSetup"
-            component={KioskSetupScreen}
+            getComponent={lazyScreens.KioskSetup}
             options={{ presentation: 'modal' }}
           />
           <Stack.Screen
             name="Kiosk"
-            component={KioskScreen}
+            getComponent={lazyScreens.Kiosk}
             options={{
               presentation: 'fullScreenModal',
               gestureEnabled: false,
