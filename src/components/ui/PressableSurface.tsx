@@ -29,6 +29,10 @@ export interface PressableSurfaceProps extends Omit<PressableProps, 'style' | 'a
  * inside it carries the ripple under the content. The content ignores
  * touches so the ripple starts where the finger is. On iOS it is one
  * Pressable that dims while held.
+ *
+ * Android only delivers a touch to a child of a clipping view when it lands
+ * inside that view, so `hitSlop` goes on the outer view too; without it a
+ * slop outside the shape never reaches the Pressable.
  */
 export function PressableSurface({
   style,
@@ -38,6 +42,7 @@ export function PressableSurface({
   rippleForeground = false,
   pressedOpacity,
   children,
+  hitSlop,
   ...pressableProps
 }: PressableSurfaceProps) {
   const shape = (pressed: boolean) => (typeof style === 'function' ? style(pressed) : style);
@@ -49,9 +54,10 @@ export function PressableSurface({
 
   if (isAndroid) {
     return (
-      <View style={[shape(false), styles.clip]}>
+      <View style={[shape(false), styles.clip]} hitSlop={hitSlop}>
         <Pressable
           {...pressableProps}
+          hitSlop={hitSlop}
           android_ripple={ripple(rippleColor, { alpha: rippleAlpha, foreground: rippleForeground })}
           style={styles.fill}
         >
@@ -64,6 +70,7 @@ export function PressableSurface({
   return (
     <Pressable
       {...pressableProps}
+      hitSlop={hitSlop}
       style={({ pressed }) => [
         shape(pressed),
         pressedOpacity === null ? null : pressedStyle(pressed, pressedOpacity),
