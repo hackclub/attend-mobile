@@ -16,6 +16,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { haptics } from '../services/haptics';
+import { useBiometricLabel } from '../services/biometricLabel';
 import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
 import { useApp } from '../context/AppContext';
 import { useBiometric } from '../hooks/useBiometric';
@@ -32,7 +33,8 @@ export function KioskSetupScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<KioskSetupRoute>();
   const { state } = useApp();
-  const { isAvailable: biometricAvailable, biometricType } = useBiometric();
+  const { isAvailable: biometricAvailable } = useBiometric();
+  const biometricLabel = useBiometricLabel();
 
   const [step, setStep] = useState<'enter' | 'confirm'>('enter');
   const [pin, setPin] = useState('');
@@ -128,7 +130,7 @@ export function KioskSetupScreen() {
           <Text style={styles.heroTitle}>Set a {PIN_LENGTH}-digit PIN</Text>
           <Text style={styles.heroSubtitle}>
             Attendees can scan themselves. Staff will need this PIN
-            {biometricAvailable ? ` or ${biometricType}` : ''} to exit kiosk mode.
+            {biometricAvailable ? ` or ${biometricLabel}` : ''} to exit kiosk mode.
           </Text>
           <View style={styles.contextPill}>
             <Ionicons name="scan" size={16} color={colors.text.secondary} />
@@ -175,7 +177,7 @@ export function KioskSetupScreen() {
         {biometricAvailable && (
           <View style={styles.row}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.rowLabel}>Allow {biometricType} to exit</Text>
+              <Text style={styles.rowLabel}>Allow {biometricLabel} to exit</Text>
               <Text style={styles.rowSubtitle}>
                 Faster for staff. PIN still works as a fallback.
               </Text>
