@@ -257,7 +257,7 @@ export function MessageComposeScreen() {
             <View
               style={[
                 styles.preview,
-                { backgroundColor: tokens.shaded, borderColor: tokens.div2, borderRadius: radii.item },
+                { backgroundColor: tokens.shaded, borderColor: tokens.div2, borderRadius: radii.container },
               ]}
             >
               {body.trim() ? (

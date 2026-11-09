@@ -41,7 +41,7 @@ export function QuickActionTile({
       rippleColor={tokens.text}
       style={[
         styles.tile,
-        { borderColor: tokens.div2, borderRadius: radii.item, backgroundColor: tokens.bg },
+        { borderColor: tokens.div2, borderRadius: radii.container, backgroundColor: tokens.bg },
         disabled && styles.disabled,
         style,
       ]}

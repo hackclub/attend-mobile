@@ -251,7 +251,7 @@ export function KioskScreen() {
 }
 
 const BANNER_HEIGHT = 150;
-const CAMERA_RADIUS = 20;
+const CAMERA_RADIUS = radii.container;
 const FRAME = { inset: '14%', size: 44, thickness: 6, radius: 20 } as const;
 
 const kiosk = StyleSheet.create({

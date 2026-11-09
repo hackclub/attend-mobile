@@ -379,7 +379,7 @@ const makeStyles = (theme: Theme) => {
     medication: {
       gap: spacing.md,
       padding: spacing.md,
-      borderRadius: radii.item,
+      borderRadius: radii.container,
       borderWidth: 1,
       borderColor: t.div2,
       backgroundColor: t.shaded,

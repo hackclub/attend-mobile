@@ -250,7 +250,7 @@ function FilterSheetBody({
           return (
             <View
               key={rule.id}
-              style={[styles.ruleRow, { borderColor: tokens.box, borderRadius: radii.item }]}
+              style={[styles.ruleRow, { borderColor: tokens.box, borderRadius: radii.container }]}
             >
               <View style={styles.rulePills}>
                 <SelectPill
@@ -311,7 +311,7 @@ function FilterSheetBody({
         <Text style={[type.h3, styles.sectionTitle, { color: tokens.textH }]} accessibilityRole="header">
           Sort
         </Text>
-        <View style={[styles.ruleRow, { borderColor: tokens.box, borderRadius: radii.item }]}>
+        <View style={[styles.ruleRow, { borderColor: tokens.box, borderRadius: radii.container }]}>
           <View style={styles.rulePills}>
             <SelectPill
               label={sortField?.label ?? 'Default order'}
