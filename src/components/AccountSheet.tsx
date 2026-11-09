@@ -3,6 +3,7 @@ import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useApp } from '../context/AppContext';
 import { haptics } from '../services/haptics';
 import { useOpenLink } from '../hooks/useOpenLink';
+import { accountSheetPreview } from '../navigation/sheetData';
 import { useLeaveSheet, useOpenSheet } from '../navigation/sheetPresenter';
 import { biometricService } from '../services/biometric';
 import { notificationService } from '../services/notifications';
@@ -106,7 +107,9 @@ export function AccountSheet() {
   const { state, logout, flushBeforeSignOut } = useApp();
   const [signingOut, setSigningOut] = useState(false);
   const { preference, setPreference } = useThemePreference();
-  const user = state.auth.user;
+  const preview = accountSheetPreview.useData();
+  const previewing = !state.auth.isAuthenticated && !!preview;
+  const user = previewing ? preview.user : state.auth.user;
   const name = user?.name || user?.email || 'Signed in';
   const [pushEnabled, setPushEnabled] = useState<boolean | null>(null);
   const [pushBusy, setPushBusy] = useState(false);
@@ -170,10 +173,10 @@ export function AccountSheet() {
         text: confirmLabel,
         style: 'destructive',
         // Signs out once the drawer has gone, not under it.
-        onPress: () => leave(() => void logout()),
+        onPress: () => leave(() => (previewing ? preview.onSignOut() : void logout())),
       },
     ]);
-  }, [flushBeforeSignOut, leave, logout, signingOut, state.sync.pendingScans]);
+  }, [flushBeforeSignOut, leave, logout, preview, previewing, signingOut, state.sync.pendingScans]);
 
   const roles = [
     user?.global_admin ? 'Global Admin' : null,

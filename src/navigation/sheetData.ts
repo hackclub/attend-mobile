@@ -7,7 +7,7 @@ import type {
   SortRule,
 } from '../services/participantFilters';
 import type { SwitcherGroups } from '../services/eventSwitcher';
-import type { Participant, ScanContext } from '../types';
+import type { Participant, ScanContext, User } from '../types';
 import { createSheetChannel } from './sheetChannel';
 
 // The data each form-sheet route reads, kept apart from the sheets' own
@@ -37,10 +37,22 @@ export interface ScanContextSheetData {
 }
 export const scanContextSheet = createSheetChannel<ScanContextSheetData>();
 
+/**
+ * The dev gallery's account drawer while signed out: a sample user, and
+ * Sign out calls `onSignOut` once the sheet has gone. Ignored signed in.
+ */
+export interface AccountSheetPreview {
+  user: User;
+  onSignOut: () => void;
+}
+export const accountSheetPreview = createSheetChannel<AccountSheetPreview>();
+
 /** Kiosk mode's PIN setup, in the scanner's context. */
 export interface KioskSetupSheetData {
   scanContextId?: string;
   scanContextName?: string;
+  /** The dev gallery's: starting calls `onStart`, once the sheet has gone, instead of opening the kiosk. */
+  preview?: { onStart: () => void };
 }
 export const kioskSetupSheet = createSheetChannel<KioskSetupSheetData>();
 

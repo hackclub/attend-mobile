@@ -25,7 +25,7 @@ export function KioskSetupSheet() {
   return data ? <KioskSetup {...data} /> : null;
 }
 
-function KioskSetup({ scanContextId, scanContextName }: KioskSetupSheetData) {
+function KioskSetup({ scanContextId, scanContextName, preview }: KioskSetupSheetData) {
   const { tokens, type, spacing, radii, isDark } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const leave = useLeaveSheet();
@@ -86,11 +86,11 @@ function KioskSetup({ scanContextId, scanContextName }: KioskSetupSheetData) {
     };
     // Only once the drawer has gone: the kiosk pins the screen, and must
     // not open under a closing sheet.
-    leave(() => navigation.navigate('Kiosk', params));
+    leave(() => (preview ? preview.onStart() : navigation.navigate('Kiosk', params)));
   };
 
   const handleStartPress = () => {
-    if (!state.currentEvent) {
+    if (!state.currentEvent && !preview) {
       Alert.alert('No event selected', 'Pick an event before starting kiosk mode.');
       return;
     }
