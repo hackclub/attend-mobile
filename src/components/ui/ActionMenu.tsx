@@ -38,11 +38,16 @@ export interface ActionMenuProps {
   feedbackColor?: string;
   /** The trigger's corner radius, for that state layer. Defaults to round. */
   feedbackRadius?: number;
+  /**
+   * The trigger takes the width it's given rather than its content's, e.g. a
+   * select field (Android, where the menu is hosted in Compose).
+   */
+  stretch?: boolean;
 }
 
 /**
- * A native drop-down menu (UIMenu on iOS, a Material popup menu on Android)
- * for a screen's ⋯ actions or a short picker.
+ * A native drop-down menu for a screen's ⋯ actions or a short picker: UIMenu
+ * on iOS (a Material 3 Compose menu on Android: ActionMenu.android.tsx).
  */
 export function ActionMenu({
   actions,

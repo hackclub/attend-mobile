@@ -186,6 +186,7 @@ export function SelectField({
       <ActionMenu
         accessibilityLabel={`${title}: ${label}`}
         feedbackRadius={radii.input}
+        stretch
         actions={options.map(option => ({
           key: option.value,
           title: option.label,
