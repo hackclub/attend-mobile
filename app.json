@@ -59,9 +59,12 @@
       },
       "package": "com.hackclub.attend",
       "permissions": [
-        "android.permission.CAMERA",
+        "android.permission.CAMERA"
+      ],
+      "blockedPermissions": [
         "android.permission.RECORD_AUDIO"
-      ]
+      ],
+      "predictiveBackGestureEnabled": true
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -79,7 +82,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Attend to access your camera to scan QR codes and the code on ID documents."
+          "cameraPermission": "Allow Attend to access your camera to scan QR codes and the code on ID documents.",
+          "recordAudioAndroid": false
         }
       ],
       [
@@ -113,7 +117,13 @@
           "selectIdentifiers": ["A0000002471001"]
         }
       ],
-      "expo-audio",
+      [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": false,
+          "recordAudioAndroid": false
+        }
+      ],
       [
         "expo-image-picker",
         {
@@ -122,7 +132,8 @@
           "microphonePermission": false
         }
       ],
-      "./plugins/withScannerOrientationFix"
+      "./plugins/withScannerOrientationFix",
+      "./plugins/withKotlinJvmTargetFix"
     ],
     "extra": {
       "eas": {
