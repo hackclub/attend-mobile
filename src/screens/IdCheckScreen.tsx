@@ -39,7 +39,7 @@ import {
   type VerdictInput,
 } from '../services/idCheck/verdict';
 import { radii, useTheme, type ThemeTokens } from '../theme';
-import { Button, Container, Flashbar, Icon, KeyValue, TextField, type IconName } from '../components/ui';
+import { Button, Container, Flashbar, Icon, KeyValue, RETRY_LABEL, TextField, type IconName } from '../components/ui';
 import { BiometricGate } from '../components/BiometricGate';
 import type { AppStackParamList } from '../types';
 
@@ -436,7 +436,7 @@ function ResultView({
       {busy ? (
         <Busy label="Recording..." />
       ) : step.kind === 'recordFailed' ? (
-        <Button title="Retry" variant="primary" icon="refresh" fullWidth onPress={() => onDecision(step.decision)} />
+        <Button title={RETRY_LABEL} variant="primary" icon="refresh" fullWidth onPress={() => onDecision(step.decision)} />
       ) : (
         <>
           {/* A red result can only be recorded as a rejection. */}

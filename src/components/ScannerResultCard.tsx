@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AccessibilityInfo, Animated, PanResponder, Platform, StyleSheet, Text, View } from 'react-native';
 import { ParticipantAvatar } from './ParticipantAvatar';
 import { useReduceMotion } from '../hooks/useReduceMotion';
-import { Badge, Button, StatusGlyph, type BadgeColor, type StatusType } from './ui';
+import { Badge, Button, RETRY_LABEL, StatusGlyph, type BadgeColor, type StatusType } from './ui';
 import type { ScannerOutcome, ScannerResult } from '../services/scannerCore';
 import { radii, useTheme, type ThemeTokens } from '../theme';
 
@@ -168,7 +168,7 @@ export function ScannerResultCard({
                 : result.message || config.label}
             </Text>
             {result.retryable ? (
-              <Button title="Retry" icon="refresh" onPress={onRetry} accessibilityLabel="Retry scan" />
+              <Button title={RETRY_LABEL} icon="refresh" onPress={onRetry} accessibilityLabel="Try the scan again" />
             ) : null}
           </View>
         </View>
@@ -222,10 +222,10 @@ export function ScannerResultCard({
           <View style={styles.actions}>
             {canRetry ? (
               <Button
-                title="Retry"
+                title={RETRY_LABEL}
                 icon="refresh"
                 onPress={onRetry}
-                accessibilityLabel="Retry scan"
+                accessibilityLabel="Try the scan again"
                 style={styles.flex}
               />
             ) : null}

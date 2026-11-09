@@ -239,8 +239,8 @@ describe('ScannerResultCard', () => {
       message: 'Participant not found.',
     }));
 
-    expect(retryable.root.findByProps({ accessibilityLabel: 'Retry scan' })).toBeTruthy();
-    expect(() => finalFailure.root.findByProps({ accessibilityLabel: 'Retry scan' })).toThrow();
+    expect(retryable.root.findByProps({ accessibilityLabel: 'Try the scan again' })).toBeTruthy();
+    expect(() => finalFailure.root.findByProps({ accessibilityLabel: 'Try the scan again' })).toThrow();
   });
 
   it('offers undo only for a fresh scan', async () => {
