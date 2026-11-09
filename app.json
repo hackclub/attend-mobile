@@ -148,7 +148,16 @@
       "./plugins/withAndroidBrandTheme",
       "./plugins/withScannerOrientationFix",
       "./plugins/withKotlinJvmTargetFix",
-      "./plugins/withAppShortcuts"
+      "./plugins/withAppShortcuts",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {

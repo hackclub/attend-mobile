@@ -28,6 +28,7 @@
     "expo-auth-session": "~58.0.14",
     "expo-blur": "~58.0.5",
     "expo-brightness": "~58.0.2",
+    "expo-build-properties": "~58.0.12",
     "expo-camera": "~58.0.12",
     "expo-dev-client": "~58.0.15",
     "expo-device": "~58.0.5",
