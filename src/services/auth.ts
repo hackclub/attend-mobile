@@ -44,64 +44,54 @@ export const authService = {
   async authenticate(): Promise<AuthResult> {
     try {
       const request = this.createAuthRequest();
-      
-      console.log('=== OAuth Debug ===');
-      console.log('Client ID:', OAUTH_CONFIG.clientId);
-      console.log('Redirect URI:', redirectUri);
-      console.log('Auth Endpoint:', OAUTH_CONFIG.authorizationEndpoint);
-      
-      const authUrl = await request.makeAuthUrlAsync({
-        authorizationEndpoint: OAUTH_CONFIG.authorizationEndpoint,
-      });
-      console.log('Full Auth URL:', authUrl);
-      console.log('===================');
-      
+
+      // Never log the auth URL, the result params (they carry the one-time
+      // code) or anything about the user: logs reach device consoles and
+      // Sentry breadcrumbs. Only the outcome type, and only in dev builds.
       const result = await request.promptAsync({
         authorizationEndpoint: OAUTH_CONFIG.authorizationEndpoint,
       });
 
-      console.log('=== OAuth Result ===');
-      console.log('Result type:', result.type);
-      if ('params' in result) {
-        console.log('Result params:', JSON.stringify(result.params, null, 2));
+      if (__DEV__) {
+        console.log('[Auth] OAuth result:', result.type);
       }
-      console.log('====================');
 
       if (result.type === 'success' && result.params.code) {
-        console.log('Got auth code, exchanging for token...');
         try {
           // Pass code_verifier to backend for PKCE verification
           const codeVerifier = request.codeVerifier;
           const { token, user } = await api.exchangeCodeForToken(result.params.code, redirectUri, codeVerifier);
-          console.log('Token exchange successful, user:', user?.email);
-          
           await secureStorage.setToken(token);
           await secureStorage.setUser(user);
           
           return { success: true, user };
         } catch (exchangeError) {
-          console.error('Token exchange failed:', exchangeError);
+          if (__DEV__) {
+            console.error('[Auth] Token exchange failed:', exchangeError);
+          }
           throw exchangeError;
         }
       }
 
       if (result.type === 'cancel') {
-        console.log('Auth cancelled by user');
         return { success: false, error: 'Authentication cancelled' };
       }
 
       if (result.type === 'error') {
-        console.error('Auth error:', result.params?.error, result.params?.error_description);
+        if (__DEV__) {
+          console.error('[Auth] OAuth error:', result.params?.error);
+        }
         return { 
           success: false, 
           error: result.params?.error_description || 'Authentication failed' 
         };
       }
 
-      console.error('Unknown auth result:', result);
       return { success: false, error: 'Unknown authentication error' };
     } catch (error) {
-      console.error('Auth exception:', error);
+      if (__DEV__) {
+        console.error('[Auth] Sign-in failed:', error);
+      }
       const message = error instanceof Error ? error.message : 'Authentication failed';
       return { success: false, error: message };
     }
@@ -146,10 +136,9 @@ export const authService = {
           await secureStorage.setUser(freshUser);
           return { success: true, user: freshUser };
         }
-      } catch (error) {
+      } catch {
         // Network error - if we have cached user, continue offline
         if (user) {
-          console.log('Network error during token validation, using cached session');
           return { success: true, user };
         }
         // No cached user and can't validate - fail but don't clear token

@@ -41,9 +41,10 @@ import { scrubIdCheckBreadcrumb, scrubIdCheckEvent } from './src/services/idChec
 Sentry.init({
   dsn: 'https://6a7370567b34299ea8bb4ecf2aec3628@o4509680631087104.ingest.us.sentry.io/4510470752043008',
 
-  // Adds more context data to events (IP address, cookies, user, etc.)
-  // For more information, visit: https://docs.sentry.io/platforms/react-native/data-management/data-collected/
-  sendDefaultPii: true,
+  // No IP addresses, cookies or user details: this app handles participant
+  // personal data, so nothing identifying goes to Sentry by default.
+  // https://docs.sentry.io/platforms/react-native/data-management/data-collected/
+  sendDefaultPii: false,
 
   // Enable Logs
   enableLogs: true,
@@ -54,7 +55,16 @@ Sentry.init({
   // Configure Session Replay
   replaysSessionSampleRate: 0.1,
   replaysOnErrorSampleRate: 1,
-  integrations: [Sentry.mobileReplayIntegration(), Sentry.feedbackIntegration()],
+  // Replays must never show participant data, so masking is spelled out
+  // here rather than left to the SDK's defaults.
+  integrations: [
+    Sentry.mobileReplayIntegration({
+      maskAllText: true,
+      maskAllImages: true,
+      maskAllVectors: true,
+    }),
+    Sentry.feedbackIntegration(),
+  ],
 
   // Keep anything logged during an on-device ID check out of Sentry.
   beforeBreadcrumb: scrubIdCheckBreadcrumb,

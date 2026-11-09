@@ -129,7 +129,11 @@ class ApiClient {
       } catch {
         // If the response is HTML (like a Rails error page), show a generic message
         if (errorBody.includes('<!DOCTYPE') || errorBody.includes('<html')) {
-          console.error(`[API] Server error ${response.status} at ${endpoint}:`, errorBody);
+          // A Rails error page can echo request params, so only print it in
+          // development builds.
+          if (__DEV__) {
+            console.error(`[API] Server error ${response.status} at ${endpoint}:`, errorBody);
+          }
           message = `Server error (${response.status})`;
         } else if (errorBody && errorBody.length < 200) {
           message = errorBody;
@@ -168,7 +172,6 @@ class ApiClient {
   }
 
   async exchangeCodeForToken(code: string, redirectUri?: string, codeVerifier?: string): Promise<{ token: string; user: User }> {
-    console.log('Exchanging code for token:', { code: code.substring(0, 10) + '...', redirectUri });
     return this.request<{ token: string; user: User }>('/api/v1/session', {
       method: 'POST',
       body: JSON.stringify({ 
@@ -218,7 +221,6 @@ class ApiClient {
 
   async getEvents(): Promise<Event[]> {
     const response = await this.request<{ events: Event[] }>('/api/v1/events');
-    console.log('Events response:', response);
     const events = response.events || [];
     // The payload carries each event's role, so roster access can be settled
     // before any screen asks for participants.
@@ -238,7 +240,6 @@ class ApiClient {
         `/api/v1/events/${eventId}/participants${query}`
       )
     );
-    console.log('Participants response sample:', response.participants?.[0]);
     return {
       participants: response.participants ?? [],
       synced_at: response.synced_at ?? '',
