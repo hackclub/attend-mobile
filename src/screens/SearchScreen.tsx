@@ -228,7 +228,7 @@ export function SearchScreen() {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: tokens.bg }]} edges={['top', 'left', 'right']}>
         <View style={styles.centered}>
-          <Text style={[type.h2, { color: tokens.textH }]}>No Event Selected</Text>
+          <Text style={[type.h2, { color: tokens.textH }]}>No event selected</Text>
           <Text style={[type.body, styles.centeredText, { color: tokens.text2 }]}>
             Please select an event from the Overview tab.
           </Text>
@@ -273,13 +273,13 @@ export function SearchScreen() {
   const hasToolbar = customRules.length > 0 || Boolean(customSort);
 
   const emptyState = searchQuery.length >= 2 ? (
-    { title: 'No Results', text: `No participants found matching "${searchQuery}"` }
+    { title: 'No results', text: `No participants found matching "${searchQuery}"` }
   ) : searchQuery.length > 0 ? (
     { title: null, text: 'Type at least 2 characters to search' }
   ) : activeRules.length > 0 ? (
-    { title: 'No Participants', text: 'No participants match the current filters' }
+    { title: 'No participants', text: 'No participants match the current filters' }
   ) : (
-    { title: 'No Participants', text: 'Pull to refresh or search by name/email' }
+    { title: 'No participants', text: 'Pull to refresh or search by name/email' }
   );
 
   const sidebar = (

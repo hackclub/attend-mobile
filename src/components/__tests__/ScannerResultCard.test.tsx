@@ -110,8 +110,8 @@ describe('ScannerResultCard', () => {
   it.each([
     ['confirming', 'Confirming'],
     ['scanned', 'Scanned'],
-    ['already_scanned', 'Already Scanned'],
-    ['not_scanned', 'Not Scanned'],
+    ['already_scanned', 'Already scanned'],
+    ['not_scanned', 'Not scanned'],
   ] as const)('renders the %s outcome in direct language', async (outcome, label) => {
     const tree = await renderCard(result(outcome));
     expect(JSON.stringify(tree.toJSON())).toContain(label);

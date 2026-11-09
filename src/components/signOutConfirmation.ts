@@ -13,8 +13,8 @@ export function signOutConfirmation(unsentScans: number): {
     };
   }
   return {
-    title: 'Sign Out',
+    title: 'Sign out',
     message: 'Are you sure you want to sign out?',
-    confirmLabel: 'Sign Out',
+    confirmLabel: 'Sign out',
   };
 }

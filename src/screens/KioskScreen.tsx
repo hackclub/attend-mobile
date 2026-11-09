@@ -104,9 +104,9 @@ export function KioskScreen() {
     play(lastScan.outcome);
     const label = {
       scanned: 'Scanned',
-      already_scanned: 'Already Scanned',
+      already_scanned: 'Already scanned',
       queued: 'Saved offline',
-      not_scanned: 'Not Scanned',
+      not_scanned: 'Not scanned',
     }[lastScan.outcome];
     const name = lastScan.participant?.display_name || lastScan.participant?.full_name;
     AccessibilityInfo.announceForAccessibility([label, name, lastScan.message]
@@ -281,10 +281,10 @@ const kiosk = StyleSheet.create({
 const RESULT: Record<ScannerResult['outcome'], { status: StatusType; label: string }> = {
   confirming: { status: 'in-progress', label: 'Confirming' },
   scanned: { status: 'success', label: 'Scanned' },
-  already_scanned: { status: 'warning', label: 'Already Scanned' },
+  already_scanned: { status: 'warning', label: 'Already scanned' },
   // Not confirmed by Attend yet, so never success-coloured.
   queued: { status: 'pending', label: 'Saved offline' },
-  not_scanned: { status: 'error', label: 'Not Scanned' },
+  not_scanned: { status: 'error', label: 'Not scanned' },
 };
 
 function resultColor(status: StatusType, tokens: ThemeTokens): string {

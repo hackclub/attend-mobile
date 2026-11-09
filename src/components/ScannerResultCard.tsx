@@ -23,11 +23,11 @@ interface ScannerResultCardProps {
 const OUTCOME: Record<ScannerOutcome, { label: string; status: StatusType }> = {
   confirming: { label: 'Confirming', status: 'in-progress' },
   scanned: { label: 'Scanned', status: 'success' },
-  already_scanned: { label: 'Already Scanned', status: 'warning' },
+  already_scanned: { label: 'Already scanned', status: 'warning' },
   // Saved to the offline queue: deliberately not success-coloured, since
   // nothing has been confirmed. The detail line comes from result.message.
   queued: { label: 'Saved offline', status: 'pending' },
-  not_scanned: { label: 'Not Scanned', status: 'error' },
+  not_scanned: { label: 'Not scanned', status: 'error' },
 };
 
 function outcomeColor(status: StatusType, tokens: ThemeTokens): string {

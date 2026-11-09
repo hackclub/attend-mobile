@@ -36,7 +36,7 @@ export function LoginScreen() {
     try {
       const success = await login();
       if (!success) {
-        Alert.alert('Login Failed', 'Unable to authenticate. Please try again.');
+        Alert.alert('Login failed', 'Unable to authenticate. Please try again.');
       }
     } catch (error) {
       Alert.alert('Error', 'An unexpected error occurred. Please try again.');

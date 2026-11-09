@@ -295,11 +295,11 @@ function ParticipantDetailBody({
   // contexts to undo go in the options sheet there.
   const undoScans = currentParticipant.scans_by_context || [];
   const claimUndoSheet = optionsSheet.useOpener({
-    title: 'Select Context to Undo',
+    title: 'Choose a context to undo',
     subtitle: `${currentParticipant.display_name || currentParticipant.full_name} has been scanned at multiple locations. Which would you like to undo?`,
     options: [
       ...undoScans.map(scan => ({ value: scan.scan_context_id, label: undoContextLabel(scan) })),
-      { value: UNDO_ALL, label: 'Undo All Scans', destructive: true },
+      { value: UNDO_ALL, label: 'Undo all scans', destructive: true },
     ],
     onSelect: value => {
       if (value === UNDO_ALL) {
@@ -316,12 +316,12 @@ function ParticipantDetailBody({
 
     if (scans.length === 0) {
       Alert.alert(
-        'Undo Check-In',
+        'Undo check-in',
         `Are you sure you want to undo the check-in for ${currentParticipant.display_name || currentParticipant.full_name}?`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Undo All',
+            text: 'Undo all',
             style: 'destructive',
             onPress: () => performUndo(),
           },
@@ -333,7 +333,7 @@ function ParticipantDetailBody({
     if (scans.length === 1) {
       const scan = scans[0];
       Alert.alert(
-        'Undo Check-In',
+        'Undo check-in',
         `Undo scan at "${scan.scan_context_name}" for ${currentParticipant.display_name || currentParticipant.full_name}?`,
         [
           { text: 'Cancel', style: 'cancel' },
@@ -353,10 +353,10 @@ function ParticipantDetailBody({
     // Alert keeps at most three buttons on Android, so a list of contexts
     // goes in an action sheet on iOS and a bottom sheet on Android.
     if (Platform.OS === 'ios') {
-      const options = [...scans.map(undoContextLabel), 'Undo All Scans', 'Cancel'];
+      const options = [...scans.map(undoContextLabel), 'Undo all scans', 'Cancel'];
       ActionSheetIOS.showActionSheetWithOptions(
         {
-          title: 'Select Context to Undo',
+          title: 'Choose a context to undo',
           message,
           options,
           destructiveButtonIndex: scans.length,
@@ -489,7 +489,7 @@ function ParticipantDetailBody({
         <View style={styles.actions}>
           {currentParticipant.checked_in_at && (
             <Button
-              title="Undo Check-In"
+              title="Undo check-in"
               icon="refresh"
               onPress={handleUndoCheckIn}
               loading={isUndoing}
@@ -498,7 +498,7 @@ function ParticipantDetailBody({
           )}
           {nfcSupported && (
             <Button
-              title="Write to NFC Badge"
+              title="Write to NFC badge"
               icon="nfc"
               onPress={handleWriteBadge}
               loading={isWritingBadge}
@@ -515,13 +515,13 @@ function ParticipantDetailBody({
           )}
         </View>
 
-        <Section title="Contact Information">
+        <Section title="Contact information">
           <InfoRow label="Email" value={currentParticipant.email} onPress={() => handleEmail(currentParticipant.email)} selectable accessibilityHint="Opens the default email app" />
           {currentParticipant.phone && (
             <InfoRow label="Phone" value={currentParticipant.phone} onPress={() => handleCall(currentParticipant.phone!)} selectable accessibilityHint="Shows calling options" />
           )}
           {currentParticipant.personal?.secondary_email && (
-            <InfoRow label="Secondary Email" value={currentParticipant.personal.secondary_email} onPress={() => handleEmail(currentParticipant.personal!.secondary_email!)} selectable accessibilityHint="Opens the default email app" />
+            <InfoRow label="Secondary email" value={currentParticipant.personal.secondary_email} onPress={() => handleEmail(currentParticipant.personal!.secondary_email!)} selectable accessibilityHint="Opens the default email app" />
           )}
         </Section>
 
@@ -534,41 +534,41 @@ function ParticipantDetailBody({
         )}
 
         {(currentParticipant.allergies || currentParticipant.medical_conditions || currentParticipant.medications || currentParticipant.medical_detail) && (
-          <Section title="Medical Information">
+          <Section title="Medical information">
             {currentParticipant.allergies && (
               <InfoRow label="Allergies" value={currentParticipant.allergies} />
             )}
             {currentParticipant.medical_detail?.allergy_severity && (
-              <InfoRow label="Allergy Severity" value={currentParticipant.medical_detail.allergy_severity} />
+              <InfoRow label="Allergy severity" value={currentParticipant.medical_detail.allergy_severity} />
             )}
             {currentParticipant.medical_conditions && (
-              <InfoRow label="Medical Conditions" value={currentParticipant.medical_conditions} />
+              <InfoRow label="Medical conditions" value={currentParticipant.medical_conditions} />
             )}
             {currentParticipant.medications && (
               <InfoRow label="Medications" value={currentParticipant.medications} />
             )}
             {currentParticipant.requires_refrigeration && (
-              <InfoRow label="Refrigeration Required" value="Yes" />
+              <InfoRow label="Refrigeration required" value="Yes" />
             )}
             {currentParticipant.medical_detail?.emergency_action_plan && (
-              <InfoRow label="Emergency Action Plan" value={currentParticipant.medical_detail.emergency_action_plan} />
+              <InfoRow label="Emergency action plan" value={currentParticipant.medical_detail.emergency_action_plan} />
             )}
             {currentParticipant.medical_detail?.additional_notes && (
-              <InfoRow label="Additional Notes" value={currentParticipant.medical_detail.additional_notes} />
+              <InfoRow label="Additional notes" value={currentParticipant.medical_detail.additional_notes} />
             )}
           </Section>
         )}
 
         {(currentParticipant.diet_type || currentParticipant.life_threatening_allergies || currentParticipant.dietary_detail) && (
-          <Section title="Dietary Requirements">
+          <Section title="Dietary requirements">
             {currentParticipant.diet_type && (
-              <InfoRow label="Diet Type" value={currentParticipant.diet_type} />
+              <InfoRow label="Diet type" value={currentParticipant.diet_type} />
             )}
             {currentParticipant.life_threatening_allergies && (
               <InfoRow label="Life-Threatening Allergies" value={currentParticipant.life_threatening_allergies} />
             )}
             {currentParticipant.cross_contamination_risk && (
-              <InfoRow label="Cross Contamination Risk" value="Yes" />
+              <InfoRow label="Cross contamination risk" value="Yes" />
             )}
             {currentParticipant.dietary_detail?.intolerances && (
               <InfoRow label="Intolerances" value={currentParticipant.dietary_detail.intolerances} />
@@ -587,28 +587,28 @@ function ParticipantDetailBody({
           {/* Only sent to roles that see sensitive data; absent isn't "unsigned". */}
           {currentParticipant.freedom_waiver_granted !== undefined && (
             <InfoRow
-              label="Freedom Waiver"
-              value={currentParticipant.freedom_waiver_granted ? 'Signed' : 'Not Signed'}
+              label="Freedom waiver"
+              value={currentParticipant.freedom_waiver_granted ? 'Signed' : 'Not signed'}
               valueColor={currentParticipant.freedom_waiver_granted ? tokens.success : tokens.warning}
             />
           )}
-          <InfoRow label="High Support Needs" value={currentParticipant.high_support_flag ? 'Yes' : 'No'} />
-          <InfoRow label="Can Leave Unaccompanied" value={currentParticipant.can_leave_unaccompanied ? 'Yes' : 'No'} />
+          <InfoRow label="High support needs" value={currentParticipant.high_support_flag ? 'Yes' : 'No'} />
+          <InfoRow label="Can leave unaccompanied" value={currentParticipant.can_leave_unaccompanied ? 'Yes' : 'No'} />
           {currentParticipant.safeguarding_detail?.high_support_notes && (
-            <InfoRow label="High Support Notes" value={currentParticipant.safeguarding_detail.high_support_notes} />
+            <InfoRow label="High support notes" value={currentParticipant.safeguarding_detail.high_support_notes} />
           )}
           {currentParticipant.safeguarding_detail?.authorized_pickup_adults && (
             <InfoRow label="Authorized for Pickup" value={currentParticipant.safeguarding_detail.authorized_pickup_adults} />
           )}
           {currentParticipant.safeguarding_detail?.other_instructions && (
-            <InfoRow label="Other Instructions" value={currentParticipant.safeguarding_detail.other_instructions} />
+            <InfoRow label="Other instructions" value={currentParticipant.safeguarding_detail.other_instructions} />
           )}
         </Section>
 
-        <Section title="Waiver Status">
+        <Section title="Waiver status">
           <InfoRow
-            label="Waiver Signed"
-            value={currentParticipant.waiver_signed ? 'Signed' : 'Not Signed'}
+            label="Waiver signed"
+            value={currentParticipant.waiver_signed ? 'Signed' : 'Not signed'}
             valueColor={currentParticipant.waiver_signed ? tokens.success : tokens.warning}
           />
         </Section>
@@ -648,7 +648,7 @@ function ParticipantDetailBody({
         ) : null}
 
         {!currentParticipant.guardians?.length && currentParticipant.emergency_contacts && currentParticipant.emergency_contacts.length > 0 && (
-          <Section title="Emergency Contacts">
+          <Section title="Emergency contacts">
             {currentParticipant.emergency_contacts.map((contact, index) => (
               <React.Fragment key={contact.id || `contact-${index}`}>
                 {index > 0 && <Divider style={styles.itemDivider} />}
@@ -664,7 +664,7 @@ function ParticipantDetailBody({
 
         {currentParticipant.travel_inbound && (
           <TravelSection
-            title="Inbound Travel"
+            title="Inbound travel"
             travel={currentParticipant.travel_inbound}
             canViewPii={canViewParticipantPii}
             timeZone={state.currentEvent?.timezone}
@@ -672,7 +672,7 @@ function ParticipantDetailBody({
         )}
         {currentParticipant.travel_outbound && (
           <TravelSection
-            title="Outbound Travel"
+            title="Outbound travel"
             travel={currentParticipant.travel_outbound}
             canViewPii={canViewParticipantPii}
             timeZone={state.currentEvent?.timezone}
@@ -759,7 +759,7 @@ function buildSafetyItems(p: Participant, tokens: Tokens): SafetyItem[] {
     const allergies = p.life_threatening_allergies || p.allergies;
     const severity = p.medical_detail?.allergy_severity;
     items.push({
-      title: 'Anaphylaxis Risk',
+      title: 'Anaphylaxis risk',
       detail: [allergies, severity ? `(${severity})` : null].filter(Boolean).join(' ') || undefined,
       icon: 'exclamation-circle',
       color: tokens.error,
@@ -767,7 +767,7 @@ function buildSafetyItems(p: Participant, tokens: Tokens): SafetyItem[] {
   }
   if (p.high_support_flag) {
     items.push({
-      title: 'High Support Needs',
+      title: 'High support needs',
       detail: p.safeguarding_detail?.high_support_notes || undefined,
       icon: 'shield-exclamation',
       color: tokens.warning,
@@ -775,7 +775,7 @@ function buildSafetyItems(p: Participant, tokens: Tokens): SafetyItem[] {
   }
   if (p.requires_refrigeration) {
     items.push({
-      title: 'Refrigeration Required',
+      title: 'Refrigeration required',
       detail: p.medications || undefined,
       icon: 'information-circle',
       color: tokens.info,
@@ -783,7 +783,7 @@ function buildSafetyItems(p: Participant, tokens: Tokens): SafetyItem[] {
   }
   if (p.cross_contamination_risk) {
     items.push({
-      title: 'Cross Contamination Risk',
+      title: 'Cross contamination risk',
       detail: p.diet_type || undefined,
       icon: 'exclamation',
       color: tokens.warning,
@@ -825,9 +825,9 @@ function PersonalSection({
   if (!hasContent) return null;
   const hiddenValue = roleLabel ? `Hidden for your role (${roleLabel})` : 'Hidden for your role';
   return (
-    <Section title="Personal Details">
-      {fullLegalName && <InfoRow label="Legal Name" value={fullLegalName} />}
-      {personal.preferred_name && <InfoRow label="Preferred Name" value={personal.preferred_name} />}
+    <Section title="Personal details">
+      {fullLegalName && <InfoRow label="Legal name" value={fullLegalName} />}
+      {personal.preferred_name && <InfoRow label="Preferred name" value={personal.preferred_name} />}
       {personal.date_of_birth ? (
         <InfoRow
           label="Date of Birth"
@@ -838,7 +838,7 @@ function PersonalSection({
       ) : null}
       {personal.tshirt_size && <InfoRow label="T-Shirt Size" value={personal.tshirt_size} />}
       {personal.engagement_preference && <InfoRow label="Engagement" value={personal.engagement_preference.replace(/_/g, ' ')} />}
-      {personal.engagement_notes && <InfoRow label="Engagement Notes" value={personal.engagement_notes} />}
+      {personal.engagement_notes && <InfoRow label="Engagement notes" value={personal.engagement_notes} />}
       {addressLines
         ? <InfoRow label="Address" value={addressLines} />
         : !canViewPii
@@ -858,18 +858,18 @@ function AccommodationSection({ accommodation: a }: { accommodation: Accommodati
     <Section title="Accommodation">
       {a.venue_name && <InfoRow label="Venue" value={a.venue_name} />}
       {a.assigned_room && <InfoRow label="Room" value={a.assigned_room} />}
-      {a.rooming_exempt && <InfoRow label="Rooming Exempt" value="Yes" />}
+      {a.rooming_exempt && <InfoRow label="Rooming exempt" value="Yes" />}
       {a.check_in_date && <InfoRow label="Check-in" value={new Date(a.check_in_date).toLocaleDateString()} />}
       {a.check_out_date && <InfoRow label="Check-out" value={new Date(a.check_out_date).toLocaleDateString()} />}
-      {a.gender_identity && <InfoRow label="Gender Identity" value={a.gender_identity_other || a.gender_identity.replace(/_/g, ' ')} />}
+      {a.gender_identity && <InfoRow label="Gender identity" value={a.gender_identity_other || a.gender_identity.replace(/_/g, ' ')} />}
       {a.preferred_roommate_genders?.length ? (
-        <InfoRow label="Preferred Roommate Genders" value={a.preferred_roommate_genders.join(', ').replace(/_/g, ' ')} />
+        <InfoRow label="Preferred roommate genders" value={a.preferred_roommate_genders.join(', ').replace(/_/g, ' ')} />
       ) : null}
-      {a.roommate_preferences && <InfoRow label="Roommate Preferences" value={a.roommate_preferences} />}
-      {a.roommate_exclusions && <InfoRow label="Roommate Exclusions" value={a.roommate_exclusions} />}
-      {a.room_type_preference && <InfoRow label="Room Type" value={a.room_type_preference} />}
-      {a.quiet_room_preference && <InfoRow label="Quiet Room" value="Yes" />}
-      {a.accessibility_needs && <InfoRow label="Accessibility Needs" value={a.accessibility_needs} />}
+      {a.roommate_preferences && <InfoRow label="Roommate preferences" value={a.roommate_preferences} />}
+      {a.roommate_exclusions && <InfoRow label="Roommate exclusions" value={a.roommate_exclusions} />}
+      {a.room_type_preference && <InfoRow label="Room type" value={a.room_type_preference} />}
+      {a.quiet_room_preference && <InfoRow label="Quiet room" value="Yes" />}
+      {a.accessibility_needs && <InfoRow label="Accessibility needs" value={a.accessibility_needs} />}
       {a.notes && <InfoRow label="Notes" value={a.notes} />}
     </Section>
   );
@@ -905,8 +905,8 @@ function AccessibilitySection({ a }: { a: AccessibilityDetail }) {
       {a.communication_needs && <InfoRow label="Communication" value={a.communication_needs} />}
       {a.neurodivergent_notes && <InfoRow label="Neurodivergent" value={a.neurodivergent_notes} />}
       {a.religious_practices && <InfoRow label="Religious" value={a.religious_practices} />}
-      {a.distance_limitations && <InfoRow label="Distance Limits" value={a.distance_limitations} />}
-      {a.unavailable_times && <InfoRow label="Unavailable Times" value={a.unavailable_times} />}
+      {a.distance_limitations && <InfoRow label="Distance limits" value={a.distance_limitations} />}
+      {a.unavailable_times && <InfoRow label="Unavailable times" value={a.unavailable_times} />}
       {a.other_needs && <InfoRow label="Other" value={a.other_needs} />}
     </Section>
   );
@@ -1001,7 +1001,7 @@ function GuardiansSection({ guardians, onCall, onEmail }: { guardians: Guardian[
             )}
             {g.emergency_contacts && g.emergency_contacts.length > 0 && (
               <View style={styles.subsection}>
-                <Text style={[type.label, { color: tokens.text2 }]}>Emergency Contacts</Text>
+                <Text style={[type.label, { color: tokens.text2 }]}>Emergency contacts</Text>
                 {g.emergency_contacts.map((ec) => (
                   <View key={ec.id || ec.name} style={styles.subContact}>
                     <Text style={[type.body, { color: tokens.text }]}>
@@ -1122,8 +1122,8 @@ function travelLegs(travel: Travel, canViewPii: boolean, timeZone?: string): Tra
       title: mode,
       summary: join(at(travel.departure_time), route(from, to)),
       details: rows([
-        [train ? 'Departure Station' : 'From', from],
-        [train ? 'Arrival Station' : 'To', to],
+        [train ? 'Departure station' : 'From', from],
+        [train ? 'Arrival station' : 'To', to],
         ['Departure', full(travel.departure_time)],
         ['Arrival', full(travel.arrival_time)],
       ]),
@@ -1140,7 +1140,7 @@ function travelLegs(travel: Travel, canViewPii: boolean, timeZone?: string): Tra
       summary: join(at(travel.expected_arrival_time), travel.origin_address),
       details: rows([
         ['From', from],
-        ['Expected Arrival', full(travel.expected_arrival_time)],
+        ['Expected arrival', full(travel.expected_arrival_time)],
       ]),
     }];
   }

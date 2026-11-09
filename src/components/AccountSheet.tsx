@@ -136,7 +136,7 @@ export function AccountSheet() {
           'Allow notifications for Attend in Settings to get messages on this device.',
           [
             { text: 'Not now', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => void Linking.openSettings() },
+            { text: 'Open settings', onPress: () => void Linking.openSettings() },
           ]
         );
       }

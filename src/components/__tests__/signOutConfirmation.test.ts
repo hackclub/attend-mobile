@@ -3,9 +3,9 @@ import { signOutConfirmation } from '../signOutConfirmation';
 describe('signOutConfirmation', () => {
   it('is the plain confirmation when nothing is waiting to sync', () => {
     expect(signOutConfirmation(0)).toEqual({
-      title: 'Sign Out',
+      title: 'Sign out',
       message: 'Are you sure you want to sign out?',
-      confirmLabel: 'Sign Out',
+      confirmLabel: 'Sign out',
     });
   });
 
