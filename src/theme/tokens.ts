@@ -207,6 +207,32 @@ export const overlayTokens = {
   kioskFrame: '#5be0b5',
   /** Behind the camera preview before it starts. */
   cameraStage: '#0b0b0f',
+  /** Dark base for scrims and shadows over imagery; use with withAlpha(). */
+  ink: '#0f141a',
+} as const;
+
+/**
+ * Hack Club brand hues, the same in both schemes. Data colours (incident
+ * levels, the Android notification light), not UI chrome.
+ */
+export const hackClubColors = {
+  red: '#ec3750',
+  orange: '#ff8c37',
+  green: '#33d6a6',
+  blue: '#338eda',
+} as const;
+
+/**
+ * The message previews imitate Slack and an SMS bubble, so they use those
+ * apps' colours rather than ours.
+ */
+export const previewTokens = {
+  slackBg: '#1a1d21',
+  slackAvatar: '#d42f46',
+  slackText: '#f3f4f6',
+  slackMuted: '#9ca3af',
+  smsBubble: '#22c55e',
+  on: '#ffffff',
 } as const;
 
 /** 4pt spacing scale. Containers pad 20 horizontally, pages 16. */

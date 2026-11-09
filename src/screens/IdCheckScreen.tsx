@@ -494,11 +494,11 @@ function Photo({ label, uri }: { label: string; uri: string | null }) {
 function outcomeColors(outcome: CheckResult, t: ThemeTokens): { bg: string; fg: string; icon: IconName } {
   switch (outcome) {
     case 'green':
-      return { bg: t.badgeGreen, fg: '#ffffff', icon: 'check-circle' };
+      return { bg: t.badgeGreen, fg: t.onStatusFill, icon: 'check-circle' };
     case 'amber':
       return { bg: t.warningFill, fg: t.onWarningFill, icon: 'exclamation' };
     case 'red':
-      return { bg: t.badgeRed, fg: '#ffffff', icon: 'x-circle' };
+      return { bg: t.badgeRed, fg: t.onStatusFill, icon: 'x-circle' };
   }
 }
 

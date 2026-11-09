@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '../hooks/useAuth';
 import { HackClubFlag } from '../components/HackClubFlag';
-import { useTheme } from '../theme';
+import { overlayTokens, typography, useTheme, withAlpha } from '../theme';
 import { Button } from '../components/ui';
 
 const HERO = require('../../assets/login-hero.webp');
@@ -57,7 +57,7 @@ export function LoginScreen() {
             key={i}
             style={{
               flex: 1,
-              backgroundColor: `rgba(8,10,18,${((i / (GRADIENT_STOPS - 1)) ** 1.4 * 0.9).toFixed(3)})`,
+              backgroundColor: withAlpha(overlayTokens.ink, (i / (GRADIENT_STOPS - 1)) ** 1.4 * 0.9),
             }}
           />
         ))}
@@ -109,8 +109,8 @@ export function LoginScreen() {
 
 // The photo is dark in both appearances, so text on it is fixed white.
 const styles = StyleSheet.create({
-  bg: { flex: 1, backgroundColor: '#0f141a' },
-  scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(10,12,20,0.32)' },
+  bg: { flex: 1, backgroundColor: overlayTokens.ink },
+  scrim: { ...StyleSheet.absoluteFill, backgroundColor: withAlpha(overlayTokens.ink, 0.32) },
   // Smooth bottom-up fade (stacked bands) so the sign-in content stays legible.
   gradient: {
     position: 'absolute',
@@ -122,10 +122,11 @@ const styles = StyleSheet.create({
   },
   safe: { flex: 1, justifyContent: 'space-between' },
   top: { paddingTop: 16 },
-  eyebrow: { letterSpacing: 2.5, color: 'rgba(255,255,255,0.75)', marginBottom: 8 },
-  title: { fontSize: 34, lineHeight: 40, fontWeight: '700', marginBottom: 12 },
-  subtitle: { fontSize: 16, lineHeight: 23, color: 'rgba(255,255,255,0.9)', marginBottom: 28 },
+  eyebrow: { letterSpacing: 2.5, color: withAlpha(overlayTokens.on, 0.75), marginBottom: 8 },
+  // Display type over the photo: h1's weight at the stat size.
+  title: { ...typography.h1, fontSize: typography.stat.fontSize, lineHeight: typography.stat.lineHeight, marginBottom: 12 },
+  subtitle: { ...typography.body, fontSize: typography.h3.fontSize, lineHeight: typography.h2.lineHeight, color: withAlpha(overlayTokens.on, 0.9), marginBottom: 28 },
   devRow: { flexDirection: 'row' },
   devButton: { flex: 1 },
-  footer: { color: 'rgba(255,255,255,0.6)', textAlign: 'center' },
+  footer: { color: withAlpha(overlayTokens.on, 0.6), textAlign: 'center' },
 });

@@ -508,7 +508,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 16,
     borderWidth: 2,
-    shadowColor: '#000',
+    shadowColor: overlayTokens.ink,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 12 },
   },

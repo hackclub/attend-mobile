@@ -4,13 +4,13 @@ import { Image } from 'expo-image';
 import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
 import { useEventPassColor } from '../hooks/useEventPassColor';
 import { Badge, Icon, OverlayIconButton, PressableSurface, pressedStyle, ripple, type BadgeColor, type IconName } from './ui';
-import { useTheme } from '../theme';
+import { hackClubColors, overlayTokens, radii, typography, useTheme, withAlpha } from '../theme';
 import { bannerHeight } from '../services/eventBanner';
 import type { Event } from '../types';
 
 export { eventBannerText } from '../services/eventBanner';
 
-const ON_BANNER = '#ffffff';
+const ON_BANNER = overlayTokens.on;
 
 /**
  * The fill behind an event's name: its banner image when it has one, else its
@@ -46,7 +46,7 @@ export function EventCover({ event, children }: { event: Event; children?: React
               height={32}
               patternTransform="rotate(45)"
             >
-              <Rect width={16} height={32} fill="rgba(255,255,255,0.07)" />
+              <Rect width={16} height={32} fill={withAlpha(overlayTokens.on, 0.07)} />
             </Pattern>
           </Defs>
           <Rect width="100%" height="100%" fill={`url(#${patternId})`} />
@@ -124,7 +124,7 @@ export function EventBanner({
       {onPress ? (
         <Pressable
           onPress={onPress}
-          android_ripple={ripple('rgba(255,255,255,0.18)')}
+          android_ripple={ripple(withAlpha(overlayTokens.on, 0.18))}
           style={({ pressed }) => pressedStyle(pressed, 0.8)}
           accessibilityRole="button"
           accessibilityLabel={label}
@@ -181,7 +181,7 @@ export function EventCard({ event, meta, selected, badge, onPress, accessibility
       <EventCover event={event} />
       {selected ? (
         <View style={styles.selectedMark}>
-          <Icon name="check" size={16} color="#ec3750" />
+          <Icon name="check" size={16} color={hackClubColors.red} />
         </View>
       ) : null}
       <View style={styles.cardText}>
@@ -197,16 +197,22 @@ const styles = StyleSheet.create({
   hero: { overflow: 'hidden' },
   // Text pinned to the bottom, so the photo shows above it.
   heroContent: { paddingHorizontal: 16, paddingBottom: 16, justifyContent: 'flex-end' },
-  photoScrim: { backgroundColor: 'rgba(15, 20, 26, 0.45)' },
+  photoScrim: { backgroundColor: withAlpha(overlayTokens.ink, 0.45) },
   onBanner: { color: ON_BANNER },
   eyebrow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
-  heroName: { fontSize: 30, lineHeight: 36, fontWeight: '700', flexShrink: 1 },
+  // The banner name is display type, a step up from h1.
+  heroName: {
+    ...typography.h1,
+    fontSize: typography.h1.fontSize * 1.25,
+    lineHeight: typography.h1.lineHeight * 1.2,
+    flexShrink: 1,
+  },
   chevron: {
     width: 28,
     height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.22)',
+    borderRadius: radii.pill,
+    backgroundColor: withAlpha(overlayTokens.on, 0.22),
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -221,12 +227,12 @@ const styles = StyleSheet.create({
     right: 12,
     width: 28,
     height: 28,
-    borderRadius: 14,
+    borderRadius: radii.pill,
     backgroundColor: ON_BANNER,
     alignItems: 'center',
     justifyContent: 'center',
   },
   cardText: { paddingHorizontal: 16, paddingBottom: 14, paddingTop: 8 },
   cardBadge: { alignSelf: 'flex-start', marginTop: 6 },
-  cardName: { fontSize: 22, lineHeight: 28, fontWeight: '700' },
+  cardName: { ...typography.h1, fontSize: typography.h1.fontSize - 2, lineHeight: typography.h1.lineHeight - 2 },
 });

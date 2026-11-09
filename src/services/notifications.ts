@@ -3,6 +3,7 @@ import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import { api, ApiError } from './api';
 import { asyncStorage } from './storage';
+import { hackClubColors } from '../theme/tokens';
 
 // The Account sheet's Notifications switch. On by default; off unregisters
 // this device's push token and keeps it from registering again.
@@ -49,7 +50,7 @@ export const notificationService = {
         name: 'default',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#EC3750',
+        lightColor: hackClubColors.red,
       });
     }
 
