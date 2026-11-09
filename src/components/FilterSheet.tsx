@@ -29,19 +29,26 @@ import {
 import { filterSheet, type FilterSheetData } from '../navigation/sheetData';
 import { useCloseSheet } from '../navigation/sheetPresenter';
 import { useSheetData } from '../screens/sheets/useSheetData';
+import { SelectField } from './forms';
+import type { SelectOption } from '../types';
 
 
 type PickerTarget =
   | { kind: 'field'; ruleId: string }
   | { kind: 'operator'; ruleId: string }
-  | { kind: 'value'; ruleId: string }
-  | { kind: 'sort-field' };
+  | { kind: 'value'; ruleId: string };
+
+// The sort select's "no sort" option.
+const DEFAULT_ORDER = '';
+const SORT_OPTIONS: SelectOption[] = [
+  { value: DEFAULT_ORDER, label: 'Default order' },
+  ...SORT_FIELDS.map(f => ({ value: f.key, label: f.label })),
+];
 
 const PICKER_TITLES: Record<PickerTarget['kind'], string> = {
   field: 'Select field',
   operator: 'Select condition',
   value: 'Select value',
-  'sort-field': 'Sort by',
 };
 
 /** People's filter & sort, a drawer opened through `filterSheet`. */
@@ -96,9 +103,6 @@ function FilterSheetBody({
     if (picker.kind === 'field') {
       return FILTER_FIELDS.map(f => ({ value: f.key, label: f.label }));
     }
-    if (picker.kind === 'sort-field') {
-      return SORT_FIELDS.map(f => ({ value: f.key, label: f.label }));
-    }
     const rule = rules.find(r => r.id === picker.ruleId);
     const field = rule ? getField(rule.field) : undefined;
     if (!rule || !field) return [];
@@ -110,20 +114,17 @@ function FilterSheetBody({
 
   const pickerSelected = useMemo((): string | undefined => {
     if (!picker) return undefined;
-    if (picker.kind === 'sort-field') return sort?.field;
     const rule = rules.find(r => r.id === picker.ruleId);
     if (!rule) return undefined;
     if (picker.kind === 'field') return rule.field;
     if (picker.kind === 'operator') return rule.operator;
     return rule.value;
-  }, [picker, rules, sort]);
+  }, [picker, rules]);
 
   const handlePickOption = useCallback(
     (value: string) => {
       if (!picker) return;
-      if (picker.kind === 'sort-field') {
-        onSortChange({ field: value, direction: sort?.direction ?? 'asc' });
-      } else if (picker.kind === 'field') {
+      if (picker.kind === 'field') {
         const field = getField(value);
         if (field) {
           // Changing field resets operator + value to valid defaults
@@ -144,7 +145,7 @@ function FilterSheetBody({
       }
       setPicker(null);
     },
-    [picker, sort, onSortChange, updateRule],
+    [picker, updateRule],
   );
 
   const handleSaveView = useCallback(() => {
@@ -311,33 +312,26 @@ function FilterSheetBody({
         <Text style={[type.h3, styles.sectionTitle, { color: tokens.textH }]} accessibilityRole="header">
           Sort
         </Text>
-        <View style={[styles.ruleRow, { borderColor: tokens.box, borderRadius: radii.container }]}>
-          <View style={styles.rulePills}>
-            <SelectPill
-              label={sortField?.label ?? 'Default order'}
-              placeholder={!sortField}
-              onPress={() => setPicker({ kind: 'sort-field' })}
+        <View style={styles.sortRow}>
+          <SelectField
+            title="Sort by"
+            value={sort?.field ?? DEFAULT_ORDER}
+            options={SORT_OPTIONS}
+            onChange={(field) =>
+              onSortChange(field === DEFAULT_ORDER ? null : { field, direction: sort?.direction ?? 'asc' })
+            }
+          />
+          {sortField && sort ? (
+            <SegmentedControl
+              options={[
+                { value: 'asc', label: 'Ascending' },
+                { value: 'desc', label: 'Descending' },
+              ]}
+              value={sort.direction}
+              onChange={(direction) => onSortChange({ ...sort, direction })}
+              accessibilityLabel="Sort direction"
             />
-
-            {sort && (
-              <SelectPill
-                icon={sort.direction === 'asc' ? 'chevron-up' : 'chevron-down'}
-                label={sort.direction === 'asc' ? 'Ascending' : 'Descending'}
-                onPress={() =>
-                  onSortChange({ ...sort, direction: sort.direction === 'asc' ? 'desc' : 'asc' })
-                }
-              />
-            )}
-          </View>
-
-          {sort && (
-            <Button
-              variant="plain-icon"
-              icon="x"
-              title="Clear sort"
-              onPress={() => onSortChange(null)}
-            />
-          )}
+          ) : null}
         </View>
 
         <Divider style={styles.divider} />
@@ -534,6 +528,9 @@ const styles = StyleSheet.create({
   },
   viewNameField: {
     flex: 1,
+  },
+  sortRow: {
+    gap: 12,
   },
   matchCount: {
     flex: 1,

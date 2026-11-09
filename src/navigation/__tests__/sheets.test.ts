@@ -1,4 +1,4 @@
-import { composeSheetHeight, isRouteUnderSheets, isSheetRoute } from '../sheets';
+import { composeSheetHeight, isRouteUnderSheets, isSheetRoute, SHEET_ROUTES, sheetDetents } from '../sheets';
 
 const main = (tab: string, stackTop: string) => ({
   key: 'main',
@@ -68,5 +68,22 @@ describe('composeSheetHeight', () => {
 
   it('never exceeds the screen', () => {
     expect(composeSheetHeight([1.2])).toBe(1);
+  });
+});
+
+describe('sheetDetents', () => {
+  it('keeps only the long lists tall', () => {
+    expect(sheetDetents('ScannerSearchSheet')).toEqual([0.9]);
+    expect(sheetDetents('MultiSelectSheet')).toEqual([0.9]);
+  });
+
+  it('fits every other drawer to its content, on both platforms', () => {
+    const fitted = SHEET_ROUTES.filter((name) => name !== 'ScannerSearchSheet' && name !== 'MultiSelectSheet');
+    expect(fitted).toContain('FilterSheet');
+    expect(fitted).toContain('AccountSheet');
+    for (const name of fitted) {
+      expect(sheetDetents(name)).toBe('fitToContents');
+      expect(composeSheetHeight(sheetDetents(name))).toBe('fit');
+    }
   });
 });

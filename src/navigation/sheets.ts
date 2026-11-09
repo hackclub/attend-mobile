@@ -50,6 +50,18 @@ export function isRouteUnderSheets(rootState: StateLike | undefined, routeKey: s
 }
 
 /**
+ * The drawers that are long lists (participant search, a searchable
+ * checklist), tall from the start so the list has room under the keyboard.
+ * Every other drawer fits its content.
+ */
+export const TALL_SHEETS: ReadonlySet<SheetRouteName> = new Set(['ScannerSearchSheet', 'MultiSelectSheet']);
+
+/** A form sheet's resting heights (fractions of the screen, ascending). */
+export function sheetDetents(name: SheetRouteName): readonly number[] | 'fitToContents' {
+  return TALL_SHEETS.has(name) ? [0.9] : 'fitToContents';
+}
+
+/**
  * An Android bottom sheet's height: 'fit' sizes it to its content (up to
  * nearly the screen), a number is that fraction of the space it can take.
  */

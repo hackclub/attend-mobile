@@ -49,7 +49,7 @@ function ComposeSheet({ sheet }: { sheet: OpenSheet }) {
   const config = SHEETS[sheet.name];
   // Loaded on the sheet's first open, as the iOS routes are.
   const content = useMemo(() => React.createElement(config.getComponent()), [config]);
-  const size = config.composeHeight ?? composeSheetHeight(config.detents);
+  const size = composeSheetHeight(config.detents);
 
   const presented = useMemo<PresentedSheet>(
     () => ({
