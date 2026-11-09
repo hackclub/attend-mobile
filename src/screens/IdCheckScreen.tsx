@@ -238,11 +238,12 @@ function IdCheckFlow({ route, navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
-      <View style={[styles.topBar, { paddingLeft: spacing.lg, paddingRight: spacing.xs }]}>
+      {/* A full-screen modal, so Cancel is the way out (and Android's back). */}
+      <View style={{ paddingHorizontal: spacing.lg, gap: spacing.xs }}>
+        <Button title="Cancel" variant="link" onPress={close} style={styles.cancel} />
         <Text style={[type.h1, { color: tokens.textH }]} accessibilityRole="header">
           Verify ID
         </Text>
-        <Button title="Close" variant="link" onPress={close} />
       </View>
 
       <Sentry.Mask style={styles.flex}>
@@ -554,7 +555,7 @@ function PrivateField(props: React.ComponentProps<typeof TextField> & { label: s
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center' },
-  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 },
+  cancel: { marginLeft: -12, marginTop: 4 },
   content: { paddingBottom: 48 },
   participant: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   participantPhoto: { width: 48, height: 48, borderRadius: 24 },

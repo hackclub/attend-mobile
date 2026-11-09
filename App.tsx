@@ -321,7 +321,7 @@ function RootNavigator() {
             <Stack.Screen
               name="IdCheck"
               getComponent={lazyScreens.IdCheck}
-              options={{ presentation: 'modal', gestureEnabled: false }}
+              options={{ presentation: 'fullScreenModal' }}
             />
           ) : null}
           <Stack.Screen

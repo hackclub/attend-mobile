@@ -15,6 +15,8 @@ interface ActivityControllerModule {
   // Android only.
   canPostLiveUpdates?(): boolean;
   openLiveUpdateSettings?(): boolean;
+  startLockTask?(): Promise<boolean>;
+  stopLockTask?(): Promise<boolean>;
 }
 
 const ActivityController: ActivityControllerModule | null = (() => {
@@ -156,4 +158,28 @@ export function areLiveActivitiesSupported(): boolean {
 export function isLiveActivityAvailable(): boolean {
   if (!ActivityController) return false;
   return Platform.OS === 'android' || ActivityController.areLiveActivitiesEnabled();
+}
+
+/**
+ * Android: pins the screen (lock task mode) for kiosk mode, so the device
+ * can't leave Attend; the system asks the user to confirm. Resolves whether
+ * it's pinned. iOS has no API for this (Guided Access is a user setting).
+ */
+export async function startScreenPinning(): Promise<boolean> {
+  if (Platform.OS !== 'android' || !ActivityController?.startLockTask) return false;
+  try {
+    return await ActivityController.startLockTask();
+  } catch {
+    return false;
+  }
+}
+
+/** Android: unpins the screen when kiosk mode is left. */
+export async function stopScreenPinning(): Promise<void> {
+  if (Platform.OS !== 'android' || !ActivityController?.stopLockTask) return;
+  try {
+    await ActivityController.stopLockTask();
+  } catch {
+    // Already unpinned.
+  }
 }

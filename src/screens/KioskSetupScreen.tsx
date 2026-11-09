@@ -180,13 +180,19 @@ export function KioskSetupScreen() {
           </Container>
         )}
 
-        {/* Guided Access is an iOS feature. */}
+        {/* iOS has no app-side lock, so Guided Access is suggested; Android
+            pins the screen itself when kiosk mode starts. */}
         {Platform.OS === 'ios' ? (
           <Flashbar
             type="info"
             message="Tip: Turn on Guided Access (Settings › Accessibility) for a hardware-level lock. Triple-click the side button to lock the iPad to this app."
           />
-        ) : null}
+        ) : (
+          <Flashbar
+            type="info"
+            message="Kiosk mode pins the screen to Attend. Confirm when Android asks; exiting kiosk mode unpins it."
+          />
+        )}
 
         <Button
           title="Start Kiosk Mode"

@@ -32,6 +32,7 @@ import { useApp } from '../context/AppContext';
 import type { ScannerResult } from '../services/scannerCore';
 import { colors } from '../theme/colors';
 import type { AppStackParamList } from '../types';
+import { startScreenPinning, stopScreenPinning } from '../../modules/activity-controller/src';
 
 type NavigationProp = NativeStackNavigationProp<AppStackParamList, 'Kiosk'>;
 type KioskRoute = RouteProp<AppStackParamList, 'Kiosk'>;
@@ -88,6 +89,16 @@ export function KioskScreen() {
     }, [])
   );
 
+  // Android pins the screen while kiosk mode runs (the system asks to
+  // confirm), so the device can't leave Attend; exiting through the PIN or
+  // biometrics unpins it. iOS relies on Guided Access, set up in KioskSetup.
+  useEffect(() => {
+    void startScreenPinning();
+    return () => {
+      void stopScreenPinning();
+    };
+  }, []);
+
   useEffect(() => {
     if (!lastScan || lastScan.outcome === 'confirming') return;
     if (lastFeedbackAttemptRef.current === lastScan.attemptId) return;
@@ -119,6 +130,7 @@ export function KioskScreen() {
 
   const onUnlocked = () => {
     setEscapeOpen(false);
+    void stopScreenPinning();
     navigation.goBack();
   };
 

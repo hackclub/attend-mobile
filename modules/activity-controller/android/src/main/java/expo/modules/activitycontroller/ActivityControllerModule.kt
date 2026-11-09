@@ -1,6 +1,7 @@
 package expo.modules.activitycontroller
 
 import android.Manifest
+import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -15,6 +16,7 @@ import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -43,6 +45,11 @@ class ActivityControllerModule : Module() {
 
   private val prefs
     get() = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+  private fun isInLockTask(): Boolean {
+    val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+    return activityManager.lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE
+  }
 
   override fun definition() = ModuleDefinition {
     Name("ActivityController")
@@ -111,6 +118,23 @@ class ActivityControllerModule : Module() {
     }
 
     Function("isTicketActivityRunning") { isShowing(TICKET_NOTIFICATION_ID) }
+
+    // Kiosk mode: screen pinning, so the tablet can't leave Attend. Without
+    // device-owner provisioning the system asks the user to confirm, and
+    // shows how to unpin. Resolves whether the task is now pinned.
+    AsyncFunction("startLockTask") {
+      val activity = appContext.currentActivity ?: return@AsyncFunction false
+      runCatching { activity.startLockTask() }.isSuccess && isInLockTask()
+    }.runOnQueue(Queues.MAIN)
+
+    // Leaving kiosk mode (after its PIN or biometric check) unpins.
+    AsyncFunction("stopLockTask") {
+      val activity = appContext.currentActivity ?: return@AsyncFunction false
+      if (!isInLockTask()) return@AsyncFunction true
+      runCatching { activity.stopLockTask() }.isSuccess
+    }.runOnQueue(Queues.MAIN)
+
+    Function("isInLockTask") { isInLockTask() }
   }
 
   // ---------------------------------------------------------------------------
