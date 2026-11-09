@@ -8,7 +8,7 @@ import { notificationService } from '../services/notifications';
 import { liveActivityService } from '../services/liveActivity';
 import { mergeParticipant, type ParticipantUpdate } from '../services/participantIndex';
 import { forbiddenParticipants } from '../services/eventAccess';
-import { prefetchHeadshots } from '../services/headshotCache';
+import { scheduleHeadshotPrefetch } from '../services/headshotCache';
 import { activeParticipants } from '../services/participantStatus';
 import { biometricService } from '../services/biometric';
 import { PrivacyCover } from '../components/PrivacyCover';
@@ -179,10 +179,10 @@ const AppContext = createContext<AppContextValue | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const currentEventIdRef = useRef<string | null>(null);
+  // The signed-in token, set wherever SET_AUTH / CLEAR_AUTH change it.
   const authTokenRef = useRef<string | null>(null);
   const eventSelectionGenerationRef = useRef(0);
   currentEventIdRef.current = state.currentEvent?.id ?? null;
-  authTokenRef.current = state.auth.token;
 
   const refreshSyncStatus = useCallback(() => {
     syncService.getStatus().then((status) => {
@@ -325,12 +325,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.auth.isAuthenticated]);
 
+  // Deferred, and only fetches headshots not already on disk.
   useEffect(() => {
-    if (state.participants.length > 0) {
-      void prefetchHeadshots(state.participants).catch(error => {
-        console.warn('[Images] Headshot prefetch failed:', error);
-      });
-    }
+    if (state.participants.length === 0) return;
+    return scheduleHeadshotPrefetch(state.participants);
   }, [state.participants]);
 
   useEffect(() => {
