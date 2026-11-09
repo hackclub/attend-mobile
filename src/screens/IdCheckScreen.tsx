@@ -41,6 +41,7 @@ import {
   type VerdictInput,
 } from '../services/idCheck/verdict';
 import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
+import { BiometricGate } from '../components/BiometricGate';
 import type { RootStackParamList } from '../types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'IdCheck'>;
@@ -62,7 +63,25 @@ const EMPTY_MANUAL: MrzAccessFields = { documentNumber: '', dateOfBirth: '', dat
 
 const DOCUMENT_LABELS: Record<string, string> = { P: 'Passport', I: 'ID card', A: 'ID card', C: 'ID card' };
 
-export function IdCheckScreen({ route, navigation }: Props) {
+// The ID check shows the participant's legal name, date of birth and
+// photo, so it sits behind the same biometric gate as participant details.
+// It's opened from an unlocked detail view, so normally the gate passes
+// straight through; it locks again if the app is backgrounded meanwhile.
+export function IdCheckScreen(props: Props) {
+  const styles = useThemedStyles(makeStyles);
+  return (
+    <View style={styles.container}>
+      <BiometricGate
+        reason="Authenticate to check this participant's ID"
+        onCancel={() => props.navigation.goBack()}
+      >
+        <IdCheckFlow {...props} />
+      </BiometricGate>
+    </View>
+  );
+}
+
+function IdCheckFlow({ route, navigation }: Props) {
   const { participant, eventId } = route.params;
   const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);

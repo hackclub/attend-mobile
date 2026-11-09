@@ -79,3 +79,65 @@ describe('biometricService.authenticate', () => {
     expect(LocalAuthentication.authenticateAsync).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('biometricService session locking', () => {
+  async function unlock() {
+    jest.mocked(LocalAuthentication.authenticateAsync).mockResolvedValue({ success: true });
+    await biometricService.authenticate('Authenticate to view participant details');
+    expect(biometricService.isSessionValid()).toBe(true);
+  }
+
+  it('ends the session and notifies gates when the app goes to the background', async () => {
+    await unlock();
+    const listener = jest.fn();
+    biometricService.onLock(listener);
+
+    biometricService.handleAppStateChange('background');
+
+    expect(biometricService.isSessionValid()).toBe(false);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the session while merely inactive (the Face ID prompt itself)', async () => {
+    await unlock();
+    const listener = jest.fn();
+    biometricService.onLock(listener);
+
+    biometricService.handleAppStateChange('inactive');
+    biometricService.handleAppStateChange('active');
+
+    expect(biometricService.isSessionValid()).toBe(true);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('stops notifying a gate once it unsubscribes', () => {
+    const listener = jest.fn();
+    const unsubscribe = biometricService.onLock(listener);
+    unsubscribe();
+
+    biometricService.clearSession();
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('still locks every gate when one listener throws', () => {
+    const second = jest.fn();
+    biometricService.onLock(() => { throw new Error('boom'); });
+    biometricService.onLock(second);
+
+    biometricService.clearSession();
+    expect(second).toHaveBeenCalled();
+  });
+
+  it('expires after five minutes and ignores a clock that went backwards', async () => {
+    const now = jest.spyOn(Date, 'now');
+    now.mockReturnValue(1_000_000);
+    await unlock();
+
+    now.mockReturnValue(1_000_000 + 5 * 60 * 1000);
+    expect(biometricService.isSessionValid()).toBe(false);
+
+    now.mockReturnValue(1_000_000 - 1);
+    expect(biometricService.isSessionValid()).toBe(false);
+    now.mockRestore();
+  });
+});

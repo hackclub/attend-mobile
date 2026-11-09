@@ -373,6 +373,9 @@ export function SearchScreen() {
           sidebar={sidebar}
           detail={selectedParticipant ? (
             <ParticipantDetailContent
+              // A new participant gets a fresh gate: it re-checks the unlock
+              // and starts the detail state over.
+              key={selectedParticipant.participant_event_id}
               participant={selectedParticipant}
               topInset={16}
               bottomInset={100}

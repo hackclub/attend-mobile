@@ -473,7 +473,9 @@ export type RootStackParamList = {
   Login: undefined;
   Main: undefined;
   ParticipantMain: undefined;
-  ParticipantDetail: { participant: Participant };
+  // `id` (a participant_event id) comes from the attend://participant/:id
+  // deep link; the screen looks it up once the gate is unlocked.
+  ParticipantDetail: { participant: Participant } | { id: string };
   TicketDetail: { ticket: Ticket };
   IncidentList: undefined;
   IncidentDetail: { incidentId: string };

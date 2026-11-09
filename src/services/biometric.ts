@@ -6,9 +6,17 @@ const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 // Touch ID where it's set up, the passcode otherwise. There is deliberately
 // no setting to turn this off. A device with no lock at all can't pass the
 // prompt, so it can't open participant details either.
+//
+// One unlock lasts five minutes, but only while the app stays in the
+// foreground: going to the background, and signing out, end it at once.
+// Mounted gates (see useBiometricGate) hear about that through onLock and
+// hide what they were showing.
+
+type LockListener = () => void;
 
 class BiometricService {
   private lastAuthTime: number | null = null;
+  private lockListeners = new Set<LockListener>();
 
   async isAvailable(): Promise<boolean> {
     const compatible = await LocalAuthentication.hasHardwareAsync();
@@ -25,11 +33,35 @@ class BiometricService {
   isSessionValid(): boolean {
     if (!this.lastAuthTime) return false;
     const elapsed = Date.now() - this.lastAuthTime;
-    return elapsed < SESSION_TIMEOUT_MS;
+    // A clock that jumped backwards doesn't extend the unlock.
+    return elapsed >= 0 && elapsed < SESSION_TIMEOUT_MS;
   }
 
+  // Ends the unlock and tells every mounted gate to lock.
   clearSession(): void {
     this.lastAuthTime = null;
+    this.lockListeners.forEach((listener) => {
+      try {
+        listener();
+      } catch {
+        // One broken listener mustn't stop the others from locking.
+      }
+    });
+  }
+
+  onLock(listener: LockListener): () => void {
+    this.lockListeners.add(listener);
+    return () => {
+      this.lockListeners.delete(listener);
+    };
+  }
+
+  // Fed from AppState. Only a real background ends the session: iOS makes
+  // the app 'inactive' while the Face ID or passcode prompt itself is up.
+  handleAppStateChange(next: string): void {
+    if (next === 'background') {
+      this.clearSession();
+    }
   }
 
   // Always prompts, even when a recent unlock is still valid.

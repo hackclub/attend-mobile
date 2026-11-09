@@ -27,6 +27,7 @@ import { api } from '../services/api';
 import { buildPhoneActions } from '../services/contactLinks';
 import { isWithdrawn } from '../services/participantStatus';
 import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
+import { BiometricGate } from '../components/BiometricGate';
 import type { RootStackParamList, Participant, ParticipantNote, Travel, Guardian, Consent, Accommodation, AccessibilityDetail, PersonalDetails } from '../types';
 
 interface ParticipantDetailContentProps {
@@ -35,7 +36,21 @@ interface ParticipantDetailContentProps {
   bottomInset?: number;
 }
 
-export function ParticipantDetailContent({ participant, topInset = 100, bottomInset = 32 }: ParticipantDetailContentProps) {
+/**
+ * Full participant details, always behind the biometric gate. This is the
+ * only export, so nothing can render the details without it: the pushed
+ * screen, the iPad split pane and anything added later all get the gate,
+ * which locks again when the app is backgrounded or the user signs out.
+ */
+export function ParticipantDetailContent(props: ParticipantDetailContentProps) {
+  return (
+    <BiometricGate topInset={props.topInset ?? 100}>
+      <ParticipantDetailBody {...props} />
+    </BiometricGate>
+  );
+}
+
+function ParticipantDetailBody({ participant, topInset = 100, bottomInset = 32 }: ParticipantDetailContentProps) {
   const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const { state, updateParticipant } = useApp();
