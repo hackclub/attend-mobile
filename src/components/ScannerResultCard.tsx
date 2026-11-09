@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { AccessibilityInfo, Animated, PanResponder, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { AccessibilityInfo, Animated, PanResponder, Platform, StyleSheet, Text, View } from 'react-native';
 import { ParticipantAvatar } from './ParticipantAvatar';
+import { Badge, Button, StatusGlyph, type BadgeColor, type StatusType } from './ui';
 import type { ScannerOutcome, ScannerResult } from '../services/scannerCore';
-import { colors } from '../theme/colors';
+import { useTheme, type ThemeTokens } from '../theme';
 
 interface ScannerResultCardProps {
   result: ScannerResult;
@@ -12,43 +12,32 @@ interface ScannerResultCardProps {
   onDetails?: () => void;
   onRetry: () => void;
   onClear: () => void;
+  /** Undo a fresh scan. Only offered for the 'scanned' outcome. */
+  onUndo?: () => void;
+  undoing?: boolean;
+  /** "85 of 129": the context's progress, after the context name. */
+  progress?: string | null;
 }
 
-const OUTCOME_FOREGROUND = '#020617';
-
-const OUTCOME: Record<ScannerOutcome, {
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  color: string;
-}> = {
-  confirming: {
-    label: 'Confirming',
-    icon: 'sync',
-    color: colors.blue,
-  },
-  scanned: {
-    label: 'Scanned',
-    icon: 'checkmark-circle',
-    color: colors.green,
-  },
-  already_scanned: {
-    label: 'Already Scanned',
-    icon: 'time',
-    color: colors.orange,
-  },
+const OUTCOME: Record<ScannerOutcome, { label: string; status: StatusType }> = {
+  confirming: { label: 'Confirming', status: 'in-progress' },
+  scanned: { label: 'Scanned', status: 'success' },
+  already_scanned: { label: 'Already Scanned', status: 'warning' },
   // Saved to the offline queue: deliberately not success-coloured, since
   // nothing has been confirmed. The detail line comes from result.message.
-  queued: {
-    label: 'Saved offline',
-    icon: 'cloud-offline',
-    color: colors.gray[400],
-  },
-  not_scanned: {
-    label: 'Not Scanned',
-    icon: 'close-circle',
-    color: colors.red,
-  },
+  queued: { label: 'Saved offline', status: 'pending' },
+  not_scanned: { label: 'Not Scanned', status: 'error' },
 };
+
+function outcomeColor(status: StatusType, tokens: ThemeTokens): string {
+  switch (status) {
+    case 'success': return tokens.success;
+    case 'warning': return tokens.warning;
+    case 'error': return tokens.error;
+    case 'in-progress': return tokens.info;
+    default: return tokens.inactive;
+  }
+}
 
 function formattedFirstScan(timestamp?: string): string | null {
   if (!timestamp) return null;
@@ -62,43 +51,37 @@ export function ScannerResultCard({
   onDetails,
   onRetry,
   onClear,
+  onUndo,
+  undoing = false,
+  progress,
 }: ScannerResultCardProps) {
+  const { tokens, type, radii } = useTheme();
   const config = OUTCOME[result.outcome];
+  const color = outcomeColor(config.status, tokens);
   const participant = result.participant;
   const name = participant?.display_name || participant?.full_name || 'Attendee not identified';
-  const firstScan = formattedFirstScan(result.firstScannedAt);
+  const firstScan = result.outcome === 'already_scanned' ? formattedFirstScan(result.firstScannedAt) : null;
   const isFinal = result.outcome !== 'confirming';
-  const translateY = useRef(new Animated.Value(0)).current;
+  const [translateY] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     translateY.setValue(0);
   }, [result.attemptId, translateY]);
 
   const settleBack = useCallback(() => {
-    Animated.spring(translateY, {
-      toValue: 0,
-      bounciness: 4,
-      useNativeDriver: true,
-    }).start();
+    Animated.spring(translateY, { toValue: 0, bounciness: 4, useNativeDriver: true }).start();
   }, [translateY]);
 
   const dismiss = useCallback(() => {
-    Animated.timing(translateY, {
-      toValue: 320,
-      duration: 150,
-      useNativeDriver: true,
-    }).start(() => {
+    Animated.timing(translateY, { toValue: 320, duration: 150, useNativeDriver: true }).start(() => {
       translateY.setValue(0);
       onClear();
     });
   }, [onClear, translateY]);
 
   const releaseOrSettle = useCallback((dy: number, vy: number) => {
-    if (dy > 64 || vy > 0.7) {
-      dismiss();
-    } else {
-      settleBack();
-    }
+    if (dy > 64 || vy > 0.7) dismiss();
+    else settleBack();
   }, [dismiss, settleBack]);
 
   // Claims the gesture on touch-start so the surrounding ScrollView can't
@@ -106,9 +89,7 @@ export function ScannerResultCard({
   const handlePanResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
-    onPanResponderMove: (_, gesture) => {
-      translateY.setValue(Math.max(0, gesture.dy));
-    },
+    onPanResponderMove: (_, gesture) => translateY.setValue(Math.max(0, gesture.dy)),
     onPanResponderRelease: (_, gesture) => releaseOrSettle(gesture.dy, gesture.vy),
     onPanResponderTerminate: settleBack,
     onPanResponderTerminationRequest: () => false,
@@ -118,40 +99,34 @@ export function ScannerResultCard({
     onMoveShouldSetPanResponder: (_, gesture) => (
       gesture.dy > 12 && Math.abs(gesture.dy) > Math.abs(gesture.dx)
     ),
-    onPanResponderMove: (_, gesture) => {
-      translateY.setValue(Math.max(0, gesture.dy));
-    },
+    onPanResponderMove: (_, gesture) => translateY.setValue(Math.max(0, gesture.dy)),
     onPanResponderRelease: (_, gesture) => releaseOrSettle(gesture.dy, gesture.vy),
     onPanResponderTerminate: settleBack,
     onPanResponderTerminationRequest: () => false,
   }), [releaseOrSettle, settleBack, translateY]);
-  const alerts = participant ? [
-    participant.has_anaphylaxis_risk
-      ? { key: 'anaphylaxis', icon: 'medical', label: 'Anaphylaxis risk', color: colors.red }
-      : null,
+
+  const alerts: { key: string; label: string; color: BadgeColor }[] = participant ? [
+    participant.has_anaphylaxis_risk ? { key: 'anaphylaxis', label: 'Anaphylaxis', color: 'red' as const } : null,
     participant.requires_refrigeration
-      ? { key: 'refrigeration', icon: 'snow', label: 'Medication refrigeration', color: colors.blue }
+      ? { key: 'refrigeration', label: 'Medication refrigeration', color: 'blue' as const }
       : null,
-    participant.high_support_flag
-      ? { key: 'support', icon: 'people', label: 'High support', color: colors.orange }
-      : null,
-  ].filter(Boolean) as Array<{
-    key: string;
-    icon: keyof typeof Ionicons.glyphMap;
-    label: string;
-    color: string;
-  }> : [];
+    participant.high_support_flag ? { key: 'support', label: 'High support', color: 'yellow' as const } : null,
+  ].filter((alert): alert is NonNullable<typeof alert> => !!alert) : [];
 
   useEffect(() => {
     if (!isFinal) return;
-    const context = result.scanContext?.name;
-    const message = [config.label, participant ? name : null, context, result.message]
+    const message = [config.label, participant ? name : null, result.scanContext?.name, result.message]
       .filter(Boolean)
       .join('. ');
     if (Platform.OS === 'ios') {
       AccessibilityInfo.announceForAccessibility(message);
     }
   }, [config.label, isFinal, name, participant, result.attemptId, result.message, result.scanContext?.name]);
+
+  const frame = [
+    styles.card,
+    { backgroundColor: tokens.bg, borderColor: tokens.box, borderRadius: radii.container },
+  ];
 
   const handleZone = (
     <View
@@ -160,36 +135,27 @@ export function ScannerResultCard({
       importantForAccessibility="no"
       {...handlePanResponder.panHandlers}
     >
-      <View style={styles.dragHandle} />
+      <View style={[styles.dragHandle, { backgroundColor: tokens.div }]} />
     </View>
   );
 
   if (!participant) {
     return (
       <Animated.View style={{ transform: [{ translateY }] }}>
-        <View style={[styles.card, styles.cardCompact]} {...cardPanResponder.panHandlers}>
+        <View style={frame} {...cardPanResponder.panHandlers}>
           {handleZone}
           <View style={styles.compactRow}>
-            <Ionicons
-              name={config.icon}
-              size={22}
-              color={config.color}
-            />
-            <Text style={styles.compactMessage} accessibilityLiveRegion={isFinal ? 'assertive' : 'polite'}>
+            <StatusGlyph type={config.status} color={color} size={20} />
+            <Text
+              style={[type.body, styles.flex, { color: tokens.text }]}
+              accessibilityLiveRegion={isFinal ? 'assertive' : 'polite'}
+            >
               {result.outcome === 'queued'
                 ? `${config.label}. ${result.message}`
                 : result.message || config.label}
             </Text>
             {result.retryable ? (
-              <Pressable
-                style={({ pressed }) => [styles.actionButton, pressed && styles.actionPressed]}
-                onPress={onRetry}
-                accessibilityRole="button"
-                accessibilityLabel="Retry scan"
-              >
-                <Ionicons name="refresh" size={18} color={colors.white} />
-                <Text style={styles.actionText}>Retry</Text>
-              </Pressable>
+              <Button title="Retry" icon="refresh" onPress={onRetry} accessibilityLabel="Retry scan" />
             ) : null}
           </View>
         </View>
@@ -197,280 +163,103 @@ export function ScannerResultCard({
     );
   }
 
+  const meta = [result.scanContext?.name, progress, firstScan].filter(Boolean).join(' · ');
+  const canUndo = !!onUndo && result.outcome === 'scanned';
+  const canRetry = result.outcome === 'not_scanned' && result.retryable;
+
   return (
     <Animated.View style={{ transform: [{ translateY }] }}>
-    <View
-      style={styles.card}
-      {...cardPanResponder.panHandlers}
-    >
-      {handleZone}
-      <View style={styles.identityRow}>
-        <ParticipantAvatar participant={participant} />
-
-        <View style={styles.identityText}>
-          <View style={[styles.outcomeBadge, { backgroundColor: config.color }]}>
-            <Ionicons name={config.icon} size={18} color={OUTCOME_FOREGROUND} />
-            <Text
-              style={styles.outcomeLabel}
-              accessibilityLiveRegion={isFinal ? 'assertive' : 'polite'}
-            >
-              {config.label}
+      <View style={frame} {...cardPanResponder.panHandlers}>
+        {handleZone}
+        <View style={styles.identityRow}>
+          <ParticipantAvatar participant={participant} size={48} />
+          <View style={styles.flex}>
+            <Text style={[type.h2, { color: tokens.textH }]}>
+              <Text>{name}</Text>
+              {participant.pronouns ? (
+                <Text style={[type.body, { color: tokens.muted }]}>{`  ${participant.pronouns}`}</Text>
+              ) : null}
             </Text>
-          </View>
-          <Text style={styles.name}>{name}</Text>
-          {participant?.pronouns ? (
-            <Text style={styles.pronouns}>{participant.pronouns}</Text>
-          ) : null}
-        </View>
-      </View>
-
-      <View style={styles.confirmationRow}>
-        <View style={styles.contextRow}>
-          <Ionicons name="location" size={17} color={colors.gray[300]} />
-          <Text style={styles.contextText}>
-            {result.scanContext?.name || 'Current context'}
-          </Text>
-        </View>
-        {firstScan ? <Text style={styles.firstScan}>{firstScan}</Text> : null}
-      </View>
-
-      {result.message ? (
-        <View style={styles.messageRow}>
-          <Ionicons name="information-circle" size={18} color={config.color} />
-          <Text style={styles.message}>{result.message}</Text>
-        </View>
-      ) : null}
-
-      {alerts.length > 0 ? (
-        <View style={styles.alerts} accessibilityLabel="Safety alerts">
-          {alerts.map(alert => (
-            <View key={alert.key} style={styles.alertItem}>
-              <Ionicons name={alert.icon} size={18} color={alert.color} />
-              <Text style={styles.alertText}>{alert.label}</Text>
+            <View style={styles.statusRow}>
+              <StatusGlyph type={config.status} color={color} />
+              <Text style={[type.body, styles.flex, { color: tokens.muted }]}>
+                <Text
+                  style={[type.label, { color }]}
+                  accessibilityLiveRegion={isFinal ? 'assertive' : 'polite'}
+                >
+                  {config.label}
+                </Text>
+                {meta ? ` · ${meta}` : ''}
+              </Text>
             </View>
-          ))}
-        </View>
-      ) : null}
-
-      <View style={styles.footer}>
-        <View style={styles.readyRow}>
-          <Ionicons
-            name={isFinal ? 'scan' : 'hourglass'}
-            size={17}
-            color={colors.gray[300]}
-          />
-          <Text style={styles.readyText}>
-            {isFinal ? 'Ready for next attendee' : 'Hold steady'}
-          </Text>
+          </View>
         </View>
 
-        <View style={styles.actions}>
-          {result.outcome === 'not_scanned' && result.retryable ? (
-            <Pressable
-              style={({ pressed }) => [styles.actionButton, pressed && styles.actionPressed]}
-              onPress={onRetry}
-              accessibilityRole="button"
-              accessibilityLabel="Retry scan"
-            >
-              <Ionicons name="refresh" size={18} color={colors.white} />
-              <Text style={styles.actionText}>Retry</Text>
-            </Pressable>
-          ) : null}
-          {participant && onDetails ? (
-            <Pressable
-              style={({ pressed }) => [styles.actionButton, pressed && styles.actionPressed]}
-              onPress={onDetails}
-              accessibilityRole="button"
-              accessibilityLabel={`View ${name} details`}
-            >
-              <Text style={styles.actionText}>Details</Text>
-              <Ionicons name="chevron-forward" size={18} color={colors.white} />
-            </Pressable>
-          ) : null}
-        </View>
+        {result.message ? (
+          <Text style={[type.body, { color: tokens.text2 }]}>{result.message}</Text>
+        ) : null}
+
+        {alerts.length > 0 ? (
+          <View style={styles.alerts} accessibilityLabel="Safety alerts">
+            {alerts.map((alert) => <Badge key={alert.key} label={alert.label} color={alert.color} />)}
+          </View>
+        ) : null}
+
+        {canUndo || canRetry || onDetails ? (
+          <View style={styles.actions}>
+            {canRetry ? (
+              <Button
+                title="Retry"
+                icon="refresh"
+                onPress={onRetry}
+                accessibilityLabel="Retry scan"
+                style={styles.flex}
+              />
+            ) : null}
+            {canUndo ? (
+              <Button
+                title="Undo"
+                onPress={onUndo}
+                loading={undoing}
+                accessibilityLabel={`Undo ${name}'s scan`}
+                style={styles.flex}
+              />
+            ) : null}
+            {onDetails ? (
+              <Button
+                title="Details"
+                variant="primary"
+                onPress={onDetails}
+                accessibilityLabel={`View ${name} details`}
+                style={styles.flex}
+              />
+            ) : null}
+          </View>
+        ) : null}
       </View>
-    </View>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: 'rgba(15, 23, 42, 0.97)',
-    borderRadius: 24,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.22)',
-    padding: 18,
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.3,
-    shadowRadius: 24,
-    elevation: 12,
-    gap: 14,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    gap: 12,
   },
   handleZone: {
     alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    marginTop: -14,
-    marginBottom: -18,
+    paddingTop: 8,
+    paddingBottom: 2,
   },
-  dragHandle: {
-    width: 38,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.gray[500],
-  },
-  cardCompact: {
-    paddingVertical: 14,
-    gap: 12,
-  },
-  compactRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  compactMessage: {
-    flex: 1,
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  identityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  identityText: {
-    flex: 1,
-    alignItems: 'flex-start',
-    gap: 3,
-  },
-  outcomeBadge: {
-    minHeight: 30,
-    borderRadius: 15,
-    paddingHorizontal: 11,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
-  },
-  outcomeLabel: {
-    color: OUTCOME_FOREGROUND,
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  name: {
-    color: colors.white,
-    fontSize: 25,
-    lineHeight: 29,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-  },
-  pronouns: {
-    color: colors.gray[300],
-    fontSize: 15,
-    lineHeight: 20,
-  },
-  confirmationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  contextRow: {
-    minHeight: 30,
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  contextText: {
-    flex: 1,
-    color: colors.gray[200],
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  firstScan: {
-    color: colors.gray[300],
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  messageRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 12,
-    padding: 11,
-  },
-  message: {
-    flex: 1,
-    color: colors.gray[100],
-    fontSize: 14,
-    lineHeight: 19,
-  },
-  alerts: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  alertItem: {
-    minHeight: 34,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 17,
-    paddingHorizontal: 11,
-  },
-  alertText: {
-    color: colors.white,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  footer: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255,255,255,0.16)',
-    paddingTop: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  readyRow: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  readyText: {
-    color: colors.gray[300],
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  actions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  actionButton: {
-    minHeight: 48,
-    paddingHorizontal: 13,
-    borderRadius: 12,
-    backgroundColor: colors.gray[700],
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-  },
-  actionPressed: {
-    opacity: 0.72,
-  },
-  actionText: {
-    color: colors.white,
-    fontSize: 14,
-    fontWeight: '700',
-  },
+  dragHandle: { width: 36, height: 5, borderRadius: 3 },
+  compactRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  identityRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  alerts: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  actions: { flexDirection: 'row', gap: 8 },
+  flex: { flex: 1, minWidth: 0 },
 });

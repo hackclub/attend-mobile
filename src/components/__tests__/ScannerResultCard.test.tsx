@@ -37,6 +37,12 @@ jest.mock('react-native', () => ({
 jest.mock('expo-system-ui', () => ({ setBackgroundColorAsync: jest.fn() }));
 jest.mock('expo-image', () => ({ Image: 'ExpoImage' }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
+// The kit's controls render as host elements carrying their props.
+jest.mock('../ui', () => ({
+  Badge: 'Badge',
+  Button: 'Button',
+  StatusGlyph: 'StatusGlyph',
+}));
 
 import { ScannerResultCard } from '../ScannerResultCard';
 
@@ -80,7 +86,7 @@ function result(outcome: ScannerOutcome, overrides: Partial<ScannerResult> = {})
 
 async function renderCard(
   scanResult: ScannerResult,
-  callbacks: { onClear?: jest.Mock; onDetails?: jest.Mock | null } = {}
+  callbacks: { onClear?: jest.Mock; onDetails?: jest.Mock | null; onUndo?: jest.Mock } = {}
 ) {
   let tree!: renderer.ReactTestRenderer;
   const onDetails = callbacks.onDetails === null
@@ -93,6 +99,8 @@ async function renderCard(
         onDetails={onDetails}
         onRetry={jest.fn()}
         onClear={callbacks.onClear ?? jest.fn()}
+        onUndo={callbacks.onUndo}
+        progress="85 of 129"
       />
     );
   });
@@ -189,7 +197,7 @@ describe('ScannerResultCard', () => {
     }));
     const json = JSON.stringify(tree.toJSON());
 
-    expect(json).toContain('Anaphylaxis risk');
+    expect(json).toContain('Anaphylaxis');
     expect(json).toContain('Medication refrigeration');
     expect(json).toContain('High support');
     expect(json).toContain('Alex Rivera');
@@ -234,5 +242,22 @@ describe('ScannerResultCard', () => {
 
     expect(retryable.root.findByProps({ accessibilityLabel: 'Retry scan' })).toBeTruthy();
     expect(() => finalFailure.root.findByProps({ accessibilityLabel: 'Retry scan' })).toThrow();
+  });
+
+  it('offers undo only for a fresh scan', async () => {
+    const onUndo = jest.fn();
+    const fresh = await renderCard(result('scanned'), { onUndo });
+    fresh.root.findByProps({ accessibilityLabel: "Undo Alex Rivera's scan" }).props.onPress();
+    expect(onUndo).toHaveBeenCalledTimes(1);
+
+    for (const outcome of ['already_scanned', 'queued', 'confirming', 'not_scanned'] as const) {
+      const tree = await renderCard(result(outcome, { attemptId: outcome }), { onUndo });
+      expect(() => tree.root.findByProps({ accessibilityLabel: "Undo Alex Rivera's scan" })).toThrow();
+    }
+  });
+
+  it('shows the context and its progress on the status line', async () => {
+    const tree = await renderCard(result('scanned'));
+    expect(JSON.stringify(tree.toJSON())).toContain(' · Main entrance · 85 of 129');
   });
 });

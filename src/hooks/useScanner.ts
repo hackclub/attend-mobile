@@ -322,6 +322,44 @@ export function useScanner(options: {
     });
   }, [contextsReady, runRequest, selectedContext]);
 
+  // The shared tail of every NFC read: a badge token goes to the badge
+  // endpoint, anything else must be an Attend QR payload.
+  const scanNfcPayload = useCallback(async (
+    payload: string,
+    isBadgeToken: boolean
+  ): Promise<ScannerResult | null> => {
+    if (!codeGateRef.current.accept(`nfc:${payload}`)) return null;
+
+    if (isBadgeToken) {
+      return runRequest({
+        kind: 'badge',
+        identifier: payload,
+        rawData: payload,
+        source: 'nfc',
+        scanContext: selectedContext,
+      });
+    }
+
+    const parsed = parseQRCode(payload);
+    if (!parsed) {
+      const result = failedResult(new Error('Unrecognized Attend NFC data.'), {
+        attemptId: createAttemptId(),
+        rawData: payload,
+        source: 'nfc',
+      });
+      setLastScan(result);
+      return result;
+    }
+
+    return runRequest({
+      kind: 'participant',
+      identifier: parsed.id,
+      rawData: payload,
+      source: 'nfc',
+      scanContext: selectedContext,
+    });
+  }, [runRequest, selectedContext]);
+
   const handleNFCScan = useCallback(async (): Promise<ScannerResult | null> => {
     if (processingRef.current || !contextsReady) return null;
     if (needsContext) return contextRequiredResult('nfc');
@@ -374,37 +412,17 @@ export function useScanner(options: {
       return result;
     }
 
-    if (!codeGateRef.current.accept(`nfc:${nfcResult.payload}`)) return null;
+    return scanNfcPayload(nfcResult.payload, nfcResult.type === 'external');
+  }, [contextRequiredResult, contextsReady, needsContext, scanNfcPayload]);
 
-    if (nfcResult.type === 'external') {
-      return runRequest({
-        kind: 'badge',
-        identifier: nfcResult.payload,
-        rawData: nfcResult.payload,
-        source: 'nfc',
-        scanContext: selectedContext,
-      });
-    }
-
-    const parsed = parseQRCode(nfcResult.payload);
-    if (!parsed) {
-      const result = failedResult(new Error('Unrecognized Attend NFC data.'), {
-        attemptId: createAttemptId(),
-        rawData: nfcResult.payload,
-        source: 'nfc',
-      });
-      setLastScan(result);
-      return result;
-    }
-
-    return runRequest({
-      kind: 'participant',
-      identifier: parsed.id,
-      rawData: nfcResult.payload,
-      source: 'nfc',
-      scanContext: selectedContext,
-    });
-  }, [contextRequiredResult, contextsReady, needsContext, runRequest, selectedContext]);
+  // Android reads badges continuously (useNfcAutoRead) and hands over the
+  // token: a badge token, or an attend:// link written to the tag.
+  const handleNfcToken = useCallback(async (token: string): Promise<ScannerResult | null> => {
+    const payload = token.trim();
+    if (!payload || processingRef.current || !contextsReady) return null;
+    if (needsContext) return contextRequiredResult('nfc');
+    return scanNfcPayload(payload, !parseQRCode(payload));
+  }, [contextRequiredResult, contextsReady, needsContext, scanNfcPayload]);
 
   const retryLastScan = useCallback((): Promise<ScannerResult | null> => {
     const request = lastRequestRef.current;
@@ -429,6 +447,7 @@ export function useScanner(options: {
   return {
     handleScan,
     handleNFCScan,
+    handleNfcToken,
     retryLastScan,
     isProcessing,
     lastScan,

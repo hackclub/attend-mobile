@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
@@ -14,6 +15,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { useTabBarInset } from '../hooks/useTabBarInset';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -28,8 +30,23 @@ import { useScanFeedback } from '../hooks/useScanFeedback';
 import { useScanner } from '../hooks/useScanner';
 import { useScannerPowerMode } from '../hooks/useScannerPowerMode';
 import { useNFC } from '../hooks/useNFC';
+import { useNfcAutoRead } from '../hooks/useNfcAutoRead';
+import {
+  BottomSheet,
+  Button,
+  Icon,
+  ListRow,
+  Toggle,
+  pressedStyle,
+  ripple,
+  type IconName,
+} from '../components/ui';
+import { api } from '../services/api';
+import { computeEventStats } from '../services/eventStats';
+import { participantAfterUndo } from '../services/scanUndo';
+import { useTheme } from '../theme';
 import { colors } from '../theme/colors';
-import type { Participant, RootStackParamList, ScanContext } from '../types';
+import type { Participant, RootStackParamList } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type ManualEntryMode = 'none' | 'search';
@@ -42,22 +59,14 @@ function looksLikeAttendeeId(query: string): boolean {
   return /^[0-9a-fA-F-]{16,}$/.test(trimmed) || /^[A-Za-z0-9_-]{8,}$/.test(trimmed);
 }
 
-function ContextIcon({ context, color = colors.white }: { context: ScanContext; color?: string }) {
-  return (
-    <Ionicons
-      name={context.is_airport ? 'airplane' : context.checks_in ? 'enter' : 'scan'}
-      size={16}
-      color={color}
-    />
-  );
-}
-
 export function ScannerScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const { state } = useApp();
+  const { state, updateParticipant } = useApp();
+  const { tokens } = useTheme();
   const {
     handleScan,
     handleNFCScan,
+    handleNfcToken,
     retryLastScan,
     clearLastScan,
     isProcessing,
@@ -88,7 +97,10 @@ export function ScannerScreen() {
   } = useScannerPowerMode(hasEvent && !!permission?.granted);
   const [manualEntryMode, setManualEntryMode] = useState<ManualEntryMode>('none');
   const [searchQuery, setSearchQuery] = useState('');
-  const [contextDropdownOpen, setContextDropdownOpen] = useState(false);
+  const [contextPickerOpen, setContextPickerOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+  const [undoing, setUndoing] = useState(false);
   const [isFocused, setIsFocused] = useState(true);
   const lastFeedbackAttemptRef = useRef<string | null>(null);
   const scanAreaRef = useRef<React.ComponentRef<typeof View>>(null);
@@ -97,7 +109,7 @@ export function ScannerScreen() {
     x: number; y: number; width: number; height: number;
   } | null>(null);
 
-  const scanAreaSize = Math.min(width * 0.66, height * 0.39, isRegular ? 420 : 300);
+  const scanAreaSize = Math.min(width * 0.6, height * 0.32, isRegular ? 380 : 260);
   const selectedContext = contextsReady
     ? scanContexts.find(context => context.id === selectedContextId)
     : undefined;
@@ -106,7 +118,8 @@ export function ScannerScreen() {
   // covered with the reason instead of failing a scan they lined up.
   const cameraScanningEnabled = isFocused
     && manualEntryMode === 'none'
-    && !contextDropdownOpen
+    && !contextPickerOpen
+    && !moreOpen
     && canScan;
   const scannerStatus = isProcessing
     ? 'Confirming scan'
@@ -121,9 +134,32 @@ export function ScannerScreen() {
   useFocusEffect(
     useCallback(() => {
       setIsFocused(true);
-      return () => setIsFocused(false);
+      return () => {
+        setIsFocused(false);
+        // The torch never outlives the screen that turned it on.
+        setTorchOn(false);
+      };
     }, [])
   );
+
+  // Android reads NFC badges the whole time the scanner is open; iOS needs
+  // the NFC button's system sheet instead.
+  useNfcAutoRead({
+    enabled: isFocused && hasEvent && contextsReady && manualEntryMode === 'none',
+    onToken: (token) => {
+      recordScannerActivity();
+      void handleNfcToken(token);
+    },
+  });
+
+  // "85 of 129" for the result card, from the synced roster.
+  const contextProgress = useMemo(() => {
+    const contextId = lastScan?.scanContext?.id;
+    if (!contextId) return null;
+    const progress = computeEventStats(state.participants, scanContexts)
+      .contexts.find(context => context.id === contextId);
+    return progress && progress.total > 0 ? `${progress.scanned} of ${progress.total}` : null;
+  }, [lastScan?.scanContext?.id, scanContexts, state.participants]);
 
   const measureScanArea = useCallback(() => {
     scanAreaRef.current?.measureInWindow((x, y, w, h) => {
@@ -198,15 +234,36 @@ export function ScannerScreen() {
 
   const openManualEntry = useCallback((mode: ManualEntryMode) => {
     recordScannerActivity();
-    setContextDropdownOpen(false);
+    setContextPickerOpen(false);
     setManualEntryMode(mode);
   }, [recordScannerActivity]);
 
   const viewDetails = useCallback(() => {
     if (!lastScan?.participant) return;
     recordScannerActivity();
+    // The detail screen is behind the biometric gate.
     navigation.navigate('ParticipantDetail', { participant: lastScan.participant });
   }, [lastScan, navigation, recordScannerActivity]);
+
+  // Removes the scan just made in its context (DELETE /scans), as the
+  // participant page's undo does.
+  const undoScan = useCallback(async () => {
+    const participant = lastScan?.participant;
+    const eventId = state.currentEvent?.id;
+    if (!participant || !eventId || undoing) return;
+    recordScannerActivity();
+    setUndoing(true);
+    try {
+      const contextId = lastScan.scanContext?.id;
+      await api.undoCheckIn(eventId, participant.participant_event_id, contextId);
+      updateParticipant(participantAfterUndo(participant, contextId));
+      clearLastScan();
+    } catch {
+      Alert.alert('Error', 'Failed to undo check-in');
+    } finally {
+      setUndoing(false);
+    }
+  }, [clearLastScan, lastScan, recordScannerActivity, state.currentEvent?.id, undoing, updateParticipant]);
 
   if (!permission) {
     return <CenteredState title="Starting camera" loading />;
@@ -227,17 +284,25 @@ export function ScannerScreen() {
     return (
       <CenteredState
         title="No event selected"
-        message="Select an event from the Events tab before scanning."
+        message="Choose an event on the Overview tab before scanning."
       />
     );
   }
 
+  const contextLabel = selectedContext?.name
+    ?? (isLoadingContexts && scanContexts.length === 0 ? 'Loading contexts' : 'Choose a context');
+  // Room under the card for the dock: Search pill (44) + gap (12).
+  const dockHeight = 44 + 12;
+
   return (
     <View style={styles.container} onTouchStart={recordScannerActivity}>
+      {/* The camera stage is always dark, whatever the system appearance. */}
+      {isFocused ? <StatusBar style="light" /> : null}
       {isFocused ? (
         <CameraView
           style={StyleSheet.absoluteFill}
           facing="back"
+          enableTorch={torchOn}
           barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
           onBarcodeScanned={cameraScanningEnabled ? handleBarcodeScanned : undefined}
         />
@@ -257,86 +322,54 @@ export function ScannerScreen() {
       </View>
 
       <SafeAreaView style={styles.overlay} edges={['top', 'bottom', 'left', 'right']}>
-        <View style={styles.header}>
-          <View style={styles.eventHeading}>
-            <Text style={styles.headerTitle} numberOfLines={1}>{state.currentEvent?.name}</Text>
-            <View style={styles.liveRow}>
-              <View style={[styles.liveDot, !canScan && styles.liveDotPaused]} />
-              <Text style={styles.headerSubtitle}>{scannerStatus}</Text>
-            </View>
-          </View>
-
-          <View style={styles.headerActions}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.powerButton,
-                isPowerModeEnabled && styles.powerButtonActive,
-                pressed && styles.pressed,
-              ]}
-              onPress={() => setPowerModeEnabled(!isPowerModeEnabled)}
-              accessibilityRole="switch"
-              accessibilityState={{ checked: isPowerModeEnabled }}
-              accessibilityLabel="Power Mode"
-              accessibilityHint="Prevents auto-lock and dims the screen after 30 seconds of inactivity"
-            >
-              <Ionicons
-                name={isPowerModeEnabled ? 'flash' : 'flash-outline'}
-                size={18}
-                color={isPowerModeEnabled ? colors.gray[900] : colors.white}
-              />
-              <Text style={[
-                styles.powerButtonText,
-                isPowerModeEnabled && styles.powerButtonTextActive,
-              ]}>
-                Power
-              </Text>
-            </Pressable>
-
-            {isRegular ? (
-              <Pressable
-                style={({ pressed }) => [
-                  styles.iconButton,
-                  !canScan && styles.controlDisabled,
-                  pressed && canScan && styles.pressed,
-                ]}
-                onPress={() => navigation.navigate('KioskSetup', {
-                  scanContextId: selectedContext?.id,
-                  scanContextName: selectedContext?.name,
-                })}
-                disabled={!canScan}
-                accessibilityRole="button"
-                accessibilityLabel="Open kiosk mode"
-                accessibilityState={{ disabled: !canScan }}
-              >
-                <Ionicons name="lock-closed" size={19} color={colors.white} />
-              </Pressable>
-            ) : null}
-          </View>
+        <View style={scan.header}>
+          <Pressable
+            style={({ pressed }) => [scan.pill, scan.contextPill, pressedStyle(pressed)]}
+            android_ripple={ripple('rgba(255,255,255,0.2)', { foreground: true })}
+            onPress={() => {
+              recordScannerActivity();
+              setContextPickerOpen(true);
+            }}
+            disabled={scanContexts.length === 0}
+            accessibilityRole="button"
+            accessibilityLabel={`Scan context: ${selectedContext?.name ?? 'not chosen'}. Change`}
+            accessibilityHint={selectedContext ? undefined : 'Choose a context before scanning'}
+          >
+            <Text style={scan.pillMuted} numberOfLines={1}>{state.currentEvent?.name}</Text>
+            <Icon name="chevron-right" size={14} color={ON_CAMERA_MUTED} />
+            <Text style={[scan.pillStrong, !selectedContext && scan.pillWarning]} numberOfLines={1}>
+              {contextLabel}
+            </Text>
+            {scanContexts.length > 0 ? <Icon name="chevron-down" size={16} color={ON_CAMERA} /> : null}
+          </Pressable>
+          <View style={scan.flexSpacer} />
+          <RoundButton
+            icon="torch"
+            label={torchOn ? 'Turn torch off' : 'Turn torch on'}
+            active={torchOn}
+            onPress={() => {
+              recordScannerActivity();
+              setTorchOn(on => !on);
+            }}
+          />
+          <RoundButton
+            icon="dots-horizontal"
+            label="More: Power mode, Kiosk mode"
+            active={isPowerModeEnabled}
+            onPress={() => {
+              recordScannerActivity();
+              setMoreOpen(true);
+            }}
+          />
         </View>
-
-        <ContextSelector
-          contexts={scanContexts}
-          selectedContext={selectedContext}
-          selectedContextId={selectedContextId}
-          isOpen={contextDropdownOpen}
-          isLoading={isLoadingContexts}
-          onToggle={() => {
-            recordScannerActivity();
-            setContextDropdownOpen(open => !open);
-          }}
-          onSelect={contextId => {
-            recordScannerActivity();
-            selectContext(contextId);
-            setContextDropdownOpen(false);
-          }}
-        />
 
         <View style={styles.scanStage} onLayout={measureScanArea}>
           <View
             ref={scanAreaRef}
             onLayout={measureScanArea}
             style={[styles.scanArea, { width: scanAreaSize, height: scanAreaSize }]}
-            accessibilityLabel="QR code scanning area"
+            accessible
+            accessibilityLabel={`QR code scanning area. ${scannerStatus}`}
           >
             <View style={[styles.corner, styles.topLeft]} />
             <View style={[styles.corner, styles.topRight]} />
@@ -355,19 +388,18 @@ export function ScannerScreen() {
                 Choose a context to start scanning
               </Text>
               <Text style={styles.contextRequiredText}>
-                {"Pick where you're scanning people in from the context menu."}
+                {"Pick where you're scanning people in from the context picker at the top."}
               </Text>
             </View>
           ) : null}
         </View>
 
-        <View style={[styles.bottomDock, { paddingBottom: 8 + tabBarHeight }]}>
+        <View style={[scan.dock, { paddingBottom: 12 + tabBarHeight }]}>
           {lastScan ? (
             <View
-              // Anchor above the scan tools row: tools (54) + dock padding
-              // (8 + tab bar) + 10 gap. A percentage bottom misresolves once
-              // the dock has dynamic padding, so compute it explicitly.
-              style={[styles.resultCardOverlay, { bottom: 54 + 8 + tabBarHeight + 10 }]}
+              // Anchored above the dock row; a percentage bottom misresolves
+              // once the dock has dynamic padding, so compute it explicitly.
+              style={[styles.resultCardOverlay, { bottom: dockHeight + tabBarHeight + 10 }]}
               pointerEvents="box-none"
             >
               <ScrollView
@@ -375,14 +407,16 @@ export function ScannerScreen() {
                   styles.resultCardScroll,
                   { maxHeight: Math.max(200, Math.min(height * 0.5, 480)) },
                 ]}
-                contentContainerStyle={styles.resultCardWrap}
                 bounces={false}
                 nestedScrollEnabled
                 showsVerticalScrollIndicator={false}
               >
                 <ScannerResultCard
                   result={lastScan}
+                  progress={contextProgress}
                   onDetails={canViewParticipantRecords ? viewDetails : undefined}
+                  onUndo={undoScan}
+                  undoing={undoing}
                   onClear={clearLastScan}
                   onRetry={() => {
                     recordScannerActivity();
@@ -393,11 +427,19 @@ export function ScannerScreen() {
             </View>
           ) : null}
 
-          <View style={styles.scanTools}>
+          <View style={scan.dockRow}>
+            <Button
+              variant="primary"
+              icon="search"
+              title={canViewParticipantRecords ? 'Search' : 'Enter ID'}
+              disabled={!contextsReady}
+              onPress={() => openManualEntry('search')}
+              style={scan.flexSpacer}
+            />
             {nfcSupported && Platform.OS === 'ios' ? (
-              <ToolButton
-                icon="radio-outline"
-                label={nfcReading ? 'Reading' : 'NFC'}
+              <RoundButton
+                icon="nfc"
+                label={nfcReading ? 'Reading NFC' : 'Scan NFC badge'}
                 disabled={isProcessing || nfcReading || !contextsReady}
                 onPress={() => {
                   recordScannerActivity();
@@ -405,12 +447,6 @@ export function ScannerScreen() {
                 }}
               />
             ) : null}
-            <ToolButton
-              icon={canViewParticipantRecords ? 'search' : 'keypad-outline'}
-              label={canViewParticipantRecords ? 'Search' : 'Enter ID'}
-              disabled={!contextsReady}
-              onPress={() => openManualEntry('search')}
-            />
           </View>
         </View>
 
@@ -433,9 +469,150 @@ export function ScannerScreen() {
           />
         ) : null}
       </SafeAreaView>
+
+      {/* The event can't be changed here: that's the Overview's switcher. */}
+      <BottomSheet
+        visible={contextPickerOpen}
+        onClose={() => setContextPickerOpen(false)}
+        title="Scan context"
+        headerActions={<Button variant="icon" icon="x" title="Close" onPress={() => setContextPickerOpen(false)} />}
+      >
+        <ScrollView>
+          <Text style={[scan.sheetNote, { color: tokens.text2 }]}>{state.currentEvent?.name}</Text>
+          {scanContexts.map((context, index) => {
+            const selected = context.id === selectedContextId;
+            return (
+              <ListRow
+                key={context.id}
+                title={context.name}
+                subtitle={context.is_airport ? 'Airport' : context.checks_in ? 'Checks in' : undefined}
+                icon={context.is_airport ? 'travel' : context.checks_in ? 'check-circle' : 'qrcode'}
+                trailing={selected ? <Icon name="check" color={tokens.accent} /> : undefined}
+                chevron={false}
+                divider={index < scanContexts.length - 1}
+                onPress={() => {
+                  recordScannerActivity();
+                  selectContext(context.id);
+                  setContextPickerOpen(false);
+                }}
+              />
+            );
+          })}
+        </ScrollView>
+      </BottomSheet>
+
+      <BottomSheet
+        visible={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        title="Scanner"
+        headerActions={<Button variant="icon" icon="x" title="Close" onPress={() => setMoreOpen(false)} />}
+      >
+        <ListRow
+          title="Power mode"
+          subtitle="Prevents auto-lock and dims the screen after 30 seconds of inactivity"
+          icon="device-mobile"
+          trailing={(
+            <Toggle
+              value={isPowerModeEnabled}
+              onValueChange={setPowerModeEnabled}
+              accessibilityLabel="Power mode"
+            />
+          )}
+        />
+        <ListRow
+          title="Kiosk mode"
+          subtitle={canScan ? 'Self-serve check-in' : 'Choose a context first'}
+          icon="lock-closed"
+          disabled={!canScan}
+          divider={false}
+          onPress={() => {
+            setMoreOpen(false);
+            navigation.navigate('KioskSetup', {
+              scanContextId: selectedContext?.id,
+              scanContextName: selectedContext?.name,
+            });
+          }}
+        />
+      </BottomSheet>
     </View>
   );
 }
+
+const ON_CAMERA = '#f9f9fa';
+const ON_CAMERA_MUTED = '#c6c6cd';
+const CAMERA_CONTROL = 'rgba(15,20,26,0.82)';
+
+/** A 44pt round control on the camera. */
+function RoundButton({
+  icon,
+  label,
+  onPress,
+  active,
+  disabled,
+}: {
+  icon: IconName;
+  label: string;
+  onPress: () => void;
+  active?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        scan.round,
+        active && scan.roundActive,
+        disabled && scan.disabled,
+        pressedStyle(pressed && !disabled),
+      ]}
+      android_ripple={ripple('rgba(255,255,255,0.24)', { borderless: true, radius: 24 })}
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: !!disabled, selected: !!active }}
+    >
+      <Icon name={icon} size={20} color={active ? '#0f141a' : ON_CAMERA} />
+    </Pressable>
+  );
+}
+
+const scan = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  pill: {
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: CAMERA_CONTROL,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    overflow: 'hidden',
+  },
+  contextPill: { flexShrink: 1, maxWidth: '72%' },
+  pillMuted: { color: ON_CAMERA_MUTED, fontSize: 14, lineHeight: 20, flexShrink: 1 },
+  pillStrong: { color: ON_CAMERA, fontSize: 14, lineHeight: 20, fontWeight: '700', flexShrink: 1 },
+  pillWarning: { color: '#fbd332' },
+  round: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: CAMERA_CONTROL,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  roundActive: { backgroundColor: '#fbd332' },
+  disabled: { opacity: 0.4 },
+  dock: { paddingHorizontal: 10 },
+  flexSpacer: { flex: 1 },
+  dockRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sheetNote: { fontSize: 14, lineHeight: 20, paddingHorizontal: 20, paddingBottom: 8 },
+});
 
 function CenteredState({
   title,
@@ -463,139 +640,6 @@ function CenteredState({
         ) : null}
       </View>
     </SafeAreaView>
-  );
-}
-
-function ContextSelector({
-  contexts,
-  selectedContext,
-  selectedContextId,
-  isOpen,
-  isLoading,
-  onToggle,
-  onSelect,
-}: {
-  contexts: ScanContext[];
-  selectedContext?: ScanContext;
-  selectedContextId: string | null;
-  isOpen: boolean;
-  isLoading: boolean;
-  onToggle: () => void;
-  onSelect: (contextId: string) => void;
-}) {
-  if (isLoading && contexts.length === 0) {
-    return (
-      <View style={styles.contextLoading}>
-        <ActivityIndicator color={colors.white} size="small" />
-        <Text style={styles.contextLoadingText}>Loading contexts</Text>
-      </View>
-    );
-  }
-
-  if (contexts.length === 0) return null;
-
-  if (contexts.length === 1) {
-    if (!selectedContext) {
-      return (
-        <Pressable
-          style={({ pressed }) => [styles.singleContext, pressed && styles.pressed]}
-          onPress={() => onSelect(contexts[0].id)}
-          accessibilityRole="button"
-          accessibilityLabel={`Confirm scan context: ${contexts[0].name}`}
-        >
-          <ContextIcon context={contexts[0]} color={colors.gray[200]} />
-          <Text style={styles.singleContextText}>Confirm {contexts[0].name}</Text>
-          <Ionicons name="checkmark-circle-outline" size={19} color={colors.white} />
-        </Pressable>
-      );
-    }
-    return (
-      <View style={styles.singleContext}>
-        <ContextIcon context={contexts[0]} color={colors.gray[200]} />
-        <Text style={styles.singleContextText} numberOfLines={1}>{contexts[0].name}</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.contextSelector}>
-      <Pressable
-        style={({ pressed }) => [
-          styles.contextButton,
-          !selectedContext && styles.contextButtonEmpty,
-          pressed && styles.pressed,
-        ]}
-        onPress={onToggle}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: isOpen }}
-        accessibilityLabel={`Scan context: ${selectedContext?.name || 'not chosen'}`}
-        accessibilityHint={selectedContext ? undefined : 'Choose a context before scanning'}
-      >
-        {selectedContext ? <ContextIcon context={selectedContext} /> : null}
-        <Text style={styles.contextButtonText} numberOfLines={1}>
-          {selectedContext?.name || 'Choose a context'}
-        </Text>
-        <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} color={colors.white} />
-      </Pressable>
-
-      {isOpen ? (
-        <View style={styles.contextMenu}>
-          <ScrollView bounces={false} keyboardShouldPersistTaps="handled">
-            {contexts.map(context => {
-              const selected = selectedContextId === context.id;
-              return (
-                <Pressable
-                  key={context.id}
-                  style={({ pressed }) => [
-                    styles.contextOption,
-                    selected && styles.contextOptionSelected,
-                    pressed && styles.contextOptionPressed,
-                  ]}
-                  onPress={() => onSelect(context.id)}
-                  accessibilityRole="menuitem"
-                  accessibilityState={{ selected }}
-                >
-                  <ContextIcon context={context} color={selected ? colors.white : colors.gray[300]} />
-                  <Text style={[styles.contextOptionText, selected && styles.contextOptionTextSelected]} numberOfLines={1}>
-                    {context.name}
-                  </Text>
-                  {selected ? <Ionicons name="checkmark" size={19} color={colors.white} /> : null}
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
-function ToolButton({
-  icon,
-  label,
-  onPress,
-  disabled,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.toolButton,
-        pressed && !disabled && styles.toolButtonPressed,
-        disabled && styles.toolButtonDisabled,
-      ]}
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-    >
-      <Ionicons name={icon} size={20} color={colors.white} />
-      <Text style={styles.toolButtonText}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -656,7 +700,7 @@ function SearchSheet({
             <Ionicons name="alert-circle" size={18} color={colors.orange} />
             <Text style={styles.sheetNoticeText}>
               {'Choose a context before scanning. Close this and pick one from '
-                + 'the context menu — what you type here is kept.'}
+                + 'the context picker — what you type here is kept.'}
             </Text>
           </View>
         ) : null}
@@ -776,33 +820,6 @@ const styles = StyleSheet.create({
   messageText: { color: colors.gray[300], fontSize: 16, lineHeight: 23, textAlign: 'center', maxWidth: 360 },
   primaryButton: { minHeight: 48, paddingHorizontal: 22, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.red },
   primaryButtonText: { color: colors.white, fontSize: 16, fontWeight: '700' },
-  header: { minHeight: 74, paddingHorizontal: 18, paddingTop: 10, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, zIndex: 40 },
-  eventHeading: { flex: 1, gap: 5 },
-  headerTitle: { color: colors.white, fontSize: 21, lineHeight: 26, fontWeight: '800', letterSpacing: -0.35 },
-  liveRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.green },
-  liveDotPaused: { backgroundColor: colors.orange },
-  headerSubtitle: { color: colors.gray[200], fontSize: 13, fontWeight: '600' },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  powerButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 13, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.28)', backgroundColor: 'rgba(15,23,42,0.76)' },
-  powerButtonActive: { borderColor: colors.yellow, backgroundColor: colors.yellow },
-  powerButtonText: { color: colors.white, fontSize: 13, fontWeight: '700' },
-  powerButtonTextActive: { color: colors.gray[900] },
-  iconButton: { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.28)', backgroundColor: 'rgba(15,23,42,0.76)' },
-  contextSelector: { marginHorizontal: 18, zIndex: 60 },
-  contextButton: { minHeight: 48, maxWidth: 620, width: '100%', alignSelf: 'center', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.28)', backgroundColor: 'rgba(15,23,42,0.9)' },
-  contextButtonEmpty: { borderColor: colors.orange, borderWidth: 1.5 },
-  contextButtonText: { flex: 1, color: colors.white, fontSize: 15, fontWeight: '700' },
-  contextMenu: { position: 'absolute', top: 54, left: 0, right: 0, alignSelf: 'center', maxWidth: 620, maxHeight: 280, overflow: 'hidden', borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.22)', backgroundColor: colors.gray[900], shadowColor: colors.black, shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.35, shadowRadius: 22, elevation: 16 },
-  contextOption: { minHeight: 52, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.gray[700] },
-  contextOptionSelected: { backgroundColor: colors.red },
-  contextOptionPressed: { backgroundColor: colors.gray[700] },
-  contextOptionText: { flex: 1, color: colors.gray[200], fontSize: 15, fontWeight: '600' },
-  contextOptionTextSelected: { color: colors.white, fontWeight: '800' },
-  contextLoading: { minHeight: 48, marginHorizontal: 18, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 9 },
-  contextLoadingText: { color: colors.gray[200], fontSize: 14, fontWeight: '600' },
-  singleContext: { minHeight: 42, marginHorizontal: 18, paddingHorizontal: 13, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, backgroundColor: 'rgba(15,23,42,0.75)' },
-  singleContextText: { color: colors.gray[100], fontSize: 14, fontWeight: '700' },
   scanStage: { flex: 1, minHeight: 150, alignItems: 'center', justifyContent: 'center', gap: 14, paddingHorizontal: 18, paddingVertical: 12 },
   scanArea: { position: 'relative' },
   contextRequired: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 26, backgroundColor: 'rgba(15,23,42,0.94)' },
@@ -814,17 +831,9 @@ const styles = StyleSheet.create({
   bottomLeft: { bottom: 0, left: 0, borderBottomWidth: 4, borderLeftWidth: 4, borderBottomLeftRadius: 15 },
   bottomRight: { bottom: 0, right: 0, borderBottomWidth: 4, borderRightWidth: 4, borderBottomRightRadius: 15 },
   processingIndicator: { position: 'absolute', left: '50%', top: '50%', width: 48, height: 48, marginLeft: -24, marginTop: -24, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15,23,42,0.78)' },
-  bottomDock: { paddingHorizontal: 14, paddingBottom: 8, gap: 10 },
   // Anchored above the dock, outside layout flow, so the scan frame never shifts
   resultCardOverlay: { position: 'absolute', left: 14, right: 14 },
   resultCardScroll: { width: '100%', maxWidth: 620, alignSelf: 'center' },
-  resultCardWrap: { width: '100%' },
-  scanTools: { minHeight: 54, maxWidth: 620, width: '100%', alignSelf: 'center', flexDirection: 'row', alignItems: 'stretch', gap: 8 },
-  toolButton: { minHeight: 50, flex: 1, paddingHorizontal: 10, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.24)', backgroundColor: 'rgba(15,23,42,0.9)', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
-  toolButtonPressed: { backgroundColor: colors.gray[700] },
-  toolButtonDisabled: { opacity: 0.5 },
-  controlDisabled: { opacity: 0.45 },
-  toolButtonText: { color: colors.white, fontSize: 13, fontWeight: '700' },
   pressed: { opacity: 0.72 },
   searchSheetBackdrop: { ...StyleSheet.absoluteFill, zIndex: 100, justifyContent: 'flex-end', backgroundColor: 'rgba(2,6,23,0.78)' },
   sheet: { width: '100%', maxWidth: 680, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 28, gap: 14, borderTopLeftRadius: 26, borderTopRightRadius: 26, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.gray[600], backgroundColor: colors.gray[900] },
