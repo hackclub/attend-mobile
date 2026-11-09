@@ -206,24 +206,9 @@ export const FILTER_FIELDS: FieldDef[] = [
     getValue: p => p.diet_type,
     getOptions: ctx => optionsFromData(ctx, p => p.diet_type),
   },
-  {
-    key: 'allergies',
-    label: 'Allergies',
-    type: 'text',
-    getValue: p => p.allergies,
-  },
-  {
-    key: 'medical_conditions',
-    label: 'Medical Conditions',
-    type: 'text',
-    getValue: p => p.medical_conditions,
-  },
-  {
-    key: 'medications',
-    label: 'Medications',
-    type: 'text',
-    getValue: p => p.medications,
-  },
+  // No allergy, medical-condition or medication text filters: that free text
+  // is not kept in the offline roster (see participantCache.ts). Saved views
+  // that still name those keys skip the rule, since getField() finds nothing.
   {
     key: 'nfc_badge',
     label: 'NFC Badge Assigned',

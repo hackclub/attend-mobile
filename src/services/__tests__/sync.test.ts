@@ -104,7 +104,7 @@ describe('syncService.refreshParticipants', () => {
 
   it('merges a delta without discarding rich cached fields', async () => {
     await asyncStorage.set(STORAGE_KEYS.PARTICIPANTS(EVENT_ID), [
-      participant({ headshot_url: 'https://images.example/headshot', allergies: 'peanuts' }),
+      participant({ headshot_url: 'https://images.example/headshot', pronouns: 'they/them' }),
     ]);
     await asyncStorage.set(
       STORAGE_KEYS.PARTICIPANT_SYNC_CURSOR(EVENT_ID),
@@ -120,14 +120,14 @@ describe('syncService.refreshParticipants', () => {
     expect(mockGetParticipants).toHaveBeenCalledWith(EVENT_ID, '2026-08-24T09:40:00Z');
     expect(result[0]).toMatchObject({
       display_name: 'Updated Name',
-      allergies: 'peanuts',
+      pronouns: 'they/them',
       headshot_url: 'https://images.example/headshot',
     });
   });
 
   it('persists a confirmed participant with a field-preserving merge', async () => {
     await asyncStorage.set(STORAGE_KEYS.PARTICIPANTS(EVENT_ID), [
-      participant({ headshot_url: 'https://images.example/headshot', allergies: 'peanuts' }),
+      participant({ headshot_url: 'https://images.example/headshot', pronouns: 'they/them' }),
     ]);
 
     const merged = await syncService.cacheConfirmedParticipant(EVENT_ID, {
@@ -137,7 +137,7 @@ describe('syncService.refreshParticipants', () => {
 
     expect(merged).toMatchObject({
       display_name: 'Confirmed Name',
-      allergies: 'peanuts',
+      pronouns: 'they/them',
       headshot_url: 'https://images.example/headshot',
     });
     expect(await syncService.getCachedParticipants(EVENT_ID)).toEqual([merged]);
@@ -230,6 +230,108 @@ describe('syncService.refreshParticipants', () => {
     await syncService.cacheScanContexts(EVENT_ID, contexts);
 
     expect(await syncService.getCachedScanContexts(EVENT_ID)).toEqual(contexts);
+  });
+});
+
+describe('participant cache slimming', () => {
+  const fat = participant({
+    pronouns: 'she/her',
+    checked_in_at: '2026-08-24T09:00:00Z',
+    has_anaphylaxis_risk: true,
+    nfc_badge_token: 'badge-1',
+    scans_by_context: [{
+      scan_context_id: 'ctx-1',
+      scan_context_name: 'Check-in',
+      checks_in: true,
+      is_airport: false,
+      scan_count: 1,
+    }],
+    allergies: 'peanuts',
+    medical_conditions: 'asthma',
+    medications: 'inhaler',
+    life_threatening_allergies: 'peanuts',
+    phone: '+61 400 000 000',
+    parent_guardian_name: 'Parent',
+    parent_guardian_phone: '+61 400 000 001',
+    emergency_contacts: [{ name: 'EC', phone: '1', relationship: 'parent' } as never],
+    guardians: [{ name: 'Guardian' } as never],
+    personal: { legal_first_name: 'Legal' } as never,
+    medical_detail: {} as never,
+    travel_inbound: {
+      id: 'travel-1',
+      direction: 'inbound',
+      mode: 'car',
+      visa_status: 'approved',
+      is_unaccompanied_minor: true,
+      origin_address: '1 Home St',
+      notes: 'call mum',
+      legs: [{ id: 'leg-1', position: 0, flight_code: 'QF1' }],
+    },
+  });
+
+  const strippedKeys = [
+    'allergies', 'medical_conditions', 'medications', 'life_threatening_allergies',
+    'phone', 'parent_guardian_name', 'parent_guardian_phone', 'emergency_contacts',
+    'guardians', 'personal', 'medical_detail',
+  ];
+
+  function expectSlim(cached: Participant) {
+    for (const key of strippedKeys) {
+      expect(cached).not.toHaveProperty(key);
+    }
+    expect(cached).toMatchObject({
+      participant_event_id: 'registration-1',
+      display_name: 'Test Attendee',
+      email: 'attendee@example.com',
+      pronouns: 'she/her',
+      checked_in_at: '2026-08-24T09:00:00Z',
+      has_anaphylaxis_risk: true,
+      nfc_badge_token: 'badge-1',
+      scans_by_context: [expect.objectContaining({ scan_context_id: 'ctx-1' })],
+    });
+    expect(cached.travel_inbound).toEqual({
+      id: 'travel-1',
+      direction: 'inbound',
+      mode: 'car',
+      visa_status: 'approved',
+      is_unaccompanied_minor: true,
+      legs: [],
+    });
+  }
+
+  it('stores only the slim field set from a full roster', async () => {
+    await syncService.cacheParticipants(EVENT_ID, [fat]);
+
+    const raw = await asyncStorage.get<Participant[]>(STORAGE_KEYS.PARTICIPANTS(EVENT_ID));
+    expectSlim(raw![0]);
+  });
+
+  it('slims roster pages and confirmed scan participants before storing them', async () => {
+    mockGetParticipants.mockResolvedValueOnce({ participants: [fat], synced_at: 'now' });
+    const refreshed = await syncService.refreshParticipants(EVENT_ID);
+    expectSlim(refreshed[0]);
+
+    await syncService.cacheConfirmedParticipant(EVENT_ID, { ...fat, display_name: 'Scanned' });
+    const raw = await asyncStorage.get<Participant[]>(STORAGE_KEYS.PARTICIPANTS(EVENT_ID));
+    expect(raw![0].display_name).toBe('Scanned');
+    expect(raw![0]).not.toHaveProperty('allergies');
+    expect(raw![0]).not.toHaveProperty('emergency_contacts');
+  });
+
+  it('re-slims a fat cache written by an older build on first access', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const { asyncStorage: freshStorage, STORAGE_KEYS: keys } =
+        jest.requireActual<typeof import('../storage')>('../storage');
+      const { syncService: freshSync } =
+        jest.requireActual<typeof import('../sync')>('../sync');
+      await freshStorage.set(keys.PARTICIPANTS('legacy-event'), [fat]);
+
+      await freshSync.getCachedParticipants(EVENT_ID);
+
+      const raw = await freshStorage.get<Participant[]>(keys.PARTICIPANTS('legacy-event'));
+      expectSlim(raw![0]);
+      expect(await freshStorage.get(keys.PARTICIPANT_CACHE_VERSION)).toBe(2);
+    });
   });
 });
 

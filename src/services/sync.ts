@@ -3,6 +3,7 @@ import { asyncStorage, STORAGE_KEYS } from './storage';
 import { api } from './api';
 import { forbiddenParticipants } from './eventAccess';
 import { mergeParticipant, mergeParticipants, type ParticipantUpdate } from './participantIndex';
+import { PARTICIPANT_CACHE_VERSION, slimParticipants } from './participantCache';
 import type { Event, Participant, RemoteScan, ScanContext } from '../types';
 
 // Upper bound on pages per sync pass; at 500 scans/page this covers 50k
@@ -22,6 +23,34 @@ class SyncService {
   private participantCacheQueues = new Map<string, Promise<unknown>>();
   private cacheGeneration = 0;
   private cacheWriteQueue: Promise<void> = Promise.resolve();
+  private participantCacheMigration: Promise<void> | null = null;
+
+  /**
+   * Re-slims rosters written by builds that cached every participant field.
+   * Runs once per install (tracked by a version key) before any roster read
+   * or write, so a fat cache never survives an upgrade.
+   */
+  private migrateParticipantCache(): Promise<void> {
+    this.participantCacheMigration ??= (async () => {
+      const version = await asyncStorage.get<number>(STORAGE_KEYS.PARTICIPANT_CACHE_VERSION);
+      if (version === PARTICIPANT_CACHE_VERSION) return;
+      const keys = await asyncStorage.getAllKeys();
+      for (const key of keys) {
+        if (!key.startsWith('participants_')) continue;
+        const cached = await asyncStorage.get<Participant[]>(key);
+        if (Array.isArray(cached)) {
+          await asyncStorage.set(key, slimParticipants(cached));
+        } else {
+          await asyncStorage.remove(key);
+        }
+      }
+      await asyncStorage.set(STORAGE_KEYS.PARTICIPANT_CACHE_VERSION, PARTICIPANT_CACHE_VERSION);
+    })().catch(error => {
+      this.participantCacheMigration = null;
+      console.warn('[Sync] Participant cache migration failed:', error);
+    });
+    return this.participantCacheMigration;
+  }
 
   getCacheGeneration(): number {
     return this.cacheGeneration;
@@ -94,13 +123,16 @@ class SyncService {
   async cacheParticipants(eventId: string, participants: Participant[]): Promise<void> {
     const generation = this.cacheGeneration;
     await this.enqueueParticipantCache(eventId, async () => {
+      await this.migrateParticipantCache();
       if (generation !== this.cacheGeneration) return;
-      await asyncStorage.set(STORAGE_KEYS.PARTICIPANTS(eventId), participants);
+      await asyncStorage.set(STORAGE_KEYS.PARTICIPANTS(eventId), slimParticipants(participants));
     });
   }
 
   async getCachedParticipants(eventId: string): Promise<Participant[]> {
-    return (await asyncStorage.get<Participant[]>(STORAGE_KEYS.PARTICIPANTS(eventId))) ?? [];
+    await this.migrateParticipantCache();
+    const cached = await asyncStorage.get<Participant[]>(STORAGE_KEYS.PARTICIPANTS(eventId));
+    return Array.isArray(cached) ? slimParticipants(cached) : [];
   }
 
   async cacheConfirmedParticipant(
@@ -123,7 +155,7 @@ class SyncService {
           )
         : [...cached, merged];
 
-      await asyncStorage.set(STORAGE_KEYS.PARTICIPANTS(eventId), participants);
+      await asyncStorage.set(STORAGE_KEYS.PARTICIPANTS(eventId), slimParticipants(participants));
       return merged;
     });
   }
@@ -139,7 +171,7 @@ class SyncService {
         return this.getCachedParticipants(eventId);
       }
       const latest = await this.getCachedParticipants(eventId);
-      const participants = mergeParticipants(latest, incoming);
+      const participants = slimParticipants(mergeParticipants(latest, incoming));
       await asyncStorage.set(STORAGE_KEYS.PARTICIPANTS(eventId), participants);
       if (syncedAt) {
         await asyncStorage.set(
