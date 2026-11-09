@@ -45,6 +45,11 @@ interface ParticipantDetailContentProps {
   participant: Participant;
   topInset?: number;
   bottomInset?: number;
+  /**
+   * The screen sits under a translucent native header (iOS): the scroll view
+   * insets itself to clear it, with topInset as the gap below.
+   */
+  underHeader?: boolean;
 }
 
 /**
@@ -55,13 +60,18 @@ interface ParticipantDetailContentProps {
  */
 export function ParticipantDetailContent(props: ParticipantDetailContentProps) {
   return (
-    <BiometricGate topInset={props.topInset ?? 100}>
+    <BiometricGate>
       <ParticipantDetailBody {...props} />
     </BiometricGate>
   );
 }
 
-function ParticipantDetailBody({ participant, topInset = 100, bottomInset = 32 }: ParticipantDetailContentProps) {
+function ParticipantDetailBody({
+  participant,
+  topInset = 16,
+  bottomInset = 32,
+  underHeader = false,
+}: ParticipantDetailContentProps) {
   const { tokens, type } = useTheme();
   const { state, updateParticipant } = useApp();
   const { canViewParticipantRecords, canViewParticipantPii, roleLabel } = useEventAccess();
@@ -391,7 +401,8 @@ function ParticipantDetailBody({ participant, topInset = 100, bottomInset = 32 }
       <ScrollView
         style={{ backgroundColor: tokens.bg }}
         contentContainerStyle={[styles.content, { paddingTop: topInset, paddingBottom: bottomInset }]}
-        scrollIndicatorInsets={{ top: topInset }}
+        contentInsetAdjustmentBehavior={underHeader ? 'automatic' : 'never'}
+        scrollIndicatorInsets={underHeader ? undefined : { top: topInset }}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl

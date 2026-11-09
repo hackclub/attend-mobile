@@ -40,6 +40,7 @@ import {
   type FilterContext,
 } from '../services/participantFilters';
 import type { RootStackParamList, Participant, ScanContext } from '../types';
+import { useTabBarInset } from '../hooks/useTabBarInset';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -52,6 +53,8 @@ const SEGMENT_LABELS: Record<string, string> = {
 
 export function SearchScreen() {
   const { tokens, type } = useTheme();
+  // Zero once the native bar is laid out as a side rail — see useTabBarInset.
+  const tabBarInset = useTabBarInset();
   const navigation = useNavigation<NavigationProp>();
   const { useSplitView } = useResponsiveLayout();
   const { canViewParticipantRecords, roleLabel } = useEventAccess();
@@ -361,7 +364,9 @@ export function SearchScreen() {
             <Text style={[type.body, styles.centeredText, { color: tokens.text2 }]}>{emptyState.text}</Text>
           </View>
         }
-        contentContainerStyle={filteredParticipants.length === 0 ? styles.emptyList : styles.listContent}
+        contentContainerStyle={
+          filteredParticipants.length === 0 ? styles.emptyList : { paddingBottom: tabBarInset + 24 }
+        }
       />
 
       <FilterSheet
@@ -393,7 +398,7 @@ export function SearchScreen() {
               key={selectedParticipant.participant_event_id}
               participant={selectedParticipant}
               topInset={16}
-              bottomInset={100}
+              bottomInset={tabBarInset + 24}
             />
           ) : null}
         />
@@ -508,8 +513,5 @@ const styles = StyleSheet.create({
   },
   emptyList: {
     flexGrow: 1,
-  },
-  listContent: {
-    paddingBottom: 100,
   },
 });

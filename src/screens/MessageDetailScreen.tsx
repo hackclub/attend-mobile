@@ -11,6 +11,7 @@ import { MESSAGE_STATUS_BADGE, channelList, statusType } from '../components/mes
 import { CHANNEL_LABELS, DELIVERY_STATUS_TONES, MESSAGE_STATUS_TONES, titleize } from '../services/statusDisplay';
 import { spacing, useTheme } from '../theme';
 import type { BroadcastMessage, RootStackParamList } from '../types';
+import { useAndroidBottomInset, withBottomInset } from '../hooks/useAndroidBottomInset';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'MessageDetail'>;
 type Route = RouteProp<RootStackParamList, 'MessageDetail'>;
@@ -18,6 +19,7 @@ type Route = RouteProp<RootStackParamList, 'MessageDetail'>;
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
 export function MessageDetailScreen() {
+  const bottomInset = useAndroidBottomInset();
   const { tokens, type } = useTheme();
   const navigation = useNavigation<Nav>();
   const { messageId } = useRoute<Route>().params;
@@ -120,7 +122,7 @@ export function MessageDetailScreen() {
     <ScrollView
       style={{ flex: 1, backgroundColor: tokens.bg }}
       contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={styles.content}
+      contentContainerStyle={withBottomInset(styles.content, bottomInset)}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={tokens.accent} colors={[tokens.accent]} />}
     >
       <View style={styles.header}>

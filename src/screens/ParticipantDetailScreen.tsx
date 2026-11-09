@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
@@ -11,6 +11,10 @@ import { participantDetailTarget } from '../services/deepLinks';
 import type { Participant, RootStackParamList } from '../types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ParticipantDetail'>;
+
+// The header is translucent on iOS and the content scrolls under it; on
+// Android it is opaque and the screen starts below it.
+const UNDER_HEADER = Platform.OS === 'ios';
 
 // Pushed with a participant from a list, or with just an id from the
 // attend://participant/:id deep link. Either way the details sit behind the
@@ -24,9 +28,9 @@ export function ParticipantDetailScreen({ route }: Props) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: tokens.bg }]} edges={['bottom']}>
       {'participant' in target ? (
-        <ParticipantDetailContent participant={target.participant} />
+        <ParticipantDetailContent participant={target.participant} underHeader={UNDER_HEADER} />
       ) : (
-        <BiometricGate topInset={100}>
+        <BiometricGate>
           <ParticipantById id={target.id} />
         </BiometricGate>
       )}
@@ -61,7 +65,7 @@ function ParticipantById({ id }: { id: string | undefined }) {
 
   const participant = cached ?? fetched;
   if (participant) {
-    return <ParticipantDetailContent participant={participant} />;
+    return <ParticipantDetailContent participant={participant} underHeader={UNDER_HEADER} />;
   }
 
   const message = !id

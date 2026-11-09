@@ -16,6 +16,7 @@ import { EmptyState, ErrorView, LevelBadge, LevelChart, LoadingView, formatDateT
 import { humanize } from '../services/statusDisplay';
 import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
 import type { IncidentLevel, IncidentStatus, IncidentSummary, RootStackParamList } from '../types';
+import { useAndroidBottomInset, withBottomInset } from '../hooks/useAndroidBottomInset';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'IncidentList'>;
 
@@ -82,6 +83,7 @@ function IncidentCard({
 }
 
 export function IncidentListScreen() {
+  const bottomInset = useAndroidBottomInset();
   const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<Nav>();
@@ -216,7 +218,7 @@ export function IncidentListScreen() {
       sections={sections}
       keyExtractor={item => item.id}
       ListHeaderComponent={header}
-      contentContainerStyle={styles.list}
+      contentContainerStyle={withBottomInset(styles.list, bottomInset)}
       keyboardDismissMode="on-drag"
       keyboardShouldPersistTaps="handled"
       stickySectionHeadersEnabled={false}

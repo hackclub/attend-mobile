@@ -27,6 +27,7 @@ import type {
   IncidentMedication,
   RootStackParamList,
 } from '../types';
+import { useAndroidBottomInset, withBottomInset } from '../hooks/useAndroidBottomInset';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'IncidentForm'>;
 type Route = RouteProp<RootStackParamList, 'IncidentForm'>;
@@ -37,6 +38,7 @@ let medicationKey = 0;
 const blankMedication = (): MedicationRow => ({ key: `new-${medicationKey++}`, name: '', dose: '', notes: '' });
 
 export function IncidentFormScreen() {
+  const bottomInset = useAndroidBottomInset();
   const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<Nav>();
   const { params } = useRoute<Route>();
@@ -205,7 +207,7 @@ export function IncidentFormScreen() {
       <ScrollView
         style={styles.container}
         contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={styles.content}
+        contentContainerStyle={withBottomInset(styles.content, bottomInset)}
         keyboardShouldPersistTaps="handled"
       >
         <Section title="Incident details">

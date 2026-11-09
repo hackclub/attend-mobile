@@ -10,7 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
@@ -51,6 +51,7 @@ function formatDate(dateString?: string, timezone?: string) {
 
 export function MyTicketsScreen() {
   const { tokens, type, spacing } = useTheme();
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavigationProp>();
   const { state } = useApp();
   const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -156,7 +157,7 @@ export function MyTicketsScreen() {
         data={tickets}
         renderItem={({ item }) => <TicketCard ticket={item} onPress={() => openTicket(item)} />}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={[styles.list, { padding: spacing.lg, gap: spacing.md }]}
+        contentContainerStyle={{ padding: spacing.lg, paddingBottom: insets.bottom + spacing.xxl, gap: spacing.md }}
         ListHeaderComponent={header}
         refreshControl={
           <RefreshControl
@@ -251,7 +252,6 @@ const styles = StyleSheet.create({
   back: { marginLeft: -10 },
   headerText: { flex: 1, minWidth: 0 },
   quickActions: { flexDirection: 'row', gap: 12 },
-  list: { paddingBottom: 100 },
   card: { borderWidth: 1 },
   banner: { height: 96 },
   cardBody: { paddingHorizontal: 20, paddingVertical: 16, gap: 12 },

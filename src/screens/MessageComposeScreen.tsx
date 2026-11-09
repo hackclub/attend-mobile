@@ -19,6 +19,7 @@ import {
 import { titleize } from '../services/statusDisplay';
 import { spacing, useTheme } from '../theme';
 import type { MessageFormOptions, MessageInput, RootStackParamList } from '../types';
+import { useAndroidBottomInset, withBottomInset } from '../hooks/useAndroidBottomInset';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'MessageCompose'>;
 type Route = RouteProp<RootStackParamList, 'MessageCompose'>;
@@ -28,6 +29,7 @@ type Route = RouteProp<RootStackParamList, 'MessageCompose'>;
  * the preview, where it is sent or scheduled, as in the web composer.
  */
 export function MessageComposeScreen() {
+  const bottomInset = useAndroidBottomInset();
   const { tokens, type, radii } = useTheme();
   const navigation = useNavigation<Nav>();
   const { params } = useRoute<Route>();
@@ -135,7 +137,7 @@ export function MessageComposeScreen() {
       <ScrollView
         style={{ flex: 1, backgroundColor: tokens.bg }}
         contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={styles.content}
+        contentContainerStyle={withBottomInset(styles.content, bottomInset)}
         keyboardShouldPersistTaps="handled"
       >
         <Text style={[type.body, { color: tokens.muted }]}>Step 1 of 2 — Write your message</Text>

@@ -9,12 +9,14 @@ import { Badge, Button, Container, Flashbar, StatusIndicator } from '../componen
 import { ErrorView, LoadingView, formatDateTime } from '../components/forms';
 import { spacing, useTheme } from '../theme';
 import type { MessagePreview, RootStackParamList } from '../types';
+import { useAndroidBottomInset, withBottomInset } from '../hooks/useAndroidBottomInset';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'MessagePreview'>;
 type Route = RouteProp<RootStackParamList, 'MessagePreview'>;
 
 /** Step 2 of 2: who it reaches, how each channel renders, then send. */
 export function MessagePreviewScreen() {
+  const bottomInset = useAndroidBottomInset();
   const { tokens, type } = useTheme();
   const navigation = useNavigation<Nav>();
   const { messageId } = useRoute<Route>().params;
@@ -93,7 +95,7 @@ export function MessagePreviewScreen() {
     <ScrollView
       style={{ flex: 1, backgroundColor: tokens.bg }}
       contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={styles.content}
+      contentContainerStyle={withBottomInset(styles.content, bottomInset)}
     >
       <Text style={[type.body, { color: tokens.muted }]}>Step 2 of 2 — Review and send your message</Text>
 

@@ -38,11 +38,13 @@ import {
 import { INCIDENT_STATUS_TONES, humanize } from '../services/statusDisplay';
 import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
 import type { Incident, IncidentFormOptions, IncidentStatus, RootStackParamList } from '../types';
+import { useAndroidBottomInset, withBottomInset } from '../hooks/useAndroidBottomInset';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'IncidentDetail'>;
 type Route = RouteProp<RootStackParamList, 'IncidentDetail'>;
 
 export function IncidentDetailScreen() {
+  const bottomInset = useAndroidBottomInset();
   const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<Nav>();
@@ -209,7 +211,7 @@ export function IncidentDetailScreen() {
       <ScrollView
         style={styles.container}
         contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={styles.content}
+        contentContainerStyle={withBottomInset(styles.content, bottomInset)}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl

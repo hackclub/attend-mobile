@@ -14,11 +14,13 @@ import { EmptyState, ErrorView, LoadingView, formatDateTime } from '../component
 import { channelList } from '../components/messageStatus';
 import { spacing, useTheme } from '../theme';
 import type { InboxPage, RootStackParamList } from '../types';
+import { useAndroidBottomInset, withBottomInset } from '../hooks/useAndroidBottomInset';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Inbox'>;
 
 /** The participant's messages from organizers, as /dashboard/messages. */
 export function InboxScreen() {
+  const bottomInset = useAndroidBottomInset();
   const { tokens, type, radii } = useTheme();
   const navigation = useNavigation<Nav>();
   const [page, setPage] = useState<InboxPage | null>(null);
@@ -84,7 +86,7 @@ export function InboxScreen() {
       contentInsetAdjustmentBehavior="automatic"
       data={page.messages}
       keyExtractor={m => m.id}
-      contentContainerStyle={styles.list}
+      contentContainerStyle={withBottomInset(styles.list, bottomInset)}
       keyboardDismissMode="on-drag"
       keyboardShouldPersistTaps="handled"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={tokens.accent} colors={[tokens.accent]} />}

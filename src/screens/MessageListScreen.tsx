@@ -18,6 +18,7 @@ import { EmptyState, ErrorView, LoadingView, formatDateTime } from '../component
 import { titleize } from '../services/statusDisplay';
 import { spacing, useTheme } from '../theme';
 import type { MessageSummary, RootStackParamList } from '../types';
+import { useAndroidBottomInset, withBottomInset } from '../hooks/useAndroidBottomInset';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'MessageList'>;
 type Filter = 'all' | 'draft' | 'scheduled';
@@ -32,6 +33,7 @@ function timeLine(m: MessageSummary): string {
 }
 
 export function MessageListScreen() {
+  const bottomInset = useAndroidBottomInset();
   const { tokens, type, radii } = useTheme();
   const navigation = useNavigation<Nav>();
   const { state } = useApp();
@@ -85,7 +87,7 @@ export function MessageListScreen() {
       contentInsetAdjustmentBehavior="automatic"
       data={shown}
       keyExtractor={m => m.id}
-      contentContainerStyle={styles.list}
+      contentContainerStyle={withBottomInset(styles.list, bottomInset)}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={tokens.accent} colors={[tokens.accent]} />}
       ListHeaderComponent={
         messages.length > 0 ? (

@@ -32,6 +32,7 @@ import {
 import { Button as KitButton, Container, Icon, pressedStyle } from '../components/ui';
 import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
 import type { IncidentReportOptions, ReportAttachment, RootStackParamList } from '../types';
+import { useAndroidBottomInset, withBottomInset } from '../hooks/useAndroidBottomInset';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'IncidentReport'>;
 
@@ -43,6 +44,7 @@ const CONTACT_EMAIL = 'deven@hackclub.com';
  * anyone signed in: participants, parents, volunteers and staff.
  */
 export function IncidentReportScreen() {
+  const bottomInset = useAndroidBottomInset();
   const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<Nav>();
@@ -220,7 +222,7 @@ export function IncidentReportScreen() {
 
   if (submitted) {
     return (
-      <ScrollView style={styles.container} contentContainerStyle={styles.thanks}>
+      <ScrollView style={styles.container} contentContainerStyle={withBottomInset(styles.thanks, bottomInset)}>
         <View style={styles.thanksIcon}>
           <Icon name="check" size={30} color={tokens.success} />
         </View>
@@ -245,7 +247,7 @@ export function IncidentReportScreen() {
       <ScrollView
         style={styles.container}
         contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={styles.content}
+        contentContainerStyle={withBottomInset(styles.content, bottomInset)}
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.intro}>
