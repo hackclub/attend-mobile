@@ -72,9 +72,15 @@ export function MessageDetailScreen() {
     }
   };
 
-  const confirm = (title: string, body: string, onConfirm: () => void, destructive = false) =>
+  const confirm = (
+    title: string,
+    body: string,
+    onConfirm: () => void,
+    destructive = false,
+    dismissLabel = 'Cancel',
+  ) =>
     Alert.alert(title, body, [
-      { text: 'Cancel', style: 'cancel' },
+      { text: dismissLabel, style: 'cancel' },
       { text: title, style: destructive ? 'destructive' : 'default', onPress: onConfirm },
     ]);
 
@@ -149,7 +155,15 @@ export function MessageDetailScreen() {
           <Button
             title="Cancel"
             loading={busy === 'cancel'}
-            onPress={() => confirm('Cancel', 'Are you sure you want to cancel this scheduled message?', () => run('cancel'))}
+            onPress={() =>
+              confirm(
+                'Cancel message',
+                'Are you sure you want to cancel this scheduled message?',
+                () => run('cancel'),
+                true,
+                'Keep',
+              )
+            }
           />
         ) : null}
         {permissions.retry_failed ? (

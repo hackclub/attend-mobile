@@ -17,11 +17,13 @@ import { EmergencyContactCard } from '../components/EmergencyContactCard';
 import {
   Avatar,
   Badge,
+  BottomSheet,
   Button,
   Container,
   Divider,
   Icon,
   KeyValue,
+  ListRow,
   StatusGlyph,
   TextField,
   type BadgeColor,
@@ -37,7 +39,7 @@ import { checkInDetail, participantDetailLine } from '../services/participantChe
 import { isWithdrawn } from '../services/participantStatus';
 import { useTheme } from '../theme';
 import { BiometricGate } from '../components/BiometricGate';
-import type { RootStackParamList, Participant, ParticipantNote, Travel, Guardian, Consent, Accommodation, AccessibilityDetail, PersonalDetails } from '../types';
+import type { RootStackParamList, Participant, ParticipantNote, Travel, Guardian, Consent, Accommodation, AccessibilityDetail, PersonalDetails, ScanByContext } from '../types';
 
 interface ParticipantDetailContentProps {
   participant: Participant;
@@ -70,6 +72,7 @@ function ParticipantDetailBody({ participant, topInset = 100, bottomInset = 32 }
   // document's chip — iPads and simulators have none.
   const canVerifyId = !!state.auth.user?.global_admin && Platform.OS === 'ios' && nfcSupported;
   const [isUndoing, setIsUndoing] = useState(false);
+  const [undoPickerOpen, setUndoPickerOpen] = useState(false);
   const [isWritingBadge, setIsWritingBadge] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentParticipant, setCurrentParticipant] = useState<Participant>(participant);
@@ -297,24 +300,34 @@ function ParticipantDetailBody({ participant, topInset = 100, bottomInset = 32 }
       return;
     }
 
-    const buttons: any[] = scans.map(scan => ({
-      text: `${scan.is_airport ? '✈️ ' : ''}${scan.scan_context_name} (${scan.scan_count} scan${scan.scan_count === 1 ? '' : 's'})`,
-      onPress: () => performUndo(scan.scan_context_id, scan.scan_context_name),
-    }));
+    const name = currentParticipant.display_name || currentParticipant.full_name;
+    const message = `${name} has been scanned at multiple locations. Which would you like to undo?`;
 
-    buttons.push({
-      text: 'Undo All Scans',
-      style: 'destructive',
-      onPress: () => performUndo(),
-    });
+    // Alert keeps at most three buttons on Android, so a list of contexts
+    // goes in an action sheet on iOS and a bottom sheet on Android.
+    if (Platform.OS === 'ios') {
+      const options = [...scans.map(undoContextLabel), 'Undo All Scans', 'Cancel'];
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: 'Select Context to Undo',
+          message,
+          options,
+          destructiveButtonIndex: scans.length,
+          cancelButtonIndex: scans.length + 1,
+        },
+        buttonIndex => {
+          if (buttonIndex < scans.length) {
+            const scan = scans[buttonIndex];
+            performUndo(scan.scan_context_id, scan.scan_context_name);
+          } else if (buttonIndex === scans.length) {
+            performUndo();
+          }
+        }
+      );
+      return;
+    }
 
-    buttons.push({ text: 'Cancel', style: 'cancel' });
-
-    Alert.alert(
-      'Select Context to Undo',
-      `${currentParticipant.display_name || currentParticipant.full_name} has been scanned at multiple locations. Which would you like to undo?`,
-      buttons
-    );
+    setUndoPickerOpen(true);
   };
 
   const handleVerifyId = () => {
@@ -374,308 +387,346 @@ function ParticipantDetailBody({ participant, topInset = 100, bottomInset = 32 }
   const noteTypeLabels: Record<string, string> = { ops: 'Ops', safeguarding: 'Safeguarding', logistical: 'Logistical' };
 
   return (
-    <ScrollView
-      style={{ backgroundColor: tokens.bg }}
-      contentContainerStyle={[styles.content, { paddingTop: topInset, paddingBottom: bottomInset }]}
-      scrollIndicatorInsets={{ top: topInset }}
-      keyboardShouldPersistTaps="handled"
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={handleRefresh}
-          tintColor={tokens.accent}
-          colors={[tokens.accent]}
-          progressBackgroundColor={tokens.bg}
-          progressViewOffset={topInset}
-        />
-      }
-    >
-      <View style={styles.header}>
-        <Avatar name={name} uri={currentParticipant.headshot_url} size={72} />
-        <View style={styles.headerInfo}>
-          <Text style={[type.h1, { color: tokens.textH }]} accessibilityRole="header" selectable>
-            {name}
-          </Text>
-          {currentParticipant.pronouns ? (
-            <Text style={[type.body, { color: tokens.text2 }]}>{currentParticipant.pronouns}</Text>
-          ) : null}
-          <View style={styles.statusLine} accessible accessibilityLabel={status.text}>
-            <StatusGlyph type={status.glyph} color={status.color} />
-            <Text style={[type.body, styles.statusText, { color: status.color }]}>{status.text}</Text>
+    <>
+      <ScrollView
+        style={{ backgroundColor: tokens.bg }}
+        contentContainerStyle={[styles.content, { paddingTop: topInset, paddingBottom: bottomInset }]}
+        scrollIndicatorInsets={{ top: topInset }}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={tokens.accent}
+            colors={[tokens.accent]}
+            progressBackgroundColor={tokens.bg}
+            progressViewOffset={topInset}
+          />
+        }
+      >
+        <View style={styles.header}>
+          <Avatar name={name} uri={currentParticipant.headshot_url} size={72} />
+          <View style={styles.headerInfo}>
+            <Text style={[type.h1, { color: tokens.textH }]} accessibilityRole="header" selectable>
+              {name}
+            </Text>
+            {currentParticipant.pronouns ? (
+              <Text style={[type.body, { color: tokens.text2 }]}>{currentParticipant.pronouns}</Text>
+            ) : null}
+            <View style={styles.statusLine} accessible accessibilityLabel={status.text}>
+              <StatusGlyph type={status.glyph} color={status.color} />
+              <Text style={[type.body, styles.statusText, { color: status.color }]}>{status.text}</Text>
+            </View>
           </View>
         </View>
-      </View>
 
-      {safetyItems.length > 0 && (
-        <Container title="Safety" bodyStyle={styles.safetyBody}>
-          {safetyItems.map((item) => (
-            <View key={item.title} style={styles.safetyItem} accessible accessibilityLabel={[item.title, item.detail].filter(Boolean).join(': ')}>
-              <Icon name={item.icon} size={20} color={item.color} />
-              <View style={styles.safetyText}>
-                <Text style={[type.label, { color: item.color }]}>{item.title}</Text>
-                {item.detail ? (
-                  <Text style={[type.body, { color: tokens.text2 }]}>{item.detail}</Text>
-                ) : null}
-              </View>
-            </View>
-          ))}
-        </Container>
-      )}
-
-      <View style={styles.actions}>
-        {currentParticipant.checked_in_at && (
-          <Button
-            title="Undo Check-In"
-            icon="refresh"
-            onPress={handleUndoCheckIn}
-            loading={isUndoing}
-            style={styles.actionButton}
-          />
-        )}
-        {nfcSupported && (
-          <Button
-            title="Write to NFC Badge"
-            icon="nfc"
-            onPress={handleWriteBadge}
-            loading={isWritingBadge}
-            style={styles.actionButton}
-          />
-        )}
-        {canVerifyId && (
-          <Button
-            title="Verify ID"
-            icon="identification"
-            onPress={handleVerifyId}
-            style={styles.actionButton}
-          />
-        )}
-        <Button
-          title="View on attend.hackclub.com"
-          icon="external-link"
-          iconPosition="end"
-          variant="link"
-          onPress={handleOpenInBrowser}
-          style={styles.fullAction}
-        />
-      </View>
-
-      <Section title="Contact Information">
-        <InfoRow label="Email" value={currentParticipant.email} onPress={() => handleEmail(currentParticipant.email)} selectable accessibilityHint="Opens the default email app" />
-        {currentParticipant.phone && (
-          <InfoRow label="Phone" value={currentParticipant.phone} onPress={() => handleCall(currentParticipant.phone!)} selectable accessibilityHint="Shows calling options" />
-        )}
-        {currentParticipant.personal?.secondary_email && (
-          <InfoRow label="Secondary Email" value={currentParticipant.personal.secondary_email} onPress={() => handleEmail(currentParticipant.personal!.secondary_email!)} selectable accessibilityHint="Opens the default email app" />
-        )}
-      </Section>
-
-      {currentParticipant.personal && (
-        <PersonalSection
-          personal={currentParticipant.personal}
-          canViewPii={canViewParticipantPii}
-          roleLabel={roleLabel}
-        />
-      )}
-
-      {(currentParticipant.allergies || currentParticipant.medical_conditions || currentParticipant.medications || currentParticipant.medical_detail) && (
-        <Section title="Medical Information">
-          {currentParticipant.allergies && (
-            <InfoRow label="Allergies" value={currentParticipant.allergies} highlight />
-          )}
-          {currentParticipant.medical_detail?.allergy_severity && (
-            <InfoRow label="Allergy Severity" value={currentParticipant.medical_detail.allergy_severity} highlight />
-          )}
-          {currentParticipant.medical_conditions && (
-            <InfoRow label="Medical Conditions" value={currentParticipant.medical_conditions} highlight />
-          )}
-          {currentParticipant.medications && (
-            <InfoRow label="Medications" value={currentParticipant.medications} />
-          )}
-          {currentParticipant.requires_refrigeration && (
-            <InfoRow label="Refrigeration Required" value="Yes" highlight />
-          )}
-          {currentParticipant.medical_detail?.emergency_action_plan && (
-            <InfoRow label="Emergency Action Plan" value={currentParticipant.medical_detail.emergency_action_plan} highlight />
-          )}
-          {currentParticipant.medical_detail?.additional_notes && (
-            <InfoRow label="Additional Notes" value={currentParticipant.medical_detail.additional_notes} />
-          )}
-        </Section>
-      )}
-
-      {(currentParticipant.diet_type || currentParticipant.life_threatening_allergies || currentParticipant.dietary_detail) && (
-        <Section title="Dietary Requirements">
-          {currentParticipant.diet_type && (
-            <InfoRow label="Diet Type" value={currentParticipant.diet_type} />
-          )}
-          {currentParticipant.life_threatening_allergies && (
-            <InfoRow label="Life-Threatening Allergies" value={currentParticipant.life_threatening_allergies} highlight />
-          )}
-          {currentParticipant.cross_contamination_risk && (
-            <InfoRow label="Cross Contamination Risk" value="Yes" highlight />
-          )}
-          {currentParticipant.dietary_detail?.intolerances && (
-            <InfoRow label="Intolerances" value={currentParticipant.dietary_detail.intolerances} />
-          )}
-          {currentParticipant.dietary_detail?.notes && (
-            <InfoRow label="Notes" value={currentParticipant.dietary_detail.notes} />
-          )}
-        </Section>
-      )}
-
-      {currentParticipant.accessibility && (
-        <AccessibilitySection a={currentParticipant.accessibility} />
-      )}
-
-      <Section title="Safeguarding">
-        {/* Only sent to roles that see sensitive data; absent isn't "unsigned". */}
-        {currentParticipant.freedom_waiver_granted !== undefined && (
-          <InfoRow
-            label="Freedom Waiver"
-            value={currentParticipant.freedom_waiver_granted ? 'Signed' : 'Not Signed'}
-            valueColor={currentParticipant.freedom_waiver_granted ? tokens.success : tokens.warning}
-          />
-        )}
-        <InfoRow label="High Support Needs" value={currentParticipant.high_support_flag ? 'Yes' : 'No'} />
-        <InfoRow label="Can Leave Unaccompanied" value={currentParticipant.can_leave_unaccompanied ? 'Yes' : 'No'} />
-        {currentParticipant.safeguarding_detail?.high_support_notes && (
-          <InfoRow label="High Support Notes" value={currentParticipant.safeguarding_detail.high_support_notes} highlight />
-        )}
-        {currentParticipant.safeguarding_detail?.authorized_pickup_adults && (
-          <InfoRow label="Authorized for Pickup" value={currentParticipant.safeguarding_detail.authorized_pickup_adults} />
-        )}
-        {currentParticipant.safeguarding_detail?.other_instructions && (
-          <InfoRow label="Other Instructions" value={currentParticipant.safeguarding_detail.other_instructions} />
-        )}
-      </Section>
-
-      <Section title="Waiver Status">
-        <InfoRow
-          label="Waiver Signed"
-          value={currentParticipant.waiver_signed ? 'Signed' : 'Not Signed'}
-          valueColor={currentParticipant.waiver_signed ? tokens.success : tokens.warning}
-        />
-      </Section>
-
-      {currentParticipant.consents && currentParticipant.consents.length > 0 && (
-        <ConsentsSection consents={currentParticipant.consents} />
-      )}
-
-      {currentParticipant.guardians && currentParticipant.guardians.length > 0 ? (
-        <GuardiansSection
-          guardians={currentParticipant.guardians}
-          onCall={handleCall}
-          onEmail={handleEmail}
-        />
-      ) : currentParticipant.parent_guardian_name ? (
-        <Section title="Parent/Guardian">
-          <InfoRow label="Name" value={currentParticipant.parent_guardian_name} />
-          {currentParticipant.parent_guardian_phone && (
-            <InfoRow
-              label="Phone"
-              value={currentParticipant.parent_guardian_phone}
-              onPress={() => handleCall(currentParticipant.parent_guardian_phone!)}
-              selectable
-              accessibilityHint="Shows calling options"
-            />
-          )}
-          {currentParticipant.parent_guardian_email && (
-            <InfoRow
-              label="Email"
-              value={currentParticipant.parent_guardian_email}
-              onPress={() => handleEmail(currentParticipant.parent_guardian_email!)}
-              selectable
-              accessibilityHint="Opens the default email app"
-            />
-          )}
-        </Section>
-      ) : null}
-
-      {!currentParticipant.guardians?.length && currentParticipant.emergency_contacts && currentParticipant.emergency_contacts.length > 0 && (
-        <Section title="Emergency Contacts">
-          {currentParticipant.emergency_contacts.map((contact, index) => (
-            <React.Fragment key={contact.id || `contact-${index}`}>
-              {index > 0 && <Divider style={styles.itemDivider} />}
-              <EmergencyContactCard
-                contact={contact}
-                onCall={handleCall}
-                onEmail={handleEmail}
-              />
-            </React.Fragment>
-          ))}
-        </Section>
-      )}
-
-      {currentParticipant.travel_inbound && (
-        <TravelSection
-          title="Inbound Travel"
-          travel={currentParticipant.travel_inbound}
-          canViewPii={canViewParticipantPii}
-        />
-      )}
-      {currentParticipant.travel_outbound && (
-        <TravelSection
-          title="Outbound Travel"
-          travel={currentParticipant.travel_outbound}
-          canViewPii={canViewParticipantPii}
-        />
-      )}
-
-      {currentParticipant.accommodation && (
-        <AccommodationSection accommodation={currentParticipant.accommodation} />
-      )}
-
-      {notesSupported && (
-        <Container title={`Notes${notes.length > 0 ? ` (${notes.length})` : ''}`} bodyStyle={styles.notesBody}>
-          {isLoadingNotes ? (
-            <ActivityIndicator size="small" color={tokens.accent} style={styles.notesLoading} />
-          ) : notes.length === 0 ? (
-            <Text style={[type.body, { color: tokens.text2 }]}>No notes yet</Text>
-          ) : (
-            notes.map((note) => {
-              const authorEmailOnly = !note.author?.name && note.author?.email;
-              return (
-                <View key={note.id} style={styles.note}>
-                  <Text style={[type.body, { color: tokens.text }]} selectable>{note.content}</Text>
-                  <View style={styles.noteMeta}>
-                    <Text style={[type.body, styles.noteMetaText, { color: tokens.muted }]}>
-                      {note.note_type && noteTypeLabels[note.note_type] ? `${noteTypeLabels[note.note_type]} · ` : ''}
-                      <Text
-                        style={authorEmailOnly ? { color: tokens.accent } : undefined}
-                        selectable={Boolean(authorEmailOnly)}
-                        onPress={authorEmailOnly ? () => handleEmail(note.author.email) : undefined}
-                        accessibilityRole={authorEmailOnly ? 'link' : undefined}
-                      >
-                        {note.author?.name || note.author?.email || 'Unknown'}
-                      </Text>
-                      {` · ${formatDateTime(note.created_at)}`}
-                    </Text>
-                    {note.sensitivity === 'restricted' && <Badge label="Restricted" color="red" />}
-                  </View>
+        {safetyItems.length > 0 && (
+          <Container title="Safety" bodyStyle={styles.safetyBody}>
+            {safetyItems.map((item) => (
+              <View key={item.title} style={styles.safetyItem} accessible accessibilityLabel={[item.title, item.detail].filter(Boolean).join(': ')}>
+                <Icon name={item.icon} size={20} color={item.color} />
+                <View style={styles.safetyText}>
+                  <Text style={[type.label, { color: item.color }]}>{item.title}</Text>
+                  {item.detail ? (
+                    <Text style={[type.body, { color: tokens.text2 }]}>{item.detail}</Text>
+                  ) : null}
                 </View>
-              );
-            })
-          )}
+              </View>
+            ))}
+          </Container>
+        )}
 
-          <TextField
-            placeholder="Add a note..."
-            accessibilityLabel="Add a note"
-            value={newNoteText}
-            onChangeText={setNewNoteText}
-            multiline
-            maxLength={1000}
-          />
+        <View style={styles.actions}>
+          {currentParticipant.checked_in_at && (
+            <Button
+              title="Undo Check-In"
+              icon="refresh"
+              onPress={handleUndoCheckIn}
+              loading={isUndoing}
+              style={styles.actionButton}
+            />
+          )}
+          {nfcSupported && (
+            <Button
+              title="Write to NFC Badge"
+              icon="nfc"
+              onPress={handleWriteBadge}
+              loading={isWritingBadge}
+              style={styles.actionButton}
+            />
+          )}
+          {canVerifyId && (
+            <Button
+              title="Verify ID"
+              icon="identification"
+              onPress={handleVerifyId}
+              style={styles.actionButton}
+            />
+          )}
           <Button
-            title="Add note"
-            onPress={handleSubmitNote}
-            loading={isSubmittingNote}
-            disabled={!newNoteText.trim()}
-            style={styles.addNoteButton}
+            title="View on attend.hackclub.com"
+            icon="external-link"
+            iconPosition="end"
+            variant="link"
+            onPress={handleOpenInBrowser}
+            style={styles.fullAction}
           />
-        </Container>
-      )}
-    </ScrollView>
+        </View>
+
+        <Section title="Contact Information">
+          <InfoRow label="Email" value={currentParticipant.email} onPress={() => handleEmail(currentParticipant.email)} selectable accessibilityHint="Opens the default email app" />
+          {currentParticipant.phone && (
+            <InfoRow label="Phone" value={currentParticipant.phone} onPress={() => handleCall(currentParticipant.phone!)} selectable accessibilityHint="Shows calling options" />
+          )}
+          {currentParticipant.personal?.secondary_email && (
+            <InfoRow label="Secondary Email" value={currentParticipant.personal.secondary_email} onPress={() => handleEmail(currentParticipant.personal!.secondary_email!)} selectable accessibilityHint="Opens the default email app" />
+          )}
+        </Section>
+
+        {currentParticipant.personal && (
+          <PersonalSection
+            personal={currentParticipant.personal}
+            canViewPii={canViewParticipantPii}
+            roleLabel={roleLabel}
+          />
+        )}
+
+        {(currentParticipant.allergies || currentParticipant.medical_conditions || currentParticipant.medications || currentParticipant.medical_detail) && (
+          <Section title="Medical Information">
+            {currentParticipant.allergies && (
+              <InfoRow label="Allergies" value={currentParticipant.allergies} highlight />
+            )}
+            {currentParticipant.medical_detail?.allergy_severity && (
+              <InfoRow label="Allergy Severity" value={currentParticipant.medical_detail.allergy_severity} highlight />
+            )}
+            {currentParticipant.medical_conditions && (
+              <InfoRow label="Medical Conditions" value={currentParticipant.medical_conditions} highlight />
+            )}
+            {currentParticipant.medications && (
+              <InfoRow label="Medications" value={currentParticipant.medications} />
+            )}
+            {currentParticipant.requires_refrigeration && (
+              <InfoRow label="Refrigeration Required" value="Yes" highlight />
+            )}
+            {currentParticipant.medical_detail?.emergency_action_plan && (
+              <InfoRow label="Emergency Action Plan" value={currentParticipant.medical_detail.emergency_action_plan} highlight />
+            )}
+            {currentParticipant.medical_detail?.additional_notes && (
+              <InfoRow label="Additional Notes" value={currentParticipant.medical_detail.additional_notes} />
+            )}
+          </Section>
+        )}
+
+        {(currentParticipant.diet_type || currentParticipant.life_threatening_allergies || currentParticipant.dietary_detail) && (
+          <Section title="Dietary Requirements">
+            {currentParticipant.diet_type && (
+              <InfoRow label="Diet Type" value={currentParticipant.diet_type} />
+            )}
+            {currentParticipant.life_threatening_allergies && (
+              <InfoRow label="Life-Threatening Allergies" value={currentParticipant.life_threatening_allergies} highlight />
+            )}
+            {currentParticipant.cross_contamination_risk && (
+              <InfoRow label="Cross Contamination Risk" value="Yes" highlight />
+            )}
+            {currentParticipant.dietary_detail?.intolerances && (
+              <InfoRow label="Intolerances" value={currentParticipant.dietary_detail.intolerances} />
+            )}
+            {currentParticipant.dietary_detail?.notes && (
+              <InfoRow label="Notes" value={currentParticipant.dietary_detail.notes} />
+            )}
+          </Section>
+        )}
+
+        {currentParticipant.accessibility && (
+          <AccessibilitySection a={currentParticipant.accessibility} />
+        )}
+
+        <Section title="Safeguarding">
+          {/* Only sent to roles that see sensitive data; absent isn't "unsigned". */}
+          {currentParticipant.freedom_waiver_granted !== undefined && (
+            <InfoRow
+              label="Freedom Waiver"
+              value={currentParticipant.freedom_waiver_granted ? 'Signed' : 'Not Signed'}
+              valueColor={currentParticipant.freedom_waiver_granted ? tokens.success : tokens.warning}
+            />
+          )}
+          <InfoRow label="High Support Needs" value={currentParticipant.high_support_flag ? 'Yes' : 'No'} />
+          <InfoRow label="Can Leave Unaccompanied" value={currentParticipant.can_leave_unaccompanied ? 'Yes' : 'No'} />
+          {currentParticipant.safeguarding_detail?.high_support_notes && (
+            <InfoRow label="High Support Notes" value={currentParticipant.safeguarding_detail.high_support_notes} highlight />
+          )}
+          {currentParticipant.safeguarding_detail?.authorized_pickup_adults && (
+            <InfoRow label="Authorized for Pickup" value={currentParticipant.safeguarding_detail.authorized_pickup_adults} />
+          )}
+          {currentParticipant.safeguarding_detail?.other_instructions && (
+            <InfoRow label="Other Instructions" value={currentParticipant.safeguarding_detail.other_instructions} />
+          )}
+        </Section>
+
+        <Section title="Waiver Status">
+          <InfoRow
+            label="Waiver Signed"
+            value={currentParticipant.waiver_signed ? 'Signed' : 'Not Signed'}
+            valueColor={currentParticipant.waiver_signed ? tokens.success : tokens.warning}
+          />
+        </Section>
+
+        {currentParticipant.consents && currentParticipant.consents.length > 0 && (
+          <ConsentsSection consents={currentParticipant.consents} />
+        )}
+
+        {currentParticipant.guardians && currentParticipant.guardians.length > 0 ? (
+          <GuardiansSection
+            guardians={currentParticipant.guardians}
+            onCall={handleCall}
+            onEmail={handleEmail}
+          />
+        ) : currentParticipant.parent_guardian_name ? (
+          <Section title="Parent/Guardian">
+            <InfoRow label="Name" value={currentParticipant.parent_guardian_name} />
+            {currentParticipant.parent_guardian_phone && (
+              <InfoRow
+                label="Phone"
+                value={currentParticipant.parent_guardian_phone}
+                onPress={() => handleCall(currentParticipant.parent_guardian_phone!)}
+                selectable
+                accessibilityHint="Shows calling options"
+              />
+            )}
+            {currentParticipant.parent_guardian_email && (
+              <InfoRow
+                label="Email"
+                value={currentParticipant.parent_guardian_email}
+                onPress={() => handleEmail(currentParticipant.parent_guardian_email!)}
+                selectable
+                accessibilityHint="Opens the default email app"
+              />
+            )}
+          </Section>
+        ) : null}
+
+        {!currentParticipant.guardians?.length && currentParticipant.emergency_contacts && currentParticipant.emergency_contacts.length > 0 && (
+          <Section title="Emergency Contacts">
+            {currentParticipant.emergency_contacts.map((contact, index) => (
+              <React.Fragment key={contact.id || `contact-${index}`}>
+                {index > 0 && <Divider style={styles.itemDivider} />}
+                <EmergencyContactCard
+                  contact={contact}
+                  onCall={handleCall}
+                  onEmail={handleEmail}
+                />
+              </React.Fragment>
+            ))}
+          </Section>
+        )}
+
+        {currentParticipant.travel_inbound && (
+          <TravelSection
+            title="Inbound Travel"
+            travel={currentParticipant.travel_inbound}
+            canViewPii={canViewParticipantPii}
+          />
+        )}
+        {currentParticipant.travel_outbound && (
+          <TravelSection
+            title="Outbound Travel"
+            travel={currentParticipant.travel_outbound}
+            canViewPii={canViewParticipantPii}
+          />
+        )}
+
+        {currentParticipant.accommodation && (
+          <AccommodationSection accommodation={currentParticipant.accommodation} />
+        )}
+
+        {notesSupported && (
+          <Container title={`Notes${notes.length > 0 ? ` (${notes.length})` : ''}`} bodyStyle={styles.notesBody}>
+            {isLoadingNotes ? (
+              <ActivityIndicator size="small" color={tokens.accent} style={styles.notesLoading} />
+            ) : notes.length === 0 ? (
+              <Text style={[type.body, { color: tokens.text2 }]}>No notes yet</Text>
+            ) : (
+              notes.map((note) => {
+                const authorEmailOnly = !note.author?.name && note.author?.email;
+                return (
+                  <View key={note.id} style={styles.note}>
+                    <Text style={[type.body, { color: tokens.text }]} selectable>{note.content}</Text>
+                    <View style={styles.noteMeta}>
+                      <Text style={[type.body, styles.noteMetaText, { color: tokens.muted }]}>
+                        {note.note_type && noteTypeLabels[note.note_type] ? `${noteTypeLabels[note.note_type]} · ` : ''}
+                        <Text
+                          style={authorEmailOnly ? { color: tokens.accent } : undefined}
+                          selectable={Boolean(authorEmailOnly)}
+                          onPress={authorEmailOnly ? () => handleEmail(note.author.email) : undefined}
+                          accessibilityRole={authorEmailOnly ? 'link' : undefined}
+                        >
+                          {note.author?.name || note.author?.email || 'Unknown'}
+                        </Text>
+                        {` · ${formatDateTime(note.created_at)}`}
+                      </Text>
+                      {note.sensitivity === 'restricted' && <Badge label="Restricted" color="red" />}
+                    </View>
+                  </View>
+                );
+              })
+            )}
+
+            <TextField
+              placeholder="Add a note..."
+              accessibilityLabel="Add a note"
+              value={newNoteText}
+              onChangeText={setNewNoteText}
+              multiline
+              maxLength={1000}
+            />
+            <Button
+              title="Add note"
+              onPress={handleSubmitNote}
+              loading={isSubmittingNote}
+              disabled={!newNoteText.trim()}
+              style={styles.addNoteButton}
+            />
+          </Container>
+        )}
+      </ScrollView>
+      {Platform.OS === 'android' ? (
+        <BottomSheet
+          visible={undoPickerOpen}
+          onClose={() => setUndoPickerOpen(false)}
+          title="Select Context to Undo"
+        >
+          <Text style={[type.body, styles.undoPickerMessage, { color: tokens.text2 }]}>
+            {`${currentParticipant.display_name || currentParticipant.full_name} has been scanned at multiple locations. Which would you like to undo?`}
+          </Text>
+          {(currentParticipant.scans_by_context || []).map(scan => (
+            <ListRow
+              key={scan.scan_context_id}
+              title={undoContextLabel(scan)}
+              chevron={false}
+              divider
+              onPress={() => {
+                setUndoPickerOpen(false);
+                performUndo(scan.scan_context_id, scan.scan_context_name);
+              }}
+            />
+          ))}
+          <ListRow
+            title="Undo All Scans"
+            destructive
+            chevron={false}
+            onPress={() => {
+              setUndoPickerOpen(false);
+              performUndo();
+            }}
+          />
+        </BottomSheet>
+      ) : null}
+    </>
   );
+}
+
+function undoContextLabel(scan: ScanByContext): string {
+  return `${scan.is_airport ? '✈️ ' : ''}${scan.scan_context_name} (${scan.scan_count} scan${scan.scan_count === 1 ? '' : 's'})`;
 }
 
 type Tokens = ReturnType<typeof useTheme>['tokens'];
@@ -1137,6 +1188,7 @@ function InfoRow({ label, value, onPress, highlight, valueColor, selectable, acc
 }
 
 const styles = StyleSheet.create({
+  undoPickerMessage: { paddingBottom: 8 },
   content: {
     paddingHorizontal: 16,
     gap: 16,
