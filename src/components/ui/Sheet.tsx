@@ -59,7 +59,7 @@ export function SheetHeader({ title, subtitle, onClose, action, closable = true 
 
 export interface SheetProps extends SheetHeaderProps {
   children?: ReactNode;
-  /** Pinned under the scrolling content, e.g. a Done button. */
+  /** After the content, e.g. a Done button. */
   footer?: ReactNode;
   contentContainerStyle?: StyleProp<ViewStyle>;
   scrollViewProps?: Omit<ScrollViewProps, 'contentContainerStyle' | 'children'>;
@@ -83,31 +83,25 @@ export function Sheet({
   const insets = useSafeAreaInsets();
   const bottom = Math.max(insets.bottom, SHEET_INSET);
 
-  const scroll = (
+  // The footer is the ScrollView's last child rather than a sibling in a
+  // wrapper, so the ScrollView stays the sheet's direct child.
+  return (
     <ScrollView
       // No flex: a 'fitToContents' sheet sizes itself from this content.
       style={{ backgroundColor: tokens.bg }}
       keyboardShouldPersistTaps="handled"
       nestedScrollEnabled
       {...scrollViewProps}
-      contentContainerStyle={[{ paddingBottom: footer ? SHEET_INSET : bottom }, contentContainerStyle]}
+      contentContainerStyle={[{ paddingBottom: bottom }, contentContainerStyle]}
     >
       <SheetHeader {...header} />
       {children}
+      {footer ? <View style={styles.footer}>{footer}</View> : null}
     </ScrollView>
-  );
-
-  if (!footer) return scroll;
-  return (
-    <View style={[styles.fill, { backgroundColor: tokens.bg }]}>
-      {scroll}
-      <View style={[styles.footer, { paddingBottom: bottom }]}>{footer}</View>
-    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  fill: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -124,6 +118,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     paddingHorizontal: SHEET_INSET,
-    paddingTop: 12,
+    paddingTop: SHEET_INSET,
   },
 });
