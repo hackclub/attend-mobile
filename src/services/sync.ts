@@ -294,7 +294,36 @@ class SyncService {
     return scans;
   }
 
-  async syncAll(eventId: string): Promise<void> {
+  /**
+   * Sends the signed-in user's queued scans for every event, waiting at most
+   * `timeoutMs` (the flush carries on in the background after that). Resolves
+   * with how many are still waiting.
+   */
+  async flushQueuedScans(timeoutMs?: number): Promise<number> {
+    const flush = scanQueue.flush();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      if (timeoutMs === undefined) {
+        await flush;
+      } else {
+        await Promise.race([
+          flush,
+          new Promise<void>(resolve => { timer = setTimeout(resolve, timeoutMs); }),
+        ]);
+      }
+    } catch (error) {
+      console.warn('[Sync] Scan queue flush failed:', error);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    return scanQueue.getPendingCount();
+  }
+
+  /**
+   * Sends every queued scan (all events, not just this one), then pulls the
+   * event list and, given an event, its roster and scans.
+   */
+  async syncAll(eventId?: string | null): Promise<void> {
     const generation = this.cacheGeneration;
     const netInfo = await NetInfo.fetch();
     if (!netInfo.isConnected) {
@@ -306,24 +335,23 @@ class SyncService {
 
     try {
       // Push this device's offline scans before pulling, so the pulled
-      // roster and scan list already include them.
-      try {
-        await scanQueue.flush(eventId);
-      } catch (error) {
-        console.warn('[Sync] Scan queue flush failed:', error);
-      }
+      // roster and scan list already include them. The pending count covers
+      // every event, so the flush does too.
+      await this.flushQueuedScans();
 
       const [events] = await Promise.all([
         api.getEvents(),
-        this.refreshParticipants(eventId, generation),
+        eventId ? this.refreshParticipants(eventId, generation) : Promise.resolve([]),
       ]);
 
       await this.cacheEvents(events, generation);
 
-      try {
-        await this.syncScans(eventId, generation);
-      } catch (error) {
-        console.warn('[Sync] Scan sync failed:', error);
+      if (eventId) {
+        try {
+          await this.syncScans(eventId, generation);
+        } catch (error) {
+          console.warn('[Sync] Scan sync failed:', error);
+        }
       }
 
       await this.enqueueCacheWrite(generation, () =>
@@ -371,10 +399,20 @@ class SyncService {
     }
   }
 
-  async clear(): Promise<void> {
+  /**
+   * Sign-out: wipes every cached roster, scan list, event and the current
+   * event. Queued scans are deleted too unless `keepQueuedScans` is set (an
+   * expired session): then they stay, tagged with their user, and are sent
+   * only if that same user signs back in.
+   */
+  async clear({ keepQueuedScans = false }: { keepQueuedScans?: boolean } = {}): Promise<void> {
     this.cacheGeneration += 1;
-    // Logout path: queued scans belong to the signed-out session.
-    await scanQueue.clear().catch(error => console.warn('[Sync] Scan queue clear failed:', error));
+    if (keepQueuedScans) {
+      await scanQueue.setUser(null);
+    } else {
+      await scanQueue.clear().catch(error => console.warn('[Sync] Scan queue clear failed:', error));
+      await scanQueue.setUser(null);
+    }
     forbiddenParticipants.reset();
     await Promise.allSettled(this.participantCacheQueues.values());
     this.participantCacheQueues.clear();

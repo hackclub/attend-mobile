@@ -4,6 +4,9 @@ import { secureStorage, KeychainLockedError } from './storage';
 import { api } from './api';
 import { biometricService } from './biometric';
 import { notificationService } from './notifications';
+import { syncService } from './sync';
+import { clearHeadshotCache } from './headshotCache';
+import { liveActivityService } from './liveActivity';
 import type { User } from '../types';
 
 // Sign-out waits at most this long for the server before clearing locally.
@@ -17,6 +20,39 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
     timer = setTimeout(() => reject(new Error('Timed out')), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Everything a sign-out removes from the device apart from the credentials:
+ * the biometric unlock, cached rosters, scans, events and the current event,
+ * queued scans (unless `keepQueuedScans`), headshots, and the Live
+ * Activities / Live Updates. Every sign-out path runs it via
+ * authService.logout. Never throws.
+ */
+export async function clearLocalSessionData(
+  { keepQueuedScans = false }: { keepQueuedScans?: boolean } = {}
+): Promise<void> {
+  biometricService.clearSession();
+  const results = await Promise.allSettled([
+    syncService.clear({ keepQueuedScans }),
+    clearHeadshotCache(),
+    liveActivityService.stopAll(),
+  ]);
+  results.forEach(result => {
+    if (result.status === 'rejected') {
+      console.warn('[Logout] Cleanup failed:', result.reason);
+    }
+  });
+}
+
+export interface LogoutOptions {
+  // Tell the server (revoke the token, drop the push token). Off when the
+  // server already rejected the token.
+  revoke?: boolean;
+  // An expired session, not a choice to sign out: keep that user's queued
+  // scans, to send if the same user signs back in. Another user signing in
+  // discards them.
+  keepQueuedScans?: boolean;
 }
 
 WebBrowser.maybeCompleteAuthSession();
@@ -140,8 +176,10 @@ export const authService = {
       try {
         const isValid = await api.validateToken();
         if (!isValid) {
-          // Token is explicitly invalid (401): nothing left to revoke.
-          await this.logout({ revoke: false });
+          // Token is explicitly invalid (401): nothing left to revoke. Same
+          // local cleanup as any sign-out, but scans still waiting to sync
+          // are kept for when this user signs back in.
+          await this.logout({ revoke: false, keepQueuedScans: true });
           return { success: false, error: 'Session expired' };
         }
         
@@ -172,30 +210,36 @@ export const authService = {
   },
 
   /**
-   * Signs out of this device.
+   * Signs out of this device. Every sign-out path (the user's, an expired
+   * session) comes through here.
    *
-   * Ends the biometric unlock straight away. With `revoke` (the default) it
-   * then tells the server, best-effort: removes this device's push token and
-   * revokes the bearer token. Those calls need the token, so they run before
-   * it's cleared, but each is capped at LOGOUT_NETWORK_TIMEOUT_MS and any
-   * failure is ignored: being offline must never keep someone signed in.
-   * Last, it wipes the stored token and user.
+   * 1. Ends the biometric unlock.
+   * 2. Reads the token into memory and deletes the stored token and user, so
+   *    an app killed at any later point is still signed out.
+   * 3. Clears local data (clearLocalSessionData).
+   * 4. With `revoke` (the default), tells the server, best-effort, using the
+   *    in-memory token: removes this device's push token and revokes the
+   *    bearer token. Each call is capped at LOGOUT_NETWORK_TIMEOUT_MS and any
+   *    failure is ignored: being offline must never keep someone signed in.
+   * 5. Forgets the in-memory token.
    */
-  async logout({ revoke = true }: { revoke?: boolean } = {}): Promise<void> {
+  async logout({ revoke = true, keepQueuedScans = false }: LogoutOptions = {}): Promise<void> {
     biometricService.clearSession();
-    if (revoke) {
-      const signedOutToken = await secureStorage.getToken().catch(() => null);
-      if (signedOutToken) {
-        await Promise.allSettled([
-          withTimeout(notificationService.unregisterToken(LOGOUT_NETWORK_TIMEOUT_MS), LOGOUT_NETWORK_TIMEOUT_MS),
-          withTimeout(api.deleteSession(LOGOUT_NETWORK_TIMEOUT_MS), LOGOUT_NETWORK_TIMEOUT_MS),
-        ]);
-        // Someone signed straight back in while we waited: their new token
-        // isn't ours to wipe.
-        const current = await secureStorage.getToken().catch(() => null);
-        if (current && current !== signedOutToken) return;
-      }
+    const signedOutToken = await secureStorage.getToken().catch(() => null);
+    await secureStorage.clearPersisted().catch(error => {
+      console.warn('[Logout] Failed to delete the stored session:', error);
+    });
+    await clearLocalSessionData({ keepQueuedScans });
+    if (revoke && signedOutToken) {
+      await Promise.allSettled([
+        withTimeout(notificationService.unregisterToken(LOGOUT_NETWORK_TIMEOUT_MS), LOGOUT_NETWORK_TIMEOUT_MS),
+        withTimeout(api.deleteSession(LOGOUT_NETWORK_TIMEOUT_MS), LOGOUT_NETWORK_TIMEOUT_MS),
+      ]);
     }
+    // Someone signed straight back in while we waited: their new token isn't
+    // ours to wipe.
+    const current = await secureStorage.getToken().catch(() => null);
+    if (current && current !== signedOutToken) return;
     await secureStorage.clear();
   },
 

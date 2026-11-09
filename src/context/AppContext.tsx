@@ -1,12 +1,14 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { AppState as RNAppState } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import { authService } from '../services/auth';
 import { syncService, SyncStatus } from '../services/sync';
+import { scanQueue } from '../services/scanQueue';
 import { notificationService } from '../services/notifications';
 import { liveActivityService } from '../services/liveActivity';
 import { mergeParticipant, type ParticipantUpdate } from '../services/participantIndex';
 import { forbiddenParticipants } from '../services/eventAccess';
-import { clearHeadshotCache, prefetchHeadshots } from '../services/headshotCache';
+import { prefetchHeadshots } from '../services/headshotCache';
 import { activeParticipants } from '../services/participantStatus';
 import { biometricService } from '../services/biometric';
 import { PrivacyCover } from '../components/PrivacyCover';
@@ -22,7 +24,7 @@ function checkInCounts(participants: Participant[]): { checkedInCount: number; t
   };
 }
 
-interface AppState {
+export interface AppState {
   auth: AuthState;
   sync: SyncState;
   currentEvent: Event | null;
@@ -30,7 +32,7 @@ interface AppState {
   participants: Participant[];
 }
 
-type AppAction =
+export type AppAction =
   | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'SET_AUTH'; payload: { user: User; token: string } }
   | { type: 'CLEAR_AUTH' }
@@ -38,9 +40,14 @@ type AppAction =
   | { type: 'SET_CURRENT_EVENT'; payload: Event | null }
   | { type: 'SET_PARTICIPANTS'; payload: Participant[] }
   | { type: 'UPDATE_PARTICIPANT'; payload: ParticipantUpdate }
-  | { type: 'SET_SYNC_STATUS'; payload: SyncStatus };
+  | { type: 'SET_SYNC_STATUS'; payload: SyncStatus }
+  | { type: 'SET_ONLINE'; payload: boolean };
 
-const initialState: AppState = {
+// How long sign-out waits for queued scans to send before asking whether to
+// discard them.
+export const SIGN_OUT_FLUSH_TIMEOUT_MS = 5_000;
+
+export const initialState: AppState = {
   auth: {
     isAuthenticated: false,
     isLoading: true,
@@ -58,7 +65,7 @@ const initialState: AppState = {
   participants: [],
 };
 
-function appReducer(state: AppState, action: AppAction): AppState {
+export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'SET_LOADING':
       return {
@@ -101,7 +108,12 @@ function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
     case 'SET_CURRENT_EVENT':
-      return { ...state, currentEvent: action.payload };
+      // A different event's roster must never show under the new one, not
+      // even for the render before its own roster loads.
+      if (action.payload?.id === state.currentEvent?.id) {
+        return { ...state, currentEvent: action.payload };
+      }
+      return { ...state, currentEvent: action.payload, participants: [] };
     case 'SET_PARTICIPANTS':
       return { ...state, participants: action.payload };
     case 'UPDATE_PARTICIPANT':
@@ -131,6 +143,9 @@ function appReducer(state: AppState, action: AppAction): AppState {
           isOnline: action.payload.isOnline,
         },
       };
+    case 'SET_ONLINE':
+      if (state.sync.isOnline === action.payload) return state;
+      return { ...state, sync: { ...state.sync, isOnline: action.payload } };
     default:
       return state;
   }
@@ -146,7 +161,15 @@ interface AppContextValue {
   refreshParticipants: () => Promise<void>;
   updateParticipant: (participant: ParticipantUpdate) => void;
   confirmParticipant: (eventId: string, participant: ParticipantUpdate) => Promise<Participant>;
+  // Sends every queued scan (all events) and refreshes the current event.
   syncNow: () => Promise<void>;
+  /**
+   * Before sign-out: tries to send queued scans for up to
+   * SIGN_OUT_FLUSH_TIMEOUT_MS and resolves with how many are still unsent
+   * (and would be lost by signing out). state.sync.pendingScans is the live
+   * count.
+   */
+  flushBeforeSignOut: () => Promise<number>;
   startLiveActivity: () => Promise<void>;
   stopLiveActivity: () => Promise<void>;
 }
@@ -158,6 +181,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const currentEventIdRef = useRef<string | null>(null);
   const eventSelectionGenerationRef = useRef(0);
   currentEventIdRef.current = state.currentEvent?.id ?? null;
+
+  const refreshSyncStatus = useCallback(() => {
+    syncService.getStatus().then((status) => {
+      dispatch({ type: 'SET_SYNC_STATUS', payload: status });
+    }).catch((error) => {
+      console.error('Failed to get sync status:', error);
+    });
+  }, []);
+
+  // Scopes the scan queue to this user (discarding anyone else's queued
+  // scans) before the app shows them as signed in.
+  const beginSession = useCallback(async (user: User, { restored }: { restored: boolean }) => {
+    await scanQueue.setUser(user.id, { adoptUntagged: restored }).catch(error => {
+      console.warn('[Session] Failed to scope the scan queue:', error);
+    });
+    const token = await authService.getToken();
+    dispatch({ type: 'SET_AUTH', payload: { user, token: token! } });
+    refreshSyncStatus();
+  }, [refreshSyncStatus]);
 
   useEffect(() => {
     let appStateSub: { remove: () => void } | null = null;
@@ -181,9 +223,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return;
         }
         if (result.success && result.user) {
-          const token = await authService.getToken();
-          dispatch({ type: 'SET_AUTH', payload: { user: result.user, token: token! } });
-          
+          await beginSession(result.user, { restored: true });
+
           try {
             const cachedEvent = await syncService.getCurrentEvent();
             if (cachedEvent) {
@@ -219,9 +260,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     };
 
+    // A Live Activity can outlive the app; find out whether one is showing.
+    liveActivityService.syncState();
     restoreAuth();
     return () => appStateSub?.remove();
+  }, [beginSession]);
+
+  // Sends queued scans by itself while signed in: at start, on reconnect, on
+  // returning to the foreground, and on a backoff timer while any remain.
+  const signedInUserId = state.auth.user?.id ?? null;
+  useEffect(() => {
+    if (!signedInUserId) return;
+    return scanQueue.start(RNAppState);
+  }, [signedInUserId]);
+
+  // Keeps isOnline current, so "Sync now" comes back after reconnecting.
+  useEffect(() => {
+    return NetInfo.addEventListener((netState) => {
+      dispatch({ type: 'SET_ONLINE', payload: netState.isConnected !== false });
+    });
   }, []);
+
+  // A Live Activity or Live Update belongs to one event: switching events (or
+  // signing out) ends it, along with the ticket activity.
+  const liveEventIdRef = useRef<string | null | undefined>(undefined);
+  const currentEventId = state.currentEvent?.id ?? null;
+  useEffect(() => {
+    const previous = liveEventIdRef.current;
+    liveEventIdRef.current = currentEventId;
+    // First run, or restoring the event the activity was started for.
+    if (previous === undefined || previous === null || previous === currentEventId) return;
+    void liveActivityService.stopAll();
+  }, [currentEventId]);
 
   // Register this device for push once authenticated (organizers get scan/flight
   // alerts; participants get organizer messages). No-op on simulators.
@@ -244,52 +314,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'SET_SYNC_STATUS', payload: status });
     });
 
-    syncService.getStatus().then((status) => {
-      dispatch({ type: 'SET_SYNC_STATUS', payload: status });
-    }).catch((error) => {
-      console.error('Failed to get sync status:', error);
-    });
+    refreshSyncStatus();
 
     return unsubscribe;
-  }, []);
+  }, [refreshSyncStatus]);
 
   const login = useCallback(async (): Promise<boolean> => {
     const result = await authService.authenticate();
     if (result.success && result.user) {
-      const token = await authService.getToken();
-      dispatch({ type: 'SET_AUTH', payload: { user: result.user, token: token! } });
+      await beginSession(result.user, { restored: false });
       return true;
     }
     return false;
-  }, []);
+  }, [beginSession]);
 
   const devLogin = useCallback(async (identifier: { userId: string } | { email: string }): Promise<boolean> => {
     const result = await authService.devLogin(identifier);
     if (result.success && result.user) {
-      const token = await authService.getToken();
-      dispatch({ type: 'SET_AUTH', payload: { user: result.user, token: token! } });
+      await beginSession(result.user, { restored: false });
       return true;
     }
     return false;
-  }, []);
+  }, [beginSession]);
 
-  // The UI signs out at once. authService.logout talks to the server
-  // (best-effort, time-limited) before wiping the token, and ends the
-  // biometric unlock; the local caches are cleared alongside it.
+  // The UI signs out at once. authService.logout does the rest, the same as
+  // for an expired session: deletes the stored token first, clears every
+  // local cache, the queued scans and the Live Activities, then tells the
+  // server (best-effort, time-limited). Callers wanting to keep unsent scans
+  // call flushBeforeSignOut first.
   const logout = useCallback(async (): Promise<void> => {
     eventSelectionGenerationRef.current += 1;
     biometricService.clearSession();
     dispatch({ type: 'CLEAR_AUTH' });
-    const results = await Promise.allSettled([
-      authService.logout(),
-      syncService.clear(),
-      clearHeadshotCache(),
-    ]);
-    results.forEach(result => {
-      if (result.status === 'rejected') {
-        console.warn('[Logout] Cleanup failed:', result.reason);
-      }
-    });
+    try {
+      await authService.logout();
+    } catch (error) {
+      console.warn('[Logout] Cleanup failed:', error);
+    }
+  }, []);
+
+  const flushBeforeSignOut = useCallback(async (): Promise<number> => {
+    try {
+      return await syncService.flushQueuedScans(SIGN_OUT_FLUSH_TIMEOUT_MS);
+    } catch (error) {
+      console.warn('[Logout] Flush before sign-out failed:', error);
+      return scanQueue.getPendingCount().catch(() => 0);
+    }
   }, []);
 
   const selectEvent = useCallback(async (event: Event): Promise<void> => {
@@ -364,12 +434,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [state.participants]);
 
   const syncNow = useCallback(async (): Promise<void> => {
-    if (!state.currentEvent) return;
-    const eventId = state.currentEvent.id;
+    const eventId = state.currentEvent?.id ?? null;
     const generation = eventSelectionGenerationRef.current;
     await syncService.syncAll(eventId);
     if (
-      eventSelectionGenerationRef.current !== generation
+      !eventId
+      || eventSelectionGenerationRef.current !== generation
       || currentEventIdRef.current !== eventId
     ) return;
     const participants = await syncService.getCachedParticipants(eventId);
@@ -400,7 +470,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (liveActivityService.isRunning() && state.currentEvent) {
       const { checkedInCount, totalCount } = checkInCounts(state.participants);
-      liveActivityService.update(checkedInCount, totalCount);
+      void liveActivityService.update(state.currentEvent.id, checkedInCount, totalCount);
     }
   }, [state.participants, state.currentEvent]);
 
@@ -415,6 +485,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateParticipant,
     confirmParticipant,
     syncNow,
+    flushBeforeSignOut,
     startLiveActivity,
     stopLiveActivity,
   };

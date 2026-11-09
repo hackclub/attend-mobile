@@ -19,6 +19,9 @@ import type { CreateScanResponse, ScanSource } from '../types';
  * - Any other 4xx (participant not found, context deleted, forbidden) moves it
  *   to the event's failed list for the user to see. Nothing is dropped
  *   silently.
+ *
+ * Every item is tagged with the user who scanned it. Only the signed-in
+ * user's items are counted or sent; setUser() discards anyone else's.
  */
 
 export type QueuedScanKind = 'participant' | 'badge';
@@ -37,9 +40,12 @@ export interface QueuedScan {
   participantEventId?: string;
   attempts: number;
   lastError?: string;
+  // The signed-in user who made the scan. Missing only on items queued by
+  // builds that didn't tag them.
+  userId?: string;
 }
 
-export type EnqueueInput = Omit<QueuedScan, 'queuedAt' | 'attempts' | 'lastError'>;
+export type EnqueueInput = Omit<QueuedScan, 'queuedAt' | 'attempts' | 'lastError' | 'userId'>;
 
 export interface FailedScan extends QueuedScan {
   error: string;
@@ -117,6 +123,11 @@ export class ScanQueue {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private consecutiveOfflineFlushes = 0;
   private wasConnected: boolean | null = null;
+  private userId: string | null = null;
+
+  private ownedBy(userId: string | null) {
+    return (item: QueuedScan) => !!userId && item.userId === userId;
+  }
 
   // Serialises every read-modify-write of queue storage.
   private withLock<T>(operation: () => Promise<T>): Promise<T> {
@@ -162,7 +173,7 @@ export class ScanQueue {
   }
 
   private async emitChanged(eventId: string): Promise<void> {
-    const [pending, failed] = await Promise.all([this.read(eventId), this.readFailed(eventId)]);
+    const [pending, failed] = await Promise.all([this.getPending(eventId), this.getFailed(eventId)]);
     this.emit({ type: 'changed', eventId, pending: pending.length, failed: failed.length });
   }
 
@@ -180,6 +191,11 @@ export class ScanQueue {
    */
   async enqueue(input: EnqueueInput): Promise<boolean> {
     const generation = this.generation;
+    const userId = this.userId;
+    if (!userId) {
+      console.warn('[ScanQueue] Not queueing a scan with nobody signed in');
+      return false;
+    }
     const added = await this.withLock(async () => {
       if (generation !== this.generation) return false;
       const [items, failed] = await Promise.all([
@@ -192,7 +208,7 @@ export class ScanQueue {
       ) {
         return false;
       }
-      items.push({ ...input, queuedAt: new Date().toISOString(), attempts: 0 });
+      items.push({ ...input, queuedAt: new Date().toISOString(), attempts: 0, userId });
       await this.write(input.eventId, items);
       return true;
     });
@@ -203,12 +219,59 @@ export class ScanQueue {
     return added;
   }
 
+  /**
+   * Sets who is signed in. Items queued by anyone else are deleted, so they
+   * can never be sent with this user's session. Untagged items from older
+   * builds are adopted when `adoptUntagged` is set (a restored session: they
+   * can only be this user's), and deleted otherwise. Pass null on sign-out to
+   * stop sending without deleting anything.
+   */
+  async setUser(userId: string | null, { adoptUntagged = false }: { adoptUntagged?: boolean } = {}): Promise<void> {
+    if (userId === this.userId && !adoptUntagged) return;
+    if (userId !== this.userId) {
+      // Stops a flush running for the previous user.
+      this.generation += 1;
+      this.clearRetry();
+      this.consecutiveOfflineFlushes = 0;
+    }
+    this.userId = userId;
+    if (!userId) return;
+
+    const changed = await this.withLock(async () => {
+      if (this.userId !== userId) return [];
+      const ids = await this.queuedEventIds({ includeFailed: true });
+      const touched: string[] = [];
+      const keep = <T extends QueuedScan>(items: T[]): T[] => items.flatMap(item => {
+        if (item.userId === userId) return [item];
+        if (!item.userId && adoptUntagged) return [{ ...item, userId }];
+        return [];
+      });
+      for (const eventId of ids) {
+        const [items, failed] = await Promise.all([this.read(eventId), this.readFailed(eventId)]);
+        const keptItems = keep(items);
+        const keptFailed = keep(failed);
+        const same = (a: QueuedScan[], b: QueuedScan[]) =>
+          a.length === b.length && a.every((item, i) => item.userId === b[i].userId);
+        if (same(items, keptItems) && same(failed, keptFailed)) continue;
+        await this.write(eventId, keptItems);
+        await this.writeFailed(eventId, keptFailed);
+        touched.push(eventId);
+      }
+      return touched;
+    });
+    for (const eventId of changed) await this.emitChanged(eventId);
+  }
+
+  getUser(): string | null {
+    return this.userId;
+  }
+
   async getPending(eventId: string): Promise<QueuedScan[]> {
-    return this.read(eventId);
+    return (await this.read(eventId)).filter(this.ownedBy(this.userId));
   }
 
   async getFailed(eventId: string): Promise<FailedScan[]> {
-    return this.readFailed(eventId);
+    return (await this.readFailed(eventId)).filter(this.ownedBy(this.userId));
   }
 
   /** Removes failed scans the user has seen: one by client_scan_id, or all. */
@@ -223,18 +286,23 @@ export class ScanQueue {
     await this.emitChanged(eventId);
   }
 
-  private async queuedEventIds(): Promise<string[]> {
+  private async queuedEventIds({ includeFailed = false }: { includeFailed?: boolean } = {}): Promise<string[]> {
     const keys = await asyncStorage.getAllKeys();
-    return keys
-      .filter(key => key.startsWith(QUEUE_PREFIX) && !key.startsWith(FAILED_PREFIX))
-      .map(key => key.slice(QUEUE_PREFIX.length))
-      .sort();
+    const ids = new Set<string>();
+    for (const key of keys) {
+      if (key.startsWith(FAILED_PREFIX)) {
+        if (includeFailed) ids.add(key.slice(FAILED_PREFIX.length));
+      } else if (key.startsWith(QUEUE_PREFIX)) {
+        ids.add(key.slice(QUEUE_PREFIX.length));
+      }
+    }
+    return [...ids].sort();
   }
 
-  /** Scans waiting to sync, across every event. */
+  /** The signed-in user's scans waiting to sync, across every event. */
   async getPendingCount(): Promise<number> {
     const eventIds = await this.queuedEventIds();
-    const lists = await Promise.all(eventIds.map(eventId => this.read(eventId)));
+    const lists = await Promise.all(eventIds.map(eventId => this.getPending(eventId)));
     return lists.reduce((total, items) => total + items.length, 0);
   }
 
@@ -246,7 +314,7 @@ export class ScanQueue {
     eventId: string,
     match: { identifier: string; participantEventId?: string; scanContextId?: string }
   ): Promise<QueuedScan | null> {
-    const items = await this.read(eventId);
+    const items = await this.getPending(eventId);
     return items.find(item =>
       (item.scanContextId ?? null) === (match.scanContextId ?? null) && sameRequest(item, match)
     ) ?? null;
@@ -264,7 +332,7 @@ export class ScanQueue {
       : api.createScan(item.eventId, item.identifier, options);
   }
 
-  private async flushEvent(eventId: string, generation: number): Promise<FlushReport> {
+  private async flushEvent(eventId: string, generation: number, userId: string): Promise<FlushReport> {
     const report: FlushReport = {
       eventId,
       scanned: 0,
@@ -276,7 +344,8 @@ export class ScanQueue {
 
     for (;;) {
       if (generation !== this.generation) break;
-      const [item] = await this.read(eventId);
+      // Never another user's scan, even one setUser() hasn't purged yet.
+      const item = (await this.read(eventId)).find(this.ownedBy(userId));
       if (!item) break;
 
       let response: CreateScanResponse;
@@ -330,12 +399,16 @@ export class ScanQueue {
       await this.emitChanged(eventId);
     }
 
-    report.remaining = generation === this.generation ? (await this.read(eventId)).length : 0;
+    report.remaining = generation === this.generation
+      ? (await this.read(eventId)).filter(this.ownedBy(userId)).length
+      : 0;
     return report;
   }
 
   private async runFlush(eventId?: string): Promise<FlushReport[]> {
     const generation = this.generation;
+    const userId = this.userId;
+    if (!userId) return [];
     const eventIds = eventId ? [eventId] : await this.queuedEventIds();
     if (eventIds.length === 0) return [];
 
@@ -343,7 +416,7 @@ export class ScanQueue {
     if (netInfo.isConnected === false) {
       const reports: FlushReport[] = [];
       for (const id of eventIds) {
-        const remaining = (await this.read(id)).length;
+        const remaining = (await this.read(id)).filter(this.ownedBy(userId)).length;
         if (remaining > 0) {
           reports.push({ eventId: id, scanned: 0, alreadyScanned: 0, failed: [], remaining, offline: true });
         }
@@ -353,7 +426,7 @@ export class ScanQueue {
 
     const reports: FlushReport[] = [];
     for (const id of eventIds) {
-      reports.push(await this.flushEvent(id, generation));
+      reports.push(await this.flushEvent(id, generation, userId));
     }
     return reports;
   }

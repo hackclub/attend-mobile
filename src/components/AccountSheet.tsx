@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useApp } from '../context/AppContext';
 import { biometricService } from '../services/biometric';
 import { notificationService } from '../services/notifications';
 import { useTheme, useThemePreference, type ThemePreference } from '../theme';
 import { appVersionLabel } from './VersionFooter';
+import { signOutConfirmation } from './signOutConfirmation';
 import {
   Avatar,
   Badge,
@@ -88,7 +90,10 @@ function useBiometricRemaining(active: boolean) {
  */
 export function AccountSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { tokens, type, spacing } = useTheme();
-  const { state, logout } = useApp();
+  const { state, logout, flushBeforeSignOut } = useApp();
+  const navigation = useNavigation<{ navigate: (route: 'ParticipantMain') => void }>();
+  const route = useRoute();
+  const [signingOut, setSigningOut] = useState(false);
   const { preference, setPreference } = useThemePreference();
   const user = state.auth.user;
   const name = user?.name || user?.email || 'Signed in';
@@ -133,11 +138,24 @@ export function AccountSheet({ visible, onClose }: { visible: boolean; onClose: 
     setRemaining(0);
   }, [setRemaining]);
 
-  const signOut = useCallback(() => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+  // Unsent scans are deleted with the session, so try to send them first and
+  // make discarding whatever is left an explicit choice.
+  const signOut = useCallback(async () => {
+    if (signingOut) return;
+    let unsent = 0;
+    if (state.sync.pendingScans > 0) {
+      setSigningOut(true);
+      try {
+        unsent = await flushBeforeSignOut();
+      } finally {
+        setSigningOut(false);
+      }
+    }
+    const { title, message, confirmLabel } = signOutConfirmation(unsent);
+    Alert.alert(title, message, [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Sign Out',
+        text: confirmLabel,
         style: 'destructive',
         onPress: () => {
           onClose();
@@ -145,7 +163,15 @@ export function AccountSheet({ visible, onClose }: { visible: boolean; onClose: 
         },
       },
     ]);
-  }, [logout, onClose]);
+  }, [flushBeforeSignOut, logout, onClose, signingOut, state.sync.pendingScans]);
+
+  // Someone who is both organiser and attendee lands on the event tabs; this
+  // is their way to their own tickets (and from there, the Inbox).
+  const showMyTickets = !!user?.is_participant && route.name !== 'ParticipantMain';
+  const openMyTickets = useCallback(() => {
+    onClose();
+    navigation.navigate('ParticipantMain');
+  }, [navigation, onClose]);
 
   const roles = [
     user?.global_admin ? 'Global Admin' : null,
@@ -191,6 +217,18 @@ export function AccountSheet({ visible, onClose }: { visible: boolean; onClose: 
             accessibilityHint="Opens in your browser"
           />
         </Container>
+
+        {showMyTickets ? (
+          <Container flush>
+            <ListRow
+              title="My tickets"
+              subtitle="Your tickets and messages as an attendee"
+              icon="ticket"
+              onPress={openMyTickets}
+              divider={false}
+            />
+          </Container>
+        ) : null}
 
         <Container title="Appearance">
           <SegmentedControl<ThemePreference>
@@ -245,7 +283,7 @@ export function AccountSheet({ visible, onClose }: { visible: boolean; onClose: 
         </Container>
 
         <View style={{ gap: spacing.sm }}>
-          <Button title="Sign out" fullWidth onPress={signOut} />
+          <Button title="Sign out" fullWidth loading={signingOut} onPress={() => void signOut()} />
           <Text style={[type.small, styles.center, { color: tokens.muted }]}>
             Signs you out of Attend on this device and stops its notifications.
           </Text>

@@ -16,12 +16,16 @@ jest.mock('../api', () => ({
   api: {
     getScans: jest.fn(),
     getParticipants: jest.fn(),
+    getEvents: jest.fn(),
   },
   ApiError: class ApiError extends Error {},
 }));
 
 import { api } from '../api';
 import { syncService } from '../sync';
+import { scanQueue } from '../scanQueue';
+import { hashNfcBadgeToken, PARTICIPANT_CACHE_VERSION } from '../participantCache';
+import { ParticipantIndex } from '../participantIndex';
 
 const mockGetScans = api.getScans as jest.MockedFunction<typeof api.getScans>;
 const mockGetParticipants = api.getParticipants as jest.MockedFunction<typeof api.getParticipants>;
@@ -286,9 +290,11 @@ describe('participant cache slimming', () => {
       pronouns: 'she/her',
       checked_in_at: '2026-08-24T09:00:00Z',
       has_anaphylaxis_risk: true,
-      nfc_badge_token: 'badge-1',
+      nfc_badge_token_sha256: hashNfcBadgeToken('badge-1'),
       scans_by_context: [expect.objectContaining({ scan_context_id: 'ctx-1' })],
     });
+    // The badge token is a check-in credential: only its hash is stored.
+    expect(cached).not.toHaveProperty('nfc_badge_token');
     expect(cached.travel_inbound).toEqual({
       id: 'travel-1',
       direction: 'inbound',
@@ -330,8 +336,70 @@ describe('participant cache slimming', () => {
 
       const raw = await freshStorage.get<Participant[]>(keys.PARTICIPANTS('legacy-event'));
       expectSlim(raw![0]);
-      expect(await freshStorage.get(keys.PARTICIPANT_CACHE_VERSION)).toBe(2);
+      expect(await freshStorage.get(keys.PARTICIPANT_CACHE_VERSION)).toBe(PARTICIPANT_CACHE_VERSION);
     });
+  });
+});
+
+describe('NFC badge token hashing', () => {
+  it('keeps the stored hash through a delta without the token, and drops it when the badge is unassigned', async () => {
+    await syncService.cacheParticipants(EVENT_ID, [participant({ nfc_badge_token: 'badge-1' })]);
+    await syncService.cacheConfirmedParticipant(EVENT_ID, { participant_event_id: 'registration-1', display_name: 'Renamed' });
+    let [cached] = await syncService.getCachedParticipants(EVENT_ID);
+    expect(cached).toMatchObject({ display_name: 'Renamed', nfc_badge_token_sha256: hashNfcBadgeToken('badge-1') });
+
+    await syncService.cacheConfirmedParticipant(EVENT_ID, {
+      participant_event_id: 'registration-1',
+      nfc_badge_token: null as unknown as string,
+    });
+    [cached] = await syncService.getCachedParticipants(EVENT_ID);
+    expect(cached).not.toHaveProperty('nfc_badge_token_sha256');
+  });
+
+  it('matches an offline NFC read against the cached hash', async () => {
+    await syncService.cacheParticipants(EVENT_ID, [participant({ nfc_badge_token: 'badge-1' })]);
+    const index = new ParticipantIndex(await syncService.getCachedParticipants(EVENT_ID));
+
+    expect(index.findByNfcToken('badge-1')?.participant_event_id).toBe('registration-1');
+    expect(index.findByNfcToken('badge-2')).toBeUndefined();
+  });
+
+  it('hashes with SHA-256', () => {
+    expect(hashNfcBadgeToken('')).toBe('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
+    expect(hashNfcBadgeToken('abc')).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+    expect(hashNfcBadgeToken('abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq'))
+      .toBe('248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1');
+    expect(hashNfcBadgeToken('héllo ✓')).toBe('5657cdef8a85a584e0e961e6f8247cf5d3f8ed21496ed6fdbcfd43a761e94245');
+  });
+});
+
+describe('syncService.syncAll', () => {
+  it('flushes queued scans for every event, not just the current one', async () => {
+    const flush = jest.spyOn(scanQueue, 'flush').mockResolvedValue([]);
+    mockGetParticipants.mockResolvedValue({ participants: [], synced_at: 'now' });
+    mockGetScans.mockResolvedValue({ scans: [], synced_at: 'now', has_more: false } as ScansSyncPage);
+    (api.getEvents as jest.Mock).mockResolvedValue([]);
+
+    await syncService.syncAll(EVENT_ID);
+    await syncService.syncAll(null);
+
+    expect(flush).toHaveBeenCalledTimes(2);
+    expect(flush.mock.calls.every(call => call.length === 0)).toBe(true);
+    flush.mockRestore();
+  });
+
+  it('reports how many scans are left after a time-limited flush', async () => {
+    jest.useFakeTimers();
+    const flush = jest.spyOn(scanQueue, 'flush').mockReturnValue(new Promise(() => {}));
+    const count = jest.spyOn(scanQueue, 'getPendingCount').mockResolvedValue(3);
+
+    const result = syncService.flushQueuedScans(1_000);
+    await jest.advanceTimersByTimeAsync(1_000);
+
+    await expect(result).resolves.toBe(3);
+    flush.mockRestore();
+    count.mockRestore();
+    jest.useRealTimers();
   });
 });
 

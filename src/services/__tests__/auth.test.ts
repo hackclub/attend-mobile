@@ -8,8 +8,20 @@ jest.mock('../storage', () => ({
   KeychainLockedError: class extends Error {},
   secureStorage: {
     getToken: jest.fn(),
+    getUser: jest.fn(),
+    upgradeKeychainAccessibility: jest.fn().mockResolvedValue(undefined),
+    clearPersisted: jest.fn().mockResolvedValue(undefined),
     clear: jest.fn().mockResolvedValue(undefined),
   },
+}));
+jest.mock('../sync', () => ({
+  syncService: { clear: jest.fn().mockResolvedValue(undefined) },
+}));
+jest.mock('../headshotCache', () => ({
+  clearHeadshotCache: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock('../liveActivity', () => ({
+  liveActivityService: { stopAll: jest.fn().mockResolvedValue(undefined) },
 }));
 jest.mock('../api', () => ({
   api: {
@@ -29,6 +41,9 @@ import { secureStorage } from '../storage';
 import { api } from '../api';
 import { notificationService } from '../notifications';
 import { biometricService } from '../biometric';
+import { syncService } from '../sync';
+import { clearHeadshotCache } from '../headshotCache';
+import { liveActivityService } from '../liveActivity';
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -48,14 +63,34 @@ describe('authService.logout', () => {
     expect(secureStorage.clear).toHaveBeenCalled();
   });
 
-  it('talks to the server before the token is wiped', async () => {
+  it('deletes the stored token before talking to the server, then forgets it', async () => {
     const order: string[] = [];
+    jest.mocked(secureStorage.clearPersisted).mockImplementation(async () => { order.push('clearPersisted'); });
     jest.mocked(api.deleteSession).mockImplementation(async () => { order.push('delete'); });
     jest.mocked(secureStorage.clear).mockImplementation(async () => { order.push('clear'); });
 
     await authService.logout();
 
-    expect(order).toEqual(['delete', 'clear']);
+    expect(order).toEqual(['clearPersisted', 'delete', 'clear']);
+  });
+
+  it('runs the full local cleanup', async () => {
+    await authService.logout();
+
+    expect(syncService.clear).toHaveBeenCalledWith({ keepQueuedScans: false });
+    expect(clearHeadshotCache).toHaveBeenCalled();
+    expect(liveActivityService.stopAll).toHaveBeenCalled();
+    expect(biometricService.clearSession).toHaveBeenCalled();
+  });
+
+  it('still clears local data when deleting the stored token fails', async () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest.mocked(secureStorage.clearPersisted).mockRejectedValueOnce(new Error('keychain'));
+
+    await authService.logout();
+
+    expect(syncService.clear).toHaveBeenCalled();
+    expect(secureStorage.clear).toHaveBeenCalled();
   });
 
   it('still signs out when the server calls fail', async () => {
@@ -94,6 +129,22 @@ describe('authService.logout', () => {
     expect(api.deleteSession).not.toHaveBeenCalled();
     expect(biometricService.clearSession).toHaveBeenCalled();
     expect(secureStorage.clear).toHaveBeenCalled();
+  });
+
+  it('gives an expired session the same full cleanup, keeping its queued scans', async () => {
+    jest.mocked(secureStorage.getUser).mockResolvedValue({ id: 'u1' } as never);
+    jest.mocked(api.validateToken).mockResolvedValue(false);
+
+    const result = await authService.restoreSession();
+
+    expect(result).toMatchObject({ success: false, error: 'Session expired' });
+    expect(api.deleteSession).not.toHaveBeenCalled();
+    expect(secureStorage.clearPersisted).toHaveBeenCalled();
+    expect(secureStorage.clear).toHaveBeenCalled();
+    expect(syncService.clear).toHaveBeenCalledWith({ keepQueuedScans: true });
+    expect(clearHeadshotCache).toHaveBeenCalled();
+    expect(liveActivityService.stopAll).toHaveBeenCalled();
+    expect(biometricService.clearSession).toHaveBeenCalled();
   });
 
   it("doesn't wipe a new sign-in that landed while it waited", async () => {

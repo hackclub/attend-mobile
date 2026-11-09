@@ -30,6 +30,7 @@ const mockNetFetch = NetInfo.fetch as jest.Mock;
 const mockNetListen = NetInfo.addEventListener as jest.Mock;
 
 const EVENT_ID = 'evt-1';
+const USER_ID = 'user-1';
 
 class StatusError extends Error {
   constructor(message: string, public status: number) {
@@ -69,6 +70,7 @@ beforeEach(async () => {
   mockCreateNfcScan.mockReset();
   mockNetFetch.mockResolvedValue({ isConnected: true });
   queue = new ScanQueue();
+  await queue.setUser(USER_ID);
 });
 
 describe('scanQueue persistence', () => {
@@ -82,6 +84,7 @@ describe('scanQueue persistence', () => {
 
     // A new instance stands in for a relaunched app.
     const relaunched = new ScanQueue();
+    await relaunched.setUser(USER_ID);
     expect((await relaunched.getPending(EVENT_ID)).map(item => item.clientScanId)).toEqual(['a1', 'a2']);
     expect((await relaunched.getPending('evt-2')).map(item => item.clientScanId)).toEqual(['b1']);
     expect(await relaunched.getPendingCount()).toBe(3);
@@ -130,6 +133,75 @@ describe('scanQueue persistence', () => {
     expect(await queue.getFailed(EVENT_ID)).toEqual([]);
     expect(await queue.getPendingCount()).toBe(0);
     expect(events).toContainEqual({ type: 'changed', eventId: EVENT_ID, pending: 0, failed: 0 });
+  });
+});
+
+describe('scanQueue per-user scoping', () => {
+  it('tags each item with the signed-in user', async () => {
+    await queue.enqueue(input('a1'));
+
+    const stored = await asyncStorage.get<{ userId?: string }[]>(STORAGE_KEYS.SCAN_QUEUE(EVENT_ID));
+    expect(stored?.[0].userId).toBe(USER_ID);
+  });
+
+  it('refuses to queue with nobody signed in', async () => {
+    await queue.setUser(null);
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect(await queue.enqueue(input('a1'))).toBe(false);
+    expect(await asyncStorage.get(STORAGE_KEYS.SCAN_QUEUE(EVENT_ID))).toBeNull();
+  });
+
+  it("never sends another user's scans, and discards them when that user isn't signed in", async () => {
+    await queue.enqueue(input('a1'));
+    mockCreateScan.mockResolvedValue(response('scanned'));
+
+    await queue.setUser('user-2');
+    expect(await queue.flush()).toEqual([]);
+    expect(mockCreateScan).not.toHaveBeenCalled();
+    expect(await queue.getPendingCount()).toBe(0);
+    expect(await asyncStorage.get(STORAGE_KEYS.SCAN_QUEUE(EVENT_ID))).toBeNull();
+  });
+
+  it("skips a foreign item still in storage rather than sending it", async () => {
+    await asyncStorage.set(STORAGE_KEYS.SCAN_QUEUE(EVENT_ID), [
+      { ...input('x1'), queuedAt: 'now', attempts: 0, userId: 'user-2' },
+      { ...input('a1'), queuedAt: 'now', attempts: 0, userId: USER_ID },
+    ]);
+    mockCreateScan.mockResolvedValue(response('scanned'));
+
+    const [report] = await queue.flush(EVENT_ID);
+
+    expect(mockCreateScan).toHaveBeenCalledTimes(1);
+    expect(mockCreateScan.mock.calls[0][1]).toBe('person-a1');
+    expect(report).toMatchObject({ scanned: 1, remaining: 0 });
+  });
+
+  it('keeps items across sign-out (setUser(null)) and sends them when the same user returns', async () => {
+    await queue.enqueue(input('a1'));
+    await queue.setUser(null);
+    expect(await queue.flush()).toEqual([]);
+
+    await queue.setUser(USER_ID);
+    mockCreateScan.mockResolvedValue(response('scanned'));
+    await queue.flush();
+
+    expect(mockCreateScan).toHaveBeenCalledTimes(1);
+  });
+
+  it('adopts untagged items from an older build only for a restored session', async () => {
+    const legacy = { ...input('a1'), queuedAt: 'now', attempts: 0 };
+    await asyncStorage.set(STORAGE_KEYS.SCAN_QUEUE(EVENT_ID), [legacy]);
+
+    const restored = new ScanQueue();
+    await restored.setUser(USER_ID, { adoptUntagged: true });
+    expect(await restored.getPendingCount()).toBe(1);
+
+    await asyncStorage.set(STORAGE_KEYS.SCAN_QUEUE(EVENT_ID), [legacy]);
+    const fresh = new ScanQueue();
+    await fresh.setUser(USER_ID);
+    expect(await fresh.getPendingCount()).toBe(0);
+    expect(await asyncStorage.get(STORAGE_KEYS.SCAN_QUEUE(EVENT_ID))).toBeNull();
   });
 });
 

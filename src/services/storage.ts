@@ -114,6 +114,20 @@ export const secureStorage = {
     }
   },
 
+  /**
+   * Deletes the stored token and user but keeps the token in memory, so a
+   * sign-out can still revoke it with the server after the device no longer
+   * holds it: killing the app from here on leaves it signed out. Follow with
+   * clear().
+   */
+  async clearPersisted(): Promise<void> {
+    if (cachedToken === undefined) {
+      await this.getToken().catch(() => null);
+    }
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await SecureStore.deleteItemAsync(USER_KEY);
+  },
+
   async clear(): Promise<void> {
     try {
       await SecureStore.deleteItemAsync(TOKEN_KEY);
