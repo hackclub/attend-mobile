@@ -141,3 +141,18 @@ describe('biometricService session locking', () => {
     now.mockRestore();
   });
 });
+
+describe('biometricService.sessionRemainingMs', () => {
+  it('counts down the five-minute unlock and reads zero when locked', async () => {
+    expect(biometricService.sessionRemainingMs()).toBe(0);
+    jest.mocked(LocalAuthentication.authenticateAsync).mockResolvedValue({ success: true });
+    const before = Date.now();
+    await biometricService.authenticate();
+    const remaining = biometricService.sessionRemainingMs(before + 60_000);
+    expect(remaining).toBeGreaterThan(3 * 60_000);
+    expect(remaining).toBeLessThanOrEqual(4 * 60_000 + 1000);
+    expect(biometricService.sessionRemainingMs(before + 6 * 60_000)).toBe(0);
+    biometricService.clearSession();
+    expect(biometricService.sessionRemainingMs()).toBe(0);
+  });
+});

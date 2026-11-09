@@ -38,6 +38,14 @@ class BiometricService {
   }
 
   // Ends the unlock and tells every mounted gate to lock.
+  /** Milliseconds left on the current unlock; 0 when locked. */
+  sessionRemainingMs(now: number = Date.now()): number {
+    if (!this.lastAuthTime) return 0;
+    const elapsed = now - this.lastAuthTime;
+    if (elapsed < 0 || elapsed >= SESSION_TIMEOUT_MS) return 0;
+    return SESSION_TIMEOUT_MS - elapsed;
+  }
+
   clearSession(): void {
     this.lastAuthTime = null;
     this.lockListeners.forEach((listener) => {

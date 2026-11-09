@@ -2,6 +2,11 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import { api, ApiError } from './api';
+import { asyncStorage } from './storage';
+
+// The Account sheet's Notifications switch. On by default; off unregisters
+// this device's push token and keeps it from registering again.
+export const PUSH_ENABLED_KEY = 'attend.pushNotificationsEnabled';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -55,7 +60,32 @@ export const notificationService = {
     return token.data;
   },
 
+  async isPushEnabled(): Promise<boolean> {
+    const stored = await asyncStorage.get<boolean>(PUSH_ENABLED_KEY).catch(() => null);
+    return stored !== false;
+  },
+
+  /**
+   * Turns this device's notifications on or off. Turning on registers the
+   * push token (and asks for permission); it resolves false, and stays off,
+   * when permission is refused.
+   */
+  async setPushEnabled(enabled: boolean): Promise<boolean> {
+    if (enabled) {
+      await asyncStorage.set(PUSH_ENABLED_KEY, true);
+      const registered = await this.registerTokenWithServer();
+      if (!registered) await asyncStorage.set(PUSH_ENABLED_KEY, false);
+      return registered;
+    }
+    await asyncStorage.set(PUSH_ENABLED_KEY, false);
+    await this.unregisterToken().catch((error: unknown) => {
+      console.warn('Failed to unregister push token:', error);
+    });
+    return true;
+  },
+
   async registerTokenWithServer(): Promise<boolean> {
+    if (!(await this.isPushEnabled())) return false;
     try {
       const token = await this.registerForPushNotifications();
       if (!token) return false;
