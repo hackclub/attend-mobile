@@ -1,3 +1,4 @@
+import { hashNfcBadgeToken, type CachedParticipant } from './participantCache';
 import type { Participant } from '../types';
 
 export type ParticipantUpdate = Partial<Participant> & Pick<Participant, 'participant_event_id'>;
@@ -34,6 +35,7 @@ export function mergeParticipants(
 export class ParticipantIndex {
   private readonly byIdentifier = new Map<string, Participant>();
   private readonly byNfcToken = new Map<string, Participant>();
+  private readonly byNfcTokenHash = new Map<string, Participant>();
 
   constructor(participants: Participant[]) {
     for (const participant of participants) {
@@ -42,6 +44,9 @@ export class ParticipantIndex {
       if (participant.nfc_badge_token) {
         this.byNfcToken.set(participant.nfc_badge_token, participant);
       }
+      // The offline roster keeps only the token's hash.
+      const hash = (participant as CachedParticipant).nfc_badge_token_sha256;
+      if (hash) this.byNfcTokenHash.set(hash, participant);
     }
   }
 
@@ -50,6 +55,8 @@ export class ParticipantIndex {
   }
 
   findByNfcToken(token: string): Participant | undefined {
-    return this.byNfcToken.get(token);
+    const direct = this.byNfcToken.get(token);
+    if (direct || this.byNfcTokenHash.size === 0) return direct;
+    return this.byNfcTokenHash.get(hashNfcBadgeToken(token));
   }
 }
