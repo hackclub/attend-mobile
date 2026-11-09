@@ -187,10 +187,9 @@ export function AccountSheet() {
   const unlocked = remaining > 0;
 
   return (
-    <Sheet
-      title="Account"
-      contentContainerStyle={{ gap: spacing.lg, paddingHorizontal: SHEET_INSET - spacing.xs }}
-    >
+    <Sheet title="Account">
+      {/* Padded here rather than in the sheet, which would pad its title too. */}
+      <View style={{ gap: spacing.lg, paddingHorizontal: SHEET_INSET - spacing.xs }}>
         <Container flush>
           <View style={styles.identity}>
             <Avatar name={name} uri={user?.avatarUrl} size={56} tint="red" decorative />
@@ -261,6 +260,7 @@ export function AccountSheet() {
         </Container>
 
         <Button title="Sign out" fullWidth loading={signingOut} onPress={() => void signOut()} />
+      </View>
     </Sheet>
   );
 }
