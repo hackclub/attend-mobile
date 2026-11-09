@@ -532,7 +532,7 @@ const makeStyles = (theme: Theme) => {
     chipContent: { paddingHorizontal: spacing.sm },
     // A larger touch area around the 20pt chip without changing its look.
     chipPressable: { minHeight: 28, justifyContent: 'center' },
-    chipText: { fontSize: 12, lineHeight: 20, color: t.text },
+    chipText: { ...type.small, lineHeight: type.body.lineHeight, color: t.text },
     centered: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xxxl, gap: 10 },
     emptyTitle: { ...type.h3, color: t.textH, textAlign: 'center' },
     emptyText: { ...type.body, color: t.text2, textAlign: 'center', maxWidth: 280 },

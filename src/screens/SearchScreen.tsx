@@ -20,7 +20,7 @@ import { SplitView } from '../components/SplitView';
 import { filterSheet } from '../navigation/sheetData';
 import { ParticipantDetailContent } from './ParticipantDetailContent';
 import { api } from '../services/api';
-import { useTheme } from '../theme';
+import { radii, useTheme } from '../theme';
 import {
   ActionMenu,
   Icon,
@@ -539,7 +539,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 8,
   },
-  filterSurface: { borderRadius: 22 },
+  filterSurface: { borderRadius: radii.pill },
   filterButton: { alignItems: 'center', justifyContent: 'center' },
   filterDot: {
     position: 'absolute',
@@ -547,7 +547,7 @@ const styles = StyleSheet.create({
     right: 8,
     width: 10,
     height: 10,
-    borderRadius: 5,
+    borderRadius: radii.pill,
     borderWidth: 2,
   },
   chip: { borderWidth: 1, maxWidth: 260 },

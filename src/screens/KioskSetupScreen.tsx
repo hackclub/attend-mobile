@@ -6,7 +6,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { haptics } from '../services/haptics';
 import { useBiometricLabel } from '../services/biometricLabel';
-import { useTheme } from '../theme';
+import { radii, useTheme } from '../theme';
 import { Button, Container, Flashbar, Icon, ListRow } from '../components/ui';
 import { useApp } from '../context/AppContext';
 import { useBiometric } from '../hooks/useBiometric';
@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
   iconWrap: {
     width: 72,
     height: 72,
-    borderRadius: 36,
+    borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
@@ -233,6 +233,6 @@ const styles = StyleSheet.create({
   },
   pinSection: { alignItems: 'center', gap: 16 },
   dotsRow: { flexDirection: 'row', gap: 16, padding: 8 },
-  dot: { width: 18, height: 18, borderRadius: 9, borderWidth: 2 },
+  dot: { width: 18, height: 18, borderRadius: radii.pill, borderWidth: 2 },
   hiddenInput: { position: 'absolute', width: 1, height: 1, opacity: 0 },
 });

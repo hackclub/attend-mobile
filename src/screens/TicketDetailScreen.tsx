@@ -29,7 +29,7 @@ import {
 import { api } from '../services/api';
 import { eventStatus } from '../services/eventStatus';
 import { resolveTabBarInset } from '../hooks/useTabBarInset';
-import { useTheme } from '../theme';
+import { typography, useTheme } from '../theme';
 import {
   Button,
   Container,
@@ -299,5 +299,5 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   quickActions: { flexDirection: 'row', gap: 12 },
   stack: { gap: 12 },
-  bold: { fontWeight: '700' },
+  bold: { fontWeight: typography.label.fontWeight },
 });

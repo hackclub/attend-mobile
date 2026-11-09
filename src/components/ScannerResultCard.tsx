@@ -4,7 +4,7 @@ import { ParticipantAvatar } from './ParticipantAvatar';
 import { useReduceMotion } from '../hooks/useReduceMotion';
 import { Badge, Button, StatusGlyph, type BadgeColor, type StatusType } from './ui';
 import type { ScannerOutcome, ScannerResult } from '../services/scannerCore';
-import { useTheme, type ThemeTokens } from '../theme';
+import { radii, useTheme, type ThemeTokens } from '../theme';
 
 interface ScannerResultCardProps {
   result: ScannerResult;
@@ -268,7 +268,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 2,
   },
-  dragHandle: { width: 36, height: 5, borderRadius: 3 },
+  dragHandle: { width: 36, height: 5, borderRadius: radii.pill },
   compactRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   identityRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   // Pronouns sit on the name's baseline and wrap under it when there's no room.

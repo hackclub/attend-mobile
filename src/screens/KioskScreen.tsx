@@ -21,7 +21,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { haptics } from '../services/haptics';
 import { EventCover } from '../components/EventBanner';
 import { Button, Icon, OverlayIconButton, StatusGlyph, type StatusType } from '../components/ui';
-import { overlayTokens, useTheme, type ThemeTokens } from '../theme';
+import { overlayTokens, radii, typography, useTheme, type ThemeTokens } from '../theme';
 import { ParticipantAvatar } from '../components/ParticipantAvatar';
 import { useScanFeedback } from '../hooks/useScanFeedback';
 import { useScanner } from '../hooks/useScanner';
@@ -253,11 +253,18 @@ const FRAME = { inset: '14%', size: 44, thickness: 6, radius: 20 } as const;
 const kiosk = StyleSheet.create({
   screen: { flex: 1 },
   centered: { alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 32 },
-  stateIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  stateIcon: { width: 56, height: 56, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   stateAction: { marginTop: 16 },
   // Name and context pinned to the bottom, so the photo shows above them.
   banner: { paddingHorizontal: 16, paddingBottom: 16, overflow: 'hidden', justifyContent: 'flex-end' },
-  eventName: { color: overlayTokens.on, fontSize: 30, lineHeight: 36, fontWeight: '700', paddingRight: 56 },
+  // Display type, a step up from h1, as on the event banner.
+  eventName: {
+    ...typography.h1,
+    fontSize: typography.h1.fontSize * 1.25,
+    lineHeight: typography.h1.lineHeight * 1.2,
+    color: overlayTokens.on,
+    paddingRight: 56,
+  },
   onBanner: { color: overlayTokens.on },
   lock: { position: 'absolute', right: 16 },
   body: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 24, paddingHorizontal: 24, paddingTop: 24 },
@@ -535,7 +542,7 @@ const styles = StyleSheet.create({
   modalIcon: {
     width: 56,
     height: 56,
-    borderRadius: 28,
+    borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -543,7 +550,7 @@ const styles = StyleSheet.create({
   modalSubtitle: { marginTop: 4, marginBottom: 20, textAlign: 'center' },
   // 44pt tall, so the whole row is an easy target for the keypad.
   dotsRow: { flexDirection: 'row', alignItems: 'center', gap: 16, minHeight: 44, paddingHorizontal: 8 },
-  dot: { width: 16, height: 16, borderRadius: 8, borderWidth: 2 },
+  dot: { width: 16, height: 16, borderRadius: radii.pill, borderWidth: 2 },
   hiddenInput: { position: 'absolute', width: 1, height: 1, opacity: 0 },
   // Reserves its line so the card doesn't jump when a message appears.
   feedback: { minHeight: 20, marginTop: 8, textAlign: 'center' },

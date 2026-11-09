@@ -17,7 +17,7 @@ import {
 import { CHROME_MAX_FONT_SCALE } from '../components/ui/fontScale';
 import { formatDateTime } from '../components/forms';
 import { channelList } from '../components/messageStatus';
-import { spacing, useTheme } from '../theme';
+import { radii, spacing, useTheme } from '../theme';
 import type { InboxPage, AppStackParamList } from '../types';
 import { useScreenInsets } from '../hooks/useScreenInsets';
 
@@ -232,6 +232,6 @@ const styles = StyleSheet.create({
   cardSlice: { borderLeftWidth: 1, borderRightWidth: 1, overflow: 'hidden' },
   row: { paddingVertical: 14, paddingHorizontal: spacing.xl, gap: spacing.xs },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  dot: { width: 8, height: 8, borderRadius: 4 },
+  dot: { width: 8, height: 8, borderRadius: radii.pill },
   subject: { flex: 1 },
 });

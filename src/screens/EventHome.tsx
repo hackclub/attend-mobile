@@ -50,7 +50,7 @@ import {
   type ArrivalGroup,
   type OverviewSection,
 } from '../services/overview';
-import { useTheme } from '../theme';
+import { radii, useTheme } from '../theme';
 import type { Event, MainTabParamList, AppStackParamList, TravelCalendarEntry } from '../types';
 import { SwitchEventList } from './SwitchEventScreen';
 
@@ -619,7 +619,7 @@ const styles = StyleSheet.create({
   stat: { flex: 1 },
   contextRow: { flexDirection: 'row', gap: 8 },
   track: { overflow: 'hidden' },
-  segmented: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', gap: 2 },
+  segmented: { flexDirection: 'row', height: 8, borderRadius: radii.badge, overflow: 'hidden', gap: 2 },
   tiles: { flexDirection: 'row', gap: 12 },
   feed: { paddingTop: 4, paddingBottom: 8 },
   feedRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, paddingHorizontal: 20 },
@@ -633,7 +633,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
   },
-  placeholderIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  placeholderIcon: { width: 40, height: 40, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
   arrivalRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
   arrivalTime: { width: 64 },
 });

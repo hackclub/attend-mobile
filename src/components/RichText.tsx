@@ -196,12 +196,12 @@ export function MarkupEditor({
   );
 }
 
-const makeStyles = ({ tokens }: Theme) => StyleSheet.create({
+const makeStyles = ({ tokens, type, radii }: Theme) => StyleSheet.create({
   flex: { flex: 1 },
   blocks: { gap: 10 },
   text: { color: tokens.text },
-  heading: { fontWeight: '700', color: tokens.textH },
-  bold: { fontWeight: '700' },
+  heading: { fontWeight: type.label.fontWeight, color: tokens.textH },
+  bold: { fontWeight: type.label.fontWeight },
   italic: { fontStyle: 'italic' },
   mono: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', backgroundColor: tokens.shaded },
   link: { color: tokens.accent, textDecorationLine: 'underline' },
@@ -209,19 +209,19 @@ const makeStyles = ({ tokens }: Theme) => StyleSheet.create({
   listItem: { flexDirection: 'row', gap: 8 },
   marker: { minWidth: 16, color: tokens.muted },
   quote: { borderLeftWidth: 3, borderLeftColor: tokens.div, paddingLeft: 12, gap: 8 },
-  pre: { backgroundColor: tokens.shaded, borderRadius: 8, padding: 10 },
+  pre: { backgroundColor: tokens.shaded, borderRadius: radii.item, padding: 10 },
   rule: { height: 1, backgroundColor: tokens.div2 },
   editor: { gap: 8 },
   toolbar: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   tool: {
     width: 38,
     height: 34,
-    borderRadius: 8,
+    borderRadius: radii.item,
     borderWidth: 1,
     borderColor: tokens.input,
     backgroundColor: tokens.bg,
   },
   toolContent: { alignItems: 'center', justifyContent: 'center' },
-  toolText: { fontSize: 16, fontWeight: '800', color: tokens.text2 },
+  toolText: { ...type.h3, color: tokens.text2 },
   editorInput: { minHeight: 180 },
 });
