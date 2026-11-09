@@ -6,23 +6,18 @@ import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
 import { hasUnsupportedFormatting, htmlToMarkup, markupToHtml } from '../services/richText';
 import { MarkupEditor, RichText } from '../components/RichText';
+import { Button, Container, Flashbar, StatusIndicator, TextField, Toggle } from '../components/ui';
 import {
-  Button,
   CheckboxRow,
   DateTimeField,
   ErrorView,
   Field,
   LoadingView,
   MultiSelectField,
-  Notice,
-  Section,
   SelectField,
-  StatusPill,
-  SwitchRow,
-  TextField,
 } from '../components/forms';
 import { titleize } from '../services/statusDisplay';
-import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
+import { spacing, useTheme } from '../theme';
 import type { MessageFormOptions, MessageInput, RootStackParamList } from '../types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'MessageCompose'>;
@@ -33,8 +28,7 @@ type Route = RouteProp<RootStackParamList, 'MessageCompose'>;
  * the preview, where it is sent or scheduled, as in the web composer.
  */
 export function MessageComposeScreen() {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
+  const { tokens, type, radii } = useTheme();
   const navigation = useNavigation<Nav>();
   const { params } = useRoute<Route>();
   const [messageId, setMessageId] = useState(params?.messageId);
@@ -139,14 +133,14 @@ export function MessageComposeScreen() {
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView
-        style={styles.container}
+        style={{ flex: 1, backgroundColor: tokens.bg }}
         contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.step}>Step 1 of 2 — Write your message</Text>
+        <Text style={[type.body, { color: tokens.muted }]}>Step 1 of 2 — Write your message</Text>
 
-        <Section title="Recipients">
+        <Container title="Recipients" bodyStyle={styles.section}>
           <Field label="Audience">
             <SelectField title="Audience" value={audience} options={options.audiences} onChange={setAudience} />
           </Field>
@@ -160,8 +154,8 @@ export function MessageComposeScreen() {
                   title: p.name,
                   subtitle: p.email,
                   trailing: (
-                    <StatusPill
-                      tone={p.status === 'complete' ? 'success' : ['in_progress', 'awaiting_guardian'].includes(p.status) ? 'progress' : 'pending'}
+                    <StatusIndicator
+                      type={p.status === 'complete' ? 'success' : ['in_progress', 'awaiting_guardian'].includes(p.status) ? 'in-progress' : 'pending'}
                       label={titleize(p.status)}
                     />
                   ),
@@ -203,9 +197,9 @@ export function MessageComposeScreen() {
               ))}
             </Field>
           ) : null}
-        </Section>
+        </Container>
 
-        <Section title="Content">
+        <Container title="Content" bodyStyle={styles.section}>
           <Field
             label="Subject"
             optional
@@ -218,64 +212,78 @@ export function MessageComposeScreen() {
             description="Use the toolbar for links, bold, italic and lists. Formatting is adapted for each channel. Required before the message can be sent."
           >
             {simplified ? (
-              <Notice tone="warning">
-                This message was written on the web with formatting the app can’t edit (such as underline or code
-                blocks). Saving here keeps the text and simpler formatting.
-              </Notice>
+              <Flashbar
+                type="warning"
+                message="This message was written on the web with formatting the app can’t edit (such as underline or code blocks). Saving here keeps the text and simpler formatting."
+              />
             ) : null}
             <MarkupEditor value={body} onChangeText={setBody} placeholder="Write your message" />
             <Button
               title={showPreview ? 'Hide formatted preview' : 'Show formatted preview'}
               variant="link"
               onPress={() => setShowPreview(v => !v)}
+              style={styles.linkButton}
             />
             {showPreview ? (
-              <View style={styles.preview}>
-                {body.trim() ? <RichText html={bodyHtml} /> : <Text style={styles.muted}>Nothing to preview yet.</Text>}
+              <View
+                style={[
+                  styles.preview,
+                  { backgroundColor: tokens.shaded, borderColor: tokens.div2, borderRadius: radii.item },
+                ]}
+              >
+                {body.trim() ? (
+                  <RichText html={bodyHtml} />
+                ) : (
+                  <Text style={[type.body, { color: tokens.muted }]}>Nothing to preview yet.</Text>
+                )}
               </View>
             ) : null}
           </Field>
-        </Section>
+        </Container>
 
-        <Section title="Delivery">
-          <SwitchRow
-            label="Schedule for later"
-            value={schedule}
-            onChange={on => {
-              setSchedule(on);
-              if (on && !scheduledAt) setScheduledAt(new Date(Date.now() + 60 * 60 * 1000));
-            }}
-          />
+        <Container title="Delivery" bodyStyle={styles.section}>
+          <View style={styles.toggleRow}>
+            <Text style={[type.body, styles.flex, { color: tokens.text }]}>Schedule for later</Text>
+            <Toggle
+              accessibilityLabel="Schedule for later"
+              value={schedule}
+              onValueChange={on => {
+                setSchedule(on);
+                if (on && !scheduledAt) setScheduledAt(new Date(Date.now() + 60 * 60 * 1000));
+              }}
+            />
+          </View>
           {schedule ? (
             <Field label="Send at" optional>
               <DateTimeField value={scheduledAt} onChange={setScheduledAt} minimumDate={new Date()} />
             </Field>
           ) : null}
-        </Section>
+        </Container>
 
-        {errors.length ? (
-          <Notice tone="error">
-            {errors.map(message => (
-              <Text key={message} style={{ color: colors.status.error }}>{message}</Text>
-            ))}
-          </Notice>
-        ) : null}
+        {errors.length ? <Flashbar type="error" message={errors.join('\n')} /> : null}
 
         <View style={styles.actions}>
           <Button title="Cancel" variant="link" onPress={() => navigation.goBack()} />
-          <Button title="Next: Preview →" variant="primary" onPress={next} loading={saving} />
+          <Button
+            title="Next: Preview"
+            icon="chevron-right"
+            iconPosition="end"
+            variant="primary"
+            onPress={next}
+            loading={saving}
+          />
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+const styles = StyleSheet.create({
   flex: { flex: 1 },
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { paddingBottom: 40 },
-  step: { fontSize: 14, color: colors.gray[600], paddingHorizontal: 16, paddingTop: 8 },
-  preview: { padding: 12, borderRadius: 12, backgroundColor: colors.gray[50], borderWidth: StyleSheet.hairlineWidth, borderColor: colors.gray[200] },
-  muted: { color: colors.gray[500] },
-  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, paddingHorizontal: 16, paddingTop: 18 },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxxl + spacing.sm, gap: spacing.lg },
+  section: { gap: spacing.lg },
+  linkButton: { alignSelf: 'flex-start', paddingHorizontal: 0 },
+  preview: { padding: spacing.md, borderWidth: 1 },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 44 },
+  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
 });

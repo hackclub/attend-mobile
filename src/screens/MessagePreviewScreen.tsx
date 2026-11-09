@@ -5,8 +5,9 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
 import { RichText } from '../components/RichText';
-import { Badge, Button, ErrorView, LoadingView, Notice, Section, StatusPill, formatDateTime } from '../components/forms';
-import { useThemedStyles, type ThemeColors } from '../theme';
+import { Badge, Button, Container, Flashbar, StatusIndicator } from '../components/ui';
+import { ErrorView, LoadingView, formatDateTime } from '../components/forms';
+import { spacing, useTheme } from '../theme';
 import type { MessagePreview, RootStackParamList } from '../types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'MessagePreview'>;
@@ -14,7 +15,7 @@ type Route = RouteProp<RootStackParamList, 'MessagePreview'>;
 
 /** Step 2 of 2: who it reaches, how each channel renders, then send. */
 export function MessagePreviewScreen() {
-  const styles = useThemedStyles(makeStyles);
+  const { tokens, type } = useTheme();
   const navigation = useNavigation<Nav>();
   const { messageId } = useRoute<Route>().params;
   const { state } = useApp();
@@ -84,17 +85,22 @@ export function MessagePreviewScreen() {
     ]);
   };
 
+  const bold = { fontWeight: '700' as const, color: tokens.textH };
   const shown = preview.recipient_names;
   const more = preview.total_count - shown.length;
 
   return (
-    <ScrollView style={styles.container} contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
-      <Text style={styles.step}>Step 2 of 2 — Review and send your message</Text>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: tokens.bg }}
+      contentInsetAdjustmentBehavior="automatic"
+      contentContainerStyle={styles.content}
+    >
+      <Text style={[type.body, { color: tokens.muted }]}>Step 2 of 2 — Review and send your message</Text>
 
-      <Section title={`Audience: ${preview.audience_label}`}>
-        <Text style={styles.body}>
-          <Text style={styles.bold}>{preview.total_count}</Text> recipient{preview.total_count === 1 ? '' : 's'} will
-          receive this message via <Text style={styles.bold}>{preview.channel_labels}</Text>.
+      <Container title={`Audience: ${preview.audience_label}`} bodyStyle={styles.section}>
+        <Text style={[type.body, { color: tokens.text }]}>
+          <Text style={bold}>{preview.total_count}</Text> recipient{preview.total_count === 1 ? '' : 's'} will
+          receive this message via <Text style={bold}>{preview.channel_labels}</Text>.
         </Text>
         {shown.length ? (
           <View style={styles.tokens}>
@@ -104,12 +110,12 @@ export function MessagePreviewScreen() {
             {more > 0 ? <Badge label={`+${more} more`} /> : null}
           </View>
         ) : (
-          <Notice tone="warning">No recipients match this criteria. The message won’t be sent to anyone.</Notice>
+          <Flashbar type="warning" message="No recipients match this criteria. The message won’t be sent to anyone." />
         )}
-      </Section>
+      </Container>
 
       {preview.slack_text != null ? (
-        <Section title="Slack preview">
+        <Container title="Slack preview">
           {/* A mock of Slack's own dark message view, so it keeps Slack's colours. */}
           <View style={styles.slack}>
             <View style={styles.slackAvatar}>
@@ -122,34 +128,36 @@ export function MessagePreviewScreen() {
               <Text style={styles.slackBody}>{preview.slack_text}</Text>
             </View>
           </View>
-        </Section>
+        </Container>
       ) : null}
 
       {preview.email_subject != null ? (
-        <Section title="Email preview" description={`Subject: ${preview.email_subject}`}>
+        <Container title="Email preview" description={`Subject: ${preview.email_subject}`}>
           <RichText html={preview.body_html} />
-        </Section>
+        </Container>
       ) : null}
 
       {preview.sms_text != null ? (
-        <Section title="SMS preview">
+        <Container title="SMS preview" bodyStyle={styles.section}>
           <View style={styles.sms}>
             <Text style={styles.smsText}>{preview.sms_text}</Text>
           </View>
           <View style={styles.smsMeta}>
-            <Text style={styles.muted}>{preview.sms_length} characters</Text>
-            {preview.sms_length > 160 ? <StatusPill tone="warning" label={`(~${preview.sms_segments} segments)`} /> : null}
+            <Text style={[type.body, { color: tokens.muted }]}>{preview.sms_length} characters</Text>
+            {preview.sms_length > 160 ? (
+              <StatusIndicator type="warning" label={`(~${preview.sms_segments} segments)`} />
+            ) : null}
           </View>
-        </Section>
+        </Container>
       ) : null}
 
       {preview.scheduled_at ? (
-        <Notice tone="warning">
-          <Text style={styles.body}>
-            <Text style={styles.bold}>Scheduled:</Text> This message will be sent on{' '}
-            <Text style={styles.bold}>{formatDateTime(preview.scheduled_at)}</Text>
-          </Text>
-        </Notice>
+        <Flashbar
+          type="warning"
+          icon="clock"
+          title="Scheduled"
+          message={`This message will be sent on ${formatDateTime(preview.scheduled_at)}`}
+        />
       ) : null}
 
       <View style={styles.actions}>
@@ -166,15 +174,12 @@ export function MessagePreviewScreen() {
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+const styles = StyleSheet.create({
   flex: { flex: 1 },
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { paddingBottom: 40 },
-  step: { fontSize: 14, color: colors.gray[600], paddingHorizontal: 16, paddingTop: 8 },
-  body: { fontSize: 15, color: colors.gray[800], lineHeight: 21 },
-  bold: { fontWeight: '700', color: colors.gray[900] },
-  muted: { fontSize: 13, color: colors.gray[600] },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxxl + spacing.sm, gap: spacing.lg },
+  section: { gap: spacing.md },
   tokens: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  // Mocks of Slack's dark message view and an SMS bubble, so they keep those apps' colours.
   slack: { flexDirection: 'row', gap: 10, backgroundColor: '#1a1d21', borderRadius: 10, padding: 14 },
   slackAvatar: { width: 36, height: 36, borderRadius: 6, backgroundColor: '#d42f46', alignItems: 'center', justifyContent: 'center' },
   slackAvatarText: { color: '#fff', fontWeight: '700', fontSize: 13 },
@@ -184,5 +189,5 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   sms: { alignSelf: 'flex-start', maxWidth: '85%', backgroundColor: '#22c55e', borderRadius: 18, borderBottomLeftRadius: 4, paddingHorizontal: 14, paddingVertical: 9 },
   smsText: { color: '#fff', fontSize: 14 },
   smsMeta: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', gap: 6 },
-  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, paddingHorizontal: 16, paddingTop: 18 },
+  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
 });
