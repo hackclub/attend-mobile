@@ -1,8 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Checkbox } from '../../components/forms';
-import { Button, PressableSurface, SheetHeader, SHEET_INSET, TextField } from '../../components/ui';
+import { Button, Icon, PressableSurface, SheetHeader, SHEET_INSET, TextField } from '../../components/ui';
 import { multiSelectSheet } from '../../navigation/sheetData';
 import { useTheme } from '../../theme';
 import { useSheetData } from './useSheetData';
@@ -75,7 +74,6 @@ export function MultiSelectSheet() {
             accessibilityRole="checkbox"
             accessibilityState={{ checked }}
           >
-            <Checkbox checked={checked} />
             <View style={styles.text}>
               <Text style={[type.body, { color: tokens.text }]} numberOfLines={1}>{item.title}</Text>
               {item.subtitle ? (
@@ -83,6 +81,11 @@ export function MultiSelectSheet() {
               ) : null}
             </View>
             {item.trailing}
+            {/* A trailing tick, as in the single-choice lists; the slot is
+                kept so rows don't shift as they're ticked. */}
+            <View style={styles.check}>
+              {checked ? <Icon name="check" color={tokens.accent} /> : null}
+            </View>
           </PressableSurface>
         );
       }}
@@ -105,5 +108,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   text: { flex: 1, minWidth: 0 },
+  check: { width: 20, alignItems: 'center' },
   empty: { textAlign: 'center', padding: 24 },
 });
