@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, Switch, type StyleProp, type ViewStyle } from 'react-native';
+import { Switch, type StyleProp, type ViewStyle } from 'react-native';
 import { useTheme } from '../../theme';
 import { haptics } from '../../services/haptics';
 
@@ -41,8 +41,9 @@ export function Toggle({
       }}
       disabled={disabled}
       trackColor={{ false: tokens.inputDisabled, true: tokens.accent }}
-      // iOS keeps its white thumb; Android's follows the Material switch.
-      thumbColor={Platform.OS === 'android' ? (value ? tokens.accentOn : tokens.bg) : undefined}
+      // No thumb colour on either platform: iOS keeps its white thumb and
+      // Android's comes from the Material 3 theme, which keeps the off thumb
+      // visible in dark mode (the page colour vanished against the track).
       ios_backgroundColor={tokens.inputDisabled}
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={accessibilityHint}

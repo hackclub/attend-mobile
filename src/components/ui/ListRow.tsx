@@ -94,8 +94,10 @@ export function ListRow({
     return (
       <Pressable
         onPress={() => {
-          haptics.selection();
-          toggle.onValueChange(!toggle.value);
+          // The same feedback as tapping the switch itself.
+          const next = !toggle.value;
+          haptics.toggle(next);
+          toggle.onValueChange(next);
         }}
         disabled={disabled}
         accessibilityRole="switch"
