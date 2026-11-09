@@ -12,6 +12,9 @@ jest.mock('expo-haptics', () => ({
     Clock_Tick: 'clock-tick',
     Keyboard_Tap: 'keyboard-tap',
     Virtual_Key: 'virtual-key',
+    Toggle_On: 'toggle-on',
+    Toggle_Off: 'toggle-off',
+    Segment_Tick: 'segment-tick',
   },
   notificationAsync: jest.fn().mockResolvedValue(undefined),
   impactAsync: jest.fn().mockResolvedValue(undefined),
@@ -54,12 +57,18 @@ describe('haptics', () => {
     haptics.warning();
     haptics.selection();
     haptics.impact();
+    haptics.toggle(true);
+    haptics.toggle(false);
+    haptics.segment();
     expect(jest.mocked(Haptics.performAndroidHapticsAsync).mock.calls.map((c) => c[0])).toEqual([
       'confirm',
       'reject',
       'long-press',
       'clock-tick',
       'keyboard-tap',
+      'toggle-on',
+      'toggle-off',
+      'segment-tick',
     ]);
     expect(Haptics.notificationAsync).not.toHaveBeenCalled();
   });

@@ -65,11 +65,26 @@ export function selection(): void {
   else run(() => Haptics.selectionAsync());
 }
 
+// A switch flipping on or off: Android has dedicated constants; iOS keeps the
+// selection tick.
+export function toggle(on: boolean): void {
+  if (isAndroid) android(on ? Haptics.AndroidHaptics.Toggle_On : Haptics.AndroidHaptics.Toggle_Off);
+  else run(() => Haptics.selectionAsync());
+}
+
+// Moving between segments of a segmented control.
+export function segment(): void {
+  if (isAndroid) android(Haptics.AndroidHaptics.Segment_Tick);
+  else run(() => Haptics.selectionAsync());
+}
+
 export const haptics = {
   success: () => notify('success'),
   warning: () => notify('warning'),
   error: () => notify('error'),
   selection,
+  toggle,
+  segment,
   impact,
   notify,
 };

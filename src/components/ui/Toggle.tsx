@@ -36,7 +36,7 @@ export function Toggle({
     <Switch
       value={value}
       onValueChange={(next) => {
-        haptics.selection();
+        haptics.toggle(next);
         onValueChange(next);
       }}
       disabled={disabled}

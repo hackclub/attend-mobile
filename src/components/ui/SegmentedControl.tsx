@@ -66,7 +66,7 @@ function IosSegmentedControl<T extends string>({
       onChange={(event) => {
         const next = options[event.nativeEvent.selectedSegmentIndex];
         if (!next || next.value === value) return;
-        haptics.selection();
+        haptics.segment();
         onChange(next.value);
       }}
       appearance={isDark ? 'dark' : 'light'}
@@ -104,7 +104,7 @@ function MaterialSegmentedButtons<T extends string>({
             key={option.value}
             onPress={() => {
               if (selected) return;
-              haptics.selection();
+              haptics.segment();
               onChange(option.value);
             }}
             accessibilityRole={role}
