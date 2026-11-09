@@ -65,6 +65,8 @@ function participant(overrides: Partial<Participant> = {}): Participant {
 }
 
 beforeEach(async () => {
+  // Also drops the in-memory rosters.
+  await syncService.clear();
   await AsyncStorage.clear();
   mockGetScans.mockReset();
   mockGetParticipants.mockReset();
@@ -234,6 +236,70 @@ describe('syncService.refreshParticipants', () => {
     await syncService.cacheScanContexts(EVENT_ID, contexts);
 
     expect(await syncService.getCachedScanContexts(EVENT_ID)).toEqual(contexts);
+  });
+});
+
+describe('in-memory roster', () => {
+  async function syncFirstRoster(): Promise<Participant[]> {
+    mockGetParticipants.mockResolvedValueOnce({
+      participants: [participant(), participant({ participant_event_id: 'registration-2' })],
+      synced_at: '2026-08-24T09:45:00Z',
+    });
+    return syncService.refreshParticipants(EVENT_ID);
+  }
+
+  it('skips rewriting the roster when a delta is empty, but moves the cursor on', async () => {
+    const first = await syncFirstRoster();
+    const setSpy = jest.spyOn(AsyncStorage, 'setItem');
+    setSpy.mockClear();
+    mockGetParticipants.mockResolvedValueOnce({
+      participants: [],
+      synced_at: '2026-08-24T09:50:00Z',
+    });
+
+    const second = await syncService.refreshParticipants(EVENT_ID);
+
+    expect(second).toBe(first);
+    expect(setSpy.mock.calls.map(([key]) => key)).toEqual([
+      STORAGE_KEYS.PARTICIPANT_SYNC_CURSOR(EVENT_ID),
+    ]);
+    expect(await asyncStorage.get(STORAGE_KEYS.PARTICIPANT_SYNC_CURSOR(EVENT_ID))).toBe(
+      '2026-08-24T09:50:00Z'
+    );
+  });
+
+  it('keeps unchanged participants as the same objects through a delta', async () => {
+    const first = await syncFirstRoster();
+    mockGetParticipants.mockResolvedValueOnce({
+      participants: [participant({ display_name: 'Renamed' })],
+      synced_at: '2026-08-24T09:50:00Z',
+    });
+
+    const second = await syncService.refreshParticipants(EVENT_ID);
+
+    expect(second[0]).toMatchObject({ display_name: 'Renamed' });
+    expect(second[1]).toBe(first[1]);
+    expect(await asyncStorage.get(STORAGE_KEYS.PARTICIPANTS(EVENT_ID))).toEqual(second);
+  });
+
+  it('reads storage only once per event', async () => {
+    await asyncStorage.set(STORAGE_KEYS.PARTICIPANTS(EVENT_ID), [participant()]);
+    const getSpy = jest.spyOn(AsyncStorage, 'getItem');
+    getSpy.mockClear();
+
+    const first = await syncService.getCachedParticipants(EVENT_ID);
+    const rosterReads = () => getSpy.mock.calls
+      .filter(([key]) => key === STORAGE_KEYS.PARTICIPANTS(EVENT_ID)).length;
+    expect(rosterReads()).toBe(1);
+    expect(await syncService.getCachedParticipants(EVENT_ID)).toBe(first);
+    expect(rosterReads()).toBe(1);
+  });
+
+  it('forgets the roster on clear', async () => {
+    await syncFirstRoster();
+    await syncService.clear();
+
+    expect(await syncService.getCachedParticipants(EVENT_ID)).toEqual([]);
   });
 });
 

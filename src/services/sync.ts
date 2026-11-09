@@ -3,7 +3,7 @@ import { asyncStorage, STORAGE_KEYS } from './storage';
 import { api } from './api';
 import { forbiddenParticipants } from './eventAccess';
 import { mergeParticipant, mergeParticipants, type ParticipantUpdate } from './participantIndex';
-import { PARTICIPANT_CACHE_VERSION, slimParticipants } from './participantCache';
+import { PARTICIPANT_CACHE_VERSION, slimParticipant, slimParticipants } from './participantCache';
 import { scanQueue } from './scanQueue';
 import type { Event, Participant, RemoteScan, ScanContext } from '../types';
 
@@ -25,6 +25,9 @@ class SyncService {
   private cacheGeneration = 0;
   private cacheWriteQueue: Promise<void> = Promise.resolve();
   private participantCacheMigration: Promise<void> | null = null;
+  // Each event's slim roster, as last read from or written to storage, so
+  // reads after the first skip storage and JSON parsing.
+  private rosters = new Map<string, Participant[]>();
 
   constructor() {
     // Queued scans feed pendingScans, and a scan confirmed by a later flush
@@ -137,19 +140,44 @@ class SyncService {
     return events;
   }
 
+  private rememberRoster(eventId: string, generation: number, participants: Participant[]): void {
+    if (generation === this.cacheGeneration) this.rosters.set(eventId, participants);
+  }
+
+  private async writeRoster(
+    eventId: string,
+    generation: number,
+    participants: Participant[]
+  ): Promise<void> {
+    await asyncStorage.set(STORAGE_KEYS.PARTICIPANTS(eventId), participants);
+    this.rememberRoster(eventId, generation, participants);
+  }
+
   async cacheParticipants(eventId: string, participants: Participant[]): Promise<void> {
     const generation = this.cacheGeneration;
     await this.enqueueParticipantCache(eventId, async () => {
       await this.migrateParticipantCache();
       if (generation !== this.cacheGeneration) return;
-      await asyncStorage.set(STORAGE_KEYS.PARTICIPANTS(eventId), slimParticipants(participants));
+      await this.writeRoster(eventId, generation, slimParticipants(participants));
     });
   }
 
+  /**
+   * The event's cached roster. Read from storage once, then kept in memory.
+   * Treat the array as read-only: it's shared until the next change.
+   */
   async getCachedParticipants(eventId: string): Promise<Participant[]> {
+    const remembered = this.rosters.get(eventId);
+    if (remembered) return remembered;
+    const generation = this.cacheGeneration;
     await this.migrateParticipantCache();
     const cached = await asyncStorage.get<Participant[]>(STORAGE_KEYS.PARTICIPANTS(eventId));
-    return Array.isArray(cached) ? slimParticipants(cached) : [];
+    // A write that landed while this read was in flight is newer.
+    const written = this.rosters.get(eventId);
+    if (written) return written;
+    const participants = Array.isArray(cached) ? slimParticipants(cached) : [];
+    this.rememberRoster(eventId, generation, participants);
+    return participants;
   }
 
   async cacheConfirmedParticipant(
@@ -172,7 +200,13 @@ class SyncService {
           )
         : [...cached, merged];
 
-      await asyncStorage.set(STORAGE_KEYS.PARTICIPANTS(eventId), slimParticipants(participants));
+      // The rest of the roster is already slim.
+      const slimMerged = slimParticipant(merged);
+      await this.writeRoster(
+        eventId,
+        generation,
+        participants.map(participant => participant === merged ? slimMerged : participant)
+      );
       return merged;
     });
   }
@@ -188,8 +222,17 @@ class SyncService {
         return this.getCachedParticipants(eventId);
       }
       const latest = await this.getCachedParticipants(eventId);
-      const participants = slimParticipants(mergeParticipants(latest, incoming));
-      await asyncStorage.set(STORAGE_KEYS.PARTICIPANTS(eventId), participants);
+      // Nothing changed since the last sync: keep the stored roster (and
+      // hand back the same array), only moving the cursor on.
+      let participants = latest;
+      if (incoming.length > 0) {
+        // Untouched entries are already slim and keep their identity.
+        const touched = new Set(incoming.map(item => item.participant_event_id));
+        participants = mergeParticipants(latest, incoming).map(item =>
+          touched.has(item.participant_event_id) ? slimParticipant(item) : item
+        );
+        await this.writeRoster(eventId, generation, participants);
+      }
       if (syncedAt) {
         await asyncStorage.set(
           STORAGE_KEYS.PARTICIPANT_SYNC_CURSOR(eventId),
@@ -413,6 +456,7 @@ class SyncService {
       await scanQueue.clear().catch(error => console.warn('[Sync] Scan queue clear failed:', error));
       await scanQueue.setUser(null);
     }
+    this.rosters.clear();
     forbiddenParticipants.reset();
     await Promise.allSettled(this.participantCacheQueues.values());
     this.participantCacheQueues.clear();
