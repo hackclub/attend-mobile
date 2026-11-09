@@ -1,8 +1,9 @@
 import React, { type ReactNode } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { useTheme, useThemedStyles, type Theme } from '../../theme';
 import { Button } from './Button';
 import { Icon, type IconName } from './Icon';
+import { Spinner } from './Spinner';
 
 // Whole-pane loading, error and empty states for the stack screens. They
 // take the background of the screen they sit in.
@@ -15,7 +16,7 @@ export function LoadingView() {
   const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.center}>
-      <ActivityIndicator size="large" color={tokens.accent} />
+      <Spinner size="large" color={tokens.accent} />
     </View>
   );
 }

@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  ActivityIndicator,
   StyleSheet,
   Text,
   View,
@@ -12,6 +11,7 @@ import { useTheme } from '../../theme';
 import { haptics, type HapticImpact } from '../../services/haptics';
 import { Icon, type IconName } from './Icon';
 import { PressableSurface } from './PressableSurface';
+import { Spinner } from './Spinner';
 
 export type ButtonVariant = 'normal' | 'primary' | 'link' | 'icon' | 'plain-icon';
 
@@ -93,7 +93,7 @@ export function Button({
   const { shape: callerShape, content: callerContent } = splitButtonStyle(style);
 
   const iconNode = loading ? (
-    <ActivityIndicator size="small" color={fg} />
+    <Spinner size="small" color={fg} decorative />
   ) : icon ? (
     <Icon name={icon} size={isIcon ? 20 : 16} color={fg} />
   ) : null;

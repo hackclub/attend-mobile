@@ -44,6 +44,7 @@ export {
 } from './StatusIndicator';
 export { TextField, type TextFieldProps } from './TextField';
 export { Toggle, type ToggleProps } from './Toggle';
+export { Spinner, type SpinnerProps } from './Spinner';
 export {
   isAndroid,
   pressedStyle,
