@@ -36,6 +36,13 @@ const OUTCOME: Record<ScannerOutcome, {
     icon: 'time',
     color: colors.orange,
   },
+  // Saved to the offline queue: deliberately not success-coloured, since
+  // nothing has been confirmed. The detail line comes from result.message.
+  queued: {
+    label: 'Saved offline',
+    icon: 'cloud-offline',
+    color: colors.gray[400],
+  },
   not_scanned: {
     label: 'Not Scanned',
     icon: 'close-circle',
@@ -169,7 +176,9 @@ export function ScannerResultCard({
               color={config.color}
             />
             <Text style={styles.compactMessage} accessibilityLiveRegion={isFinal ? 'assertive' : 'polite'}>
-              {result.message || config.label}
+              {result.outcome === 'queued'
+                ? `${config.label}. ${result.message}`
+                : result.message || config.label}
             </Text>
             {result.retryable ? (
               <Pressable

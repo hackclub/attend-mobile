@@ -110,6 +110,27 @@ describe('ScannerResultCard', () => {
     expect(JSON.stringify(tree.toJSON())).toContain(label);
   });
 
+  it('renders a queued scan as saved offline, never as scanned', async () => {
+    const tree = await renderCard(result('queued', {
+      message: 'Will sync when back online',
+    }));
+    const json = JSON.stringify(tree.toJSON());
+
+    expect(json).toContain('Saved offline');
+    expect(json).toContain('Will sync when back online');
+    expect(json).not.toContain('"Scanned"');
+    expect(json).not.toContain('#33D6A6');
+  });
+
+  it('labels a queued scan of an unidentified attendee in the compact card', async () => {
+    const tree = await renderCard(result('queued', {
+      participant: undefined,
+      message: 'Will sync when back online',
+    }));
+
+    expect(JSON.stringify(tree.toJSON())).toContain('Saved offline. Will sync when back online');
+  });
+
   it('drops the details action when the role cannot open participant records', async () => {
     const tree = await renderCard(result('scanned'), { onDetails: null });
     expect(JSON.stringify(tree.toJSON())).not.toContain('Details');

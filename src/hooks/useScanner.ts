@@ -1,18 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import NetInfo from '@react-native-community/netinfo';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
 import { nfcService } from '../services/nfc';
 import { ParticipantIndex } from '../services/participantIndex';
 import {
   SameCodeGate,
+  cachedPriorScan,
   confirmingResult,
   createAttemptId,
   failedResult,
+  isRetryableScanError,
   parseQRCode,
+  queuedResult,
   resultFromResponse,
   scannableContexts,
   type ScannerResult,
 } from '../services/scannerCore';
+import { scanQueue } from '../services/scanQueue';
 import { syncService } from '../services/sync';
 import type { ScanContext, ScanSource } from '../types';
 
@@ -171,7 +176,56 @@ export function useScanner(options: {
     lastRequestRef.current = stableRequest;
     setLastScan(confirming);
 
+    const baseResult = {
+      attemptId,
+      rawData: request.rawData,
+      source: request.source,
+      participant: cachedParticipant,
+      scanContext,
+    };
+
+    // Attend can't be reached: save the scan for the queue to deliver with
+    // the same client_scan_id and scanned_at. The result says so; it never
+    // claims a check-in. Duplicates can only be judged from local data.
+    const saveOffline = async (): Promise<ScannerResult> => {
+      const queued = await scanQueue.findQueuedScan(eventId, {
+        identifier: request.identifier,
+        participantEventId: cachedParticipant?.participant_event_id,
+        scanContextId: scanContext?.id,
+      });
+      const prior = cachedPriorScan(cachedParticipant, scanContext?.id)
+        ?? (queued && queued.clientScanId !== attemptId ? { firstScannedAt: queued.scannedAt } : null);
+      await scanQueue.enqueue({
+        clientScanId: attemptId,
+        eventId,
+        kind: request.kind,
+        identifier: request.identifier,
+        scanContextId: scanContext?.id,
+        source: request.source,
+        scannedAt: startedAt,
+        participantEventId: cachedParticipant?.participant_event_id,
+      });
+      return queuedResult({
+        ...baseResult,
+        alreadyScannedLocally: !!prior,
+        firstScannedAt: prior?.firstScannedAt,
+      });
+    };
+
     try {
+      const netState = await NetInfo.fetch().catch(() => null);
+      if (requestController.signal.aborted || currentEventIdRef.current !== eventId) {
+        return null;
+      }
+      if (netState?.isConnected === false) {
+        const result = await saveOffline();
+        if (requestController.signal.aborted || currentEventIdRef.current !== eventId) {
+          return null;
+        }
+        setLastScan(result);
+        return result;
+      }
+
       const options = {
         scanContextId: scanContext?.id,
         clientScanId: attemptId,
@@ -203,13 +257,17 @@ export function useScanner(options: {
       if (requestController.signal.aborted || currentEventIdRef.current !== eventId) {
         return null;
       }
-      const result = failedResult(error, {
-        attemptId,
-        rawData: request.rawData,
-        source: request.source,
-        participant: cachedParticipant,
-        scanContext,
-      });
+      let result = failedResult(error, baseResult);
+      if (isRetryableScanError(error)) {
+        try {
+          result = await saveOffline();
+        } catch (queueError) {
+          console.warn('[Scanner] Failed to queue offline scan:', queueError);
+        }
+        if (requestController.signal.aborted || currentEventIdRef.current !== eventId) {
+          return null;
+        }
+      }
       setLastScan(result);
       return result;
     } finally {

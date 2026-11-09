@@ -8,7 +8,9 @@ import type {
 } from '../types';
 import { mergeParticipant } from './participantIndex';
 
-export type ScannerOutcome = 'confirming' | ScanOutcome | 'not_scanned';
+// 'queued': Attend could not be reached, so the scan was saved to the offline
+// queue. It is not a confirmed check-in and must never be shown as one.
+export type ScannerOutcome = 'confirming' | ScanOutcome | 'queued' | 'not_scanned';
 
 export interface ScannerResult {
   attemptId: string;
@@ -20,6 +22,9 @@ export interface ScannerResult {
   firstScannedAt?: string;
   message?: string;
   retryable: boolean;
+  // Only for 'queued': this device already has a scan of the person in this
+  // context (cached roster or offline queue). The server still decides.
+  alreadyScannedLocally?: boolean;
 }
 
 export function parseQRCode(data: string): QRCodeData | null {
@@ -163,7 +168,12 @@ export function resultFromResponse(input: {
   };
 }
 
-function retryableFailure(error: unknown): boolean {
+/**
+ * Whether a failed scan request may succeed if sent again later: a network
+ * error, a timeout (status 0), rate limiting or a server error. These are the
+ * failures that send a scan to the offline queue.
+ */
+export function isRetryableScanError(error: unknown): boolean {
   if (error instanceof TypeError) return true;
   if (!error || typeof error !== 'object' || !('status' in error)) return false;
 
@@ -172,7 +182,7 @@ function retryableFailure(error: unknown): boolean {
 }
 
 export function failedResult(error: unknown, input: BaseResultInput): ScannerResult {
-  const retryable = retryableFailure(error);
+  const retryable = isRetryableScanError(error);
   const message = retryable
     ? 'Could not reach Attend. Try again.'
     : error instanceof Error
@@ -184,6 +194,44 @@ export function failedResult(error: unknown, input: BaseResultInput): ScannerRes
     outcome: 'not_scanned',
     message,
     retryable,
+  };
+}
+
+/**
+ * A scan of this person in this context that the cached roster already knows
+ * about, for the offline "already scanned" hint. Null when there is none.
+ */
+export function cachedPriorScan(
+  participant: Participant | undefined,
+  scanContextId: string | undefined
+): { firstScannedAt?: string } | null {
+  if (!participant) return null;
+  if (!scanContextId) {
+    return participant.checked_in_at ? { firstScannedAt: participant.checked_in_at } : null;
+  }
+  const entry = participant.scans_by_context?.find(
+    scan => scan.scan_context_id === scanContextId && scan.scan_count > 0
+  );
+  return entry ? { firstScannedAt: entry.first_scanned_at } : null;
+}
+
+export function queuedResult(input: BaseResultInput & {
+  alreadyScannedLocally: boolean;
+  firstScannedAt?: string;
+}): ScannerResult {
+  return {
+    attemptId: input.attemptId,
+    rawData: input.rawData,
+    source: input.source,
+    participant: input.participant,
+    scanContext: input.scanContext,
+    outcome: 'queued',
+    message: input.alreadyScannedLocally
+      ? 'Already scanned here on this device. Will sync when back online'
+      : 'Will sync when back online',
+    alreadyScannedLocally: input.alreadyScannedLocally,
+    firstScannedAt: input.alreadyScannedLocally ? input.firstScannedAt : undefined,
+    retryable: false,
   };
 }
 

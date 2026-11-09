@@ -20,6 +20,13 @@ export function feedbackForOutcome(outcome: ScannerOutcome): ScanFeedback | null
         sound: 'already-scanned',
         haptic: 'warning',
       };
+    // Saved offline, not confirmed: the attention tone rather than the
+    // success one, so staff never hear a check-in that hasn't happened.
+    case 'queued':
+      return {
+        sound: 'already-scanned',
+        haptic: 'warning',
+      };
     case 'not_scanned':
       return {
         sound: 'not-scanned',

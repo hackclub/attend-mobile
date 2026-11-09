@@ -1,7 +1,10 @@
 import type { CreateScanResponse, Participant, ScanContext } from '../../types';
 import {
   SameCodeGate,
+  cachedPriorScan,
   failedResult,
+  isRetryableScanError,
+  queuedResult,
   parseQRCode,
   responseOutcome,
   resultFromResponse,
@@ -188,5 +191,65 @@ describe('scannableContexts', () => {
 
     expect(scannableContexts([tomorrow, yesterday]).map(c => c.id))
       .toEqual(['yesterday', 'tomorrow']);
+  });
+});
+
+describe('queued offline outcome', () => {
+  const base = {
+    attemptId: 'attempt-1',
+    rawData: 'raw',
+    source: 'qr' as const,
+    participant: participant(),
+    scanContext: context,
+  };
+
+  it('is a distinct, non-retryable outcome that does not claim a check-in', () => {
+    const result = queuedResult({ ...base, alreadyScannedLocally: false, firstScannedAt: 'x' });
+
+    expect(result.outcome).toBe('queued');
+    expect(result.retryable).toBe(false);
+    expect(result.message).toBe('Will sync when back online');
+    expect(result.alreadyScannedLocally).toBe(false);
+    expect(result.firstScannedAt).toBeUndefined();
+  });
+
+  it('says when this device already has a scan of the person in the context', () => {
+    const result = queuedResult({
+      ...base,
+      alreadyScannedLocally: true,
+      firstScannedAt: '2026-08-24T09:00:00Z',
+    });
+
+    expect(result.outcome).toBe('queued');
+    expect(result.message).toBe('Already scanned here on this device. Will sync when back online');
+    expect(result.firstScannedAt).toBe('2026-08-24T09:00:00Z');
+  });
+
+  it('finds a prior scan in the cached roster for the same context only', () => {
+    const scanned = participant({
+      scans_by_context: [{
+        scan_context_id: context.id,
+        scan_context_name: context.name,
+        checks_in: true,
+        is_airport: false,
+        scan_count: 1,
+        first_scanned_at: '2026-08-24T09:00:00Z',
+      }],
+    });
+
+    expect(cachedPriorScan(scanned, context.id)).toEqual({ firstScannedAt: '2026-08-24T09:00:00Z' });
+    expect(cachedPriorScan(scanned, 'other-context')).toBeNull();
+    expect(cachedPriorScan(participant(), context.id)).toBeNull();
+    expect(cachedPriorScan(undefined, context.id)).toBeNull();
+    expect(cachedPriorScan(participant({ checked_in_at: '2026-08-24T08:00:00Z' }), undefined))
+      .toEqual({ firstScannedAt: '2026-08-24T08:00:00Z' });
+  });
+
+  it('queues only failures that may succeed later', () => {
+    expect(isRetryableScanError(new TypeError('Network request failed'))).toBe(true);
+    expect(isRetryableScanError(Object.assign(new Error('timeout'), { status: 0 }))).toBe(true);
+    expect(isRetryableScanError(Object.assign(new Error('busy'), { status: 503 }))).toBe(true);
+    expect(isRetryableScanError(Object.assign(new Error('missing'), { status: 404 }))).toBe(false);
+    expect(isRetryableScanError(new Error('Unrecognised QR code'))).toBe(false);
   });
 });

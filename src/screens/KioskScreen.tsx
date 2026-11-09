@@ -92,6 +92,7 @@ export function KioskScreen() {
     const label = {
       scanned: 'Scanned',
       already_scanned: 'Already Scanned',
+      queued: 'Saved offline',
       not_scanned: 'Not Scanned',
     }[lastScan.outcome];
     const name = lastScan.participant?.display_name || lastScan.participant?.full_name;
@@ -244,6 +245,8 @@ function KioskResult({ result }: { result: ScannerResult }) {
     confirming: { tint: colors.blue, icon: 'sync' as const, label: 'Confirming' },
     scanned: { tint: colors.green, icon: 'checkmark-circle' as const, label: 'Scanned' },
     already_scanned: { tint: colors.orange, icon: 'time' as const, label: 'Already Scanned' },
+    // Not confirmed by Attend yet, so never success-coloured.
+    queued: { tint: colors.gray[400], icon: 'cloud-offline' as const, label: 'Saved offline' },
     not_scanned: { tint: colors.redOnDark, icon: 'close-circle' as const, label: 'Not Scanned' },
   }[result.outcome];
   const name = result.participant?.display_name || result.participant?.full_name || '';
