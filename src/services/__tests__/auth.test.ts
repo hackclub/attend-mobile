@@ -138,7 +138,8 @@ describe('authService.logout', () => {
 
     const result = await authService.restoreSession();
 
-    expect(result).toMatchObject({ success: false, error: 'Session expired' });
+    expect(result).toMatchObject({ success: true, token: 'token-1' });
+    await expect(result.validation).resolves.toEqual({ status: 'expired' });
     expect(api.deleteSession).not.toHaveBeenCalled();
     expect(secureStorage.clearPersisted).toHaveBeenCalled();
     expect(secureStorage.clear).toHaveBeenCalled();
@@ -160,6 +161,32 @@ describe('authService.logout', () => {
 });
 
 describe('authService.restoreSession', () => {
+  it('reads the token and the cached user in parallel', async () => {
+    let finishToken: ((token: string) => void) | undefined;
+    jest.mocked(secureStorage.getToken).mockReturnValueOnce(
+      new Promise(resolve => { finishToken = resolve; })
+    );
+    jest.mocked(secureStorage.getUser).mockResolvedValue({ id: 'u1' } as never);
+    jest.mocked(api.validateToken).mockResolvedValue({ id: 'u1' } as never);
+
+    const pending = authService.restoreSession();
+    await Promise.resolve();
+    expect(secureStorage.getUser).toHaveBeenCalled();
+    finishToken?.('token-1');
+    await pending;
+  });
+
+  it('signs in from the cached user without waiting for /me', async () => {
+    const cached = { id: 'u1', name: 'Cached' };
+    jest.mocked(secureStorage.getUser).mockResolvedValue(cached as never);
+    jest.mocked(api.validateToken).mockReturnValue(new Promise(() => {}));
+
+    const result = await authService.restoreSession();
+
+    expect(result).toMatchObject({ success: true, user: cached, token: 'token-1' });
+    expect(result.validation).toBeInstanceOf(Promise);
+  });
+
   it('replaces the stored user with the one /me returns', async () => {
     const stale = { id: 'u1', name: 'Old', is_participant: false };
     const fresh = { id: 'u1', name: 'New', is_participant: true };
@@ -168,7 +195,8 @@ describe('authService.restoreSession', () => {
 
     const result = await authService.restoreSession();
 
-    expect(result).toEqual({ success: true, user: fresh });
+    expect(result).toMatchObject({ success: true, user: stale });
+    await expect(result.validation).resolves.toEqual({ status: 'valid', user: fresh });
     expect(secureStorage.setUser).toHaveBeenCalledWith(fresh);
   });
 
@@ -179,7 +207,65 @@ describe('authService.restoreSession', () => {
 
     const result = await authService.restoreSession();
 
-    expect(result).toEqual({ success: true, user: cached });
+    expect(result).toMatchObject({ success: true, user: cached });
+    await expect(result.validation).resolves.toEqual({ status: 'unverified' });
     expect(secureStorage.setUser).not.toHaveBeenCalled();
+    expect(secureStorage.clearPersisted).not.toHaveBeenCalled();
+    expect(secureStorage.clear).not.toHaveBeenCalled();
+  });
+
+  it('waits for /me when no user is cached', async () => {
+    const fresh = { id: 'u1', name: 'New' };
+    jest.mocked(secureStorage.getUser).mockResolvedValue(null);
+    jest.mocked(api.validateToken).mockResolvedValue(fresh as never);
+
+    const result = await authService.restoreSession();
+
+    expect(result).toEqual({ success: true, user: fresh, token: 'token-1' });
+    expect(secureStorage.setUser).toHaveBeenCalledWith(fresh);
+  });
+
+  it('fails without clearing the token when no user is cached and /me is unreachable', async () => {
+    jest.mocked(secureStorage.getUser).mockResolvedValue(null);
+    jest.mocked(api.validateToken).mockRejectedValue(new Error('offline'));
+
+    const result = await authService.restoreSession();
+
+    expect(result).toEqual({ success: false, error: 'Unable to verify session' });
+    expect(secureStorage.clear).not.toHaveBeenCalled();
+  });
+
+  it('signs out at once when no user is cached and the token is rejected', async () => {
+    jest.mocked(secureStorage.getUser).mockResolvedValue(null);
+    jest.mocked(api.validateToken).mockResolvedValue(null);
+
+    const result = await authService.restoreSession();
+
+    expect(result).toEqual({ success: false, error: 'Session expired' });
+    expect(secureStorage.clear).toHaveBeenCalled();
+    expect(syncService.clear).toHaveBeenCalledWith({ keepQueuedScans: true });
+  });
+
+  it('ignores a 401 for a token that was replaced while /me was in flight', async () => {
+    jest.mocked(secureStorage.getToken)
+      .mockResolvedValueOnce('token-1')
+      .mockResolvedValue('token-2');
+    jest.mocked(secureStorage.getUser).mockResolvedValue({ id: 'u1' } as never);
+    jest.mocked(api.validateToken).mockResolvedValue(null);
+
+    const result = await authService.restoreSession();
+
+    await expect(result.validation).resolves.toEqual({ status: 'superseded' });
+    expect(secureStorage.clearPersisted).not.toHaveBeenCalled();
+    expect(secureStorage.clear).not.toHaveBeenCalled();
+  });
+
+  it('reports a locked keychain', async () => {
+    const { KeychainLockedError } = jest.requireMock('../storage');
+    jest.mocked(secureStorage.getUser).mockRejectedValue(new KeychainLockedError());
+
+    const result = await authService.restoreSession();
+
+    expect(result).toEqual({ success: false, locked: true });
   });
 });

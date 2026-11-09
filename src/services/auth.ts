@@ -69,12 +69,23 @@ const redirectUri = AuthSession.makeRedirectUri({
   path: 'oauth/callback',
 });
 
+export type SessionValidation =
+  | { status: 'valid'; user: User }
+  | { status: 'expired' }
+  | { status: 'unverified' }
+  | { status: 'superseded' };
+
 export interface AuthResult {
   success: boolean;
   user?: User;
+  // The stored token, on a restored session.
+  token?: string;
   error?: string;
   // Keychain unreadable (background launch while locked); retry once active.
   locked?: boolean;
+  // A session restored from the cached user before /me answered: settles
+  // with the background check (authService.validateSession).
+  validation?: Promise<SessionValidation>;
 }
 
 export const authService = {
@@ -162,40 +173,39 @@ export const authService = {
     }
   },
 
+  /**
+   * Restores the stored session without waiting for the network when it can.
+   *
+   * The token and cached user are read in parallel. With both present the
+   * session resolves at once (`success`, `user`, `token`) and `/me` is
+   * checked in the background: `validation` settles once that check is done
+   * (see validateSession). Without a cached user there is nothing to show
+   * yet, so the check is awaited instead.
+   */
   async restoreSession(): Promise<AuthResult> {
     try {
-      const token = await secureStorage.getToken();
+      const [token, user] = await Promise.all([
+        secureStorage.getToken(),
+        secureStorage.getUser<User>(),
+      ]);
       if (!token) {
         return { success: false };
       }
-
-      const user = await secureStorage.getUser<User>();
       void secureStorage.upgradeKeychainAccessibility();
-      
-      // Try to validate token, but don't logout on network errors
-      try {
-        const freshUser = await api.validateToken();
-        if (!freshUser) {
-          // Token is explicitly invalid (401): nothing left to revoke. Same
-          // local cleanup as any sign-out, but scans still waiting to sync
-          // are kept for when this user signs back in.
-          await this.logout({ revoke: false, keepQueuedScans: true });
-          return { success: false, error: 'Session expired' };
-        }
-        
-        // /me is the source of truth for the user (name, avatar, whether
-        // they're a participant), so the stored copy follows it. Failing to
-        // store it only means the next offline start uses the older copy.
-        await secureStorage.setUser(freshUser).catch(() => {});
-        return { success: true, user: freshUser };
-      } catch {
-        // Network error - if we have cached user, continue offline
-        if (user) {
-          return { success: true, user };
-        }
-        // No cached user and can't validate - fail but don't clear token
-        return { success: false, error: 'Unable to verify session' };
+
+      if (user) {
+        return { success: true, user, token, validation: this.validateSession(token) };
       }
+
+      const outcome = await this.validateSession(token);
+      if (outcome.status === 'valid') {
+        return { success: true, user: outcome.user, token };
+      }
+      if (outcome.status === 'expired') {
+        return { success: false, error: 'Session expired' };
+      }
+      // No cached user and can't validate: fail, but keep the token.
+      return { success: false, error: 'Unable to verify session' };
     } catch (error) {
       if (error instanceof KeychainLockedError) {
         return { success: false, locked: true };
@@ -204,6 +214,38 @@ export const authService = {
       console.error('Session restore error:', error);
       return { success: false, error: 'Failed to restore session' };
     }
+  },
+
+  /**
+   * Checks `token` against `/me`. Never rejects.
+   *
+   * - `valid`: /me is the source of truth for the user (name, avatar, whether
+   *   they're a participant), so the stored copy follows it. Failing to store
+   *   it only means the next offline start uses the older copy.
+   * - `expired` (401): signed out here through logout, the same full cleanup
+   *   as any sign-out, minus revoking a token the server already rejected.
+   *   Scans still waiting to sync are kept for when this user signs back in.
+   * - `unverified`: network or server error; the session is kept.
+   * - `superseded`: the stored token changed while /me was in flight (a
+   *   sign-out or another sign-in), so the answer no longer applies.
+   */
+  async validateSession(token: string): Promise<SessionValidation> {
+    let freshUser: User | null;
+    try {
+      freshUser = await api.validateToken();
+    } catch {
+      return { status: 'unverified' };
+    }
+    const current = await secureStorage.getToken().catch(() => null);
+    if (current !== token) {
+      return { status: 'superseded' };
+    }
+    if (!freshUser) {
+      await this.logout({ revoke: false, keepQueuedScans: true });
+      return { status: 'expired' };
+    }
+    await secureStorage.setUser(freshUser).catch(() => {});
+    return { status: 'valid', user: freshUser };
   },
 
   /**

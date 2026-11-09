@@ -179,8 +179,10 @@ const AppContext = createContext<AppContextValue | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const currentEventIdRef = useRef<string | null>(null);
+  const authTokenRef = useRef<string | null>(null);
   const eventSelectionGenerationRef = useRef(0);
   currentEventIdRef.current = state.currentEvent?.id ?? null;
+  authTokenRef.current = state.auth.token;
 
   const refreshSyncStatus = useCallback(() => {
     syncService.getStatus().then((status) => {
@@ -192,11 +194,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Scopes the scan queue to this user (discarding anyone else's queued
   // scans) before the app shows them as signed in.
-  const beginSession = useCallback(async (user: User, { restored }: { restored: boolean }) => {
+  const beginSession = useCallback(async (
+    user: User,
+    { restored, token: knownToken }: { restored: boolean; token?: string }
+  ) => {
     await scanQueue.setUser(user.id, { adoptUntagged: restored }).catch(error => {
       console.warn('[Session] Failed to scope the scan queue:', error);
     });
-    const token = await authService.getToken();
+    const token = knownToken ?? await authService.getToken();
+    authTokenRef.current = token;
     dispatch({ type: 'SET_AUTH', payload: { user, token: token! } });
     refreshSyncStatus();
   }, [refreshSyncStatus]);
@@ -223,7 +229,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return;
         }
         if (result.success && result.user) {
-          await beginSession(result.user, { restored: true });
+          // Signed in from the cached user straight away; /me may still be
+          // checking the token in the background (result.validation).
+          await beginSession(result.user, { restored: true, token: result.token });
 
           try {
             const cachedEvent = await syncService.getCurrentEvent();
@@ -251,6 +259,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
           } catch (cacheError) {
             console.error('Failed to restore cached data:', cacheError);
           }
+
+          // Handled after the cached data, so an expired session's sign-out
+          // always lands last.
+          const token = result.token;
+          void result.validation?.then((outcome) => {
+            // Signed out, or someone else signed in, in the meantime.
+            if (!token || authTokenRef.current !== token) return;
+            if (outcome.status === 'valid') {
+              dispatch({ type: 'SET_AUTH', payload: { user: outcome.user, token } });
+            } else if (outcome.status === 'expired') {
+              // authService already ran the full sign-out cleanup.
+              eventSelectionGenerationRef.current += 1;
+              authTokenRef.current = null;
+              dispatch({ type: 'CLEAR_AUTH' });
+            }
+          });
         } else {
           dispatch({ type: 'SET_LOADING', payload: false });
         }
@@ -345,6 +369,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async (): Promise<void> => {
     eventSelectionGenerationRef.current += 1;
     biometricService.clearSession();
+    authTokenRef.current = null;
     dispatch({ type: 'CLEAR_AUTH' });
     try {
       await authService.logout();
