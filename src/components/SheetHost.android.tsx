@@ -1,5 +1,10 @@
 import React, { useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
-import { StyleSheet, useWindowDimensions, View } from 'react-native';
+import {
+  experimental_LayoutConformance as LayoutConformance,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ModalBottomSheet, RNHostView, type ModalBottomSheetRef } from '@expo/ui/jetpack-compose';
 import { fillMaxHeight } from '@expo/ui/jetpack-compose/modifiers';
@@ -83,14 +88,22 @@ function ComposeSheet({ sheet }: { sheet: OpenSheet }) {
           matchContents={fit ? { vertical: true } : false}
           modifiers={fit ? undefined : [fillMaxHeight(size)]}
         >
-          {/* Fit: the content's own height, capped. Otherwise flexGrow with a
-              zero basis fills the height Compose gives it without taking a
-              list's full content height, so the list scrolls to its end. */}
-          <View style={fit ? { maxHeight } : styles.fill}>
-            <PresentedSheetContext.Provider value={presented}>
-              {content}
-            </PresentedSheetContext.Provider>
-          </View>
+          {/* Fit: the content's own height, capped. The cap is laid out
+              with strict (CSS) flexbox: under React Native's default Yoga
+              errata (StretchFlexBasis) the Sheet's ScrollView, which grows
+              by default, would stretch it to the cap, so every sheet opened
+              almost full height. Otherwise flexGrow with a zero basis fills
+              the height Compose gives it without taking a list's full
+              content height, so the list scrolls to its end. */}
+          <LayoutConformance mode={fit ? 'strict' : 'compatibility'}>
+            <View style={fit ? { maxHeight } : styles.fill}>
+              <LayoutConformance mode="compatibility">
+                <PresentedSheetContext.Provider value={presented}>
+                  {content}
+                </PresentedSheetContext.Provider>
+              </LayoutConformance>
+            </View>
+          </LayoutConformance>
         </RNHostView>
       </ModalBottomSheet>
     </MaterialHost>
