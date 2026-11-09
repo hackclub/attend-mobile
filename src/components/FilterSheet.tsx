@@ -465,14 +465,15 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 8,
   },
+  conjunctionControl: {
+    flex: 1,
+    maxWidth: 200,
+  },
   conjunctionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
     gap: 8,
-  },
-  conjunctionControl: {
-    width: 120,
   },
   emptyText: {
     marginBottom: 8,

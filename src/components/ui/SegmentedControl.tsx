@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import NativeSegmentedControlClass, {
   type SegmentedControlProps as NativeSegmentedControlProps,
@@ -6,6 +6,7 @@ import NativeSegmentedControlClass, {
 import { useTheme } from '../../theme';
 import { haptics } from '../../services/haptics';
 import { Icon } from './Icon';
+import { iosSegmentFontSize } from './segmentFontSize';
 import { ripple, STATE_LAYER_ALPHA } from './pressFeedback';
 
 export interface SegmentOption<T extends string> {
@@ -37,7 +38,9 @@ const segmentLabel = (option: SegmentOption<string>) =>
 
 /**
  * A segmented control: the native UISegmentedControl on iOS, Material 3
- * segmented buttons on Android. Labels stay on one line.
+ * segmented buttons on Android. Labels are never cut off: iOS shrinks the
+ * font a little, Android sizes segments to their labels and wraps as a last
+ * resort.
  */
 export function SegmentedControl<T extends string>(props: SegmentedControlProps<T>) {
   return Platform.OS === 'ios' ? <IosSegmentedControl {...props} /> : <MaterialSegmentedButtons {...props} />;
@@ -52,9 +55,13 @@ function IosSegmentedControl<T extends string>({
   testID,
 }: SegmentedControlProps<T>) {
   const { tokens, isDark } = useTheme();
+  const [width, setWidth] = useState(0);
+  const values = options.map(segmentLabel);
+  const fontSize = iosSegmentFontSize(values, width);
   return (
     <NativeSegmentedControl
-      values={options.map(segmentLabel)}
+      values={values}
+      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
       selectedIndex={Math.max(0, options.findIndex((option) => option.value === value))}
       onChange={(event) => {
         const next = options[event.nativeEvent.selectedSegmentIndex];
@@ -63,8 +70,8 @@ function IosSegmentedControl<T extends string>({
         onChange(next.value);
       }}
       appearance={isDark ? 'dark' : 'light'}
-      fontStyle={{ color: tokens.text }}
-      activeFontStyle={{ color: tokens.textH, fontWeight: '600' }}
+      fontStyle={{ color: tokens.text, fontSize }}
+      activeFontStyle={{ color: tokens.textH, fontWeight: '600', fontSize }}
       accessibilityLabel={accessibilityLabel}
       style={[styles.ios, style]}
       testID={testID}
@@ -113,7 +120,7 @@ function MaterialSegmentedButtons<T extends string>({
             {selected ? <Icon name="check" size={16} color={tokens.textH} /> : null}
             <Text
               style={[type.label, styles.label, { color: selected ? tokens.textH : tokens.text }]}
-              numberOfLines={1}
+              numberOfLines={2}
             >
               {label}
             </Text>
@@ -126,15 +133,20 @@ function MaterialSegmentedButtons<T extends string>({
 
 const styles = StyleSheet.create({
   ios: { height: 32 },
-  strip: { flexDirection: 'row', borderWidth: 1, overflow: 'hidden', minHeight: 40 },
+  strip: { flexDirection: 'row', borderWidth: 1, overflow: 'hidden', minHeight: 44 },
+  // Each segment starts at its label's width and shares what's left, so a
+  // long label takes room from short ones instead of being cut off.
   segment: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 'auto',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     paddingHorizontal: 12,
-    minHeight: 40,
+    paddingVertical: 4,
+    minHeight: 42,
   },
-  label: { flexShrink: 1 },
+  label: { flexShrink: 1, textAlign: 'center' },
 });
