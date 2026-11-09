@@ -1,7 +1,14 @@
-import React, { useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useEffect, useMemo, useCallback, useState } from 'react';
 import { ActivityIndicator, View, StyleSheet, Platform } from 'react-native';
 import { useAppShortcutLaunch } from './src/hooks/useAppShortcutLaunch';
-import { NavigationContainer, DefaultTheme, DarkTheme, NavigationContainerRef } from '@react-navigation/native';
+import {
+  NavigationContainer,
+  DefaultTheme,
+  DarkTheme,
+  createNavigationContainerRef,
+  getStateFromPath as defaultGetStateFromPath,
+  type LinkingOptions,
+} from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
 import type { AppleIcon } from 'react-native-bottom-tabs';
@@ -40,6 +47,8 @@ import { ThemeProvider, useTheme, useThemedStyles, type ThemeColors } from './sr
 import type { RootStackParamList, MainTabParamList } from './src/types';
 import * as Sentry from '@sentry/react-native';
 import { scrubIdCheckBreadcrumb, scrubIdCheckEvent } from './src/services/idCheck/sentryScrub';
+import { stripHttpBreadcrumbQuery } from './src/services/breadcrumbScrub';
+import { fallbackToRegisteredRoute } from './src/services/deepLinks';
 
 Sentry.init({
   dsn: 'https://6a7370567b34299ea8bb4ecf2aec3628@o4509680631087104.ingest.us.sentry.io/4510470752043008',
@@ -69,8 +78,12 @@ Sentry.init({
     Sentry.feedbackIntegration(),
   ],
 
-  // Keep anything logged during an on-device ID check out of Sentry.
-  beforeBreadcrumb: scrubIdCheckBreadcrumb,
+  // Keep anything logged during an on-device ID check out of Sentry, and
+  // strip query strings (search terms) from HTTP breadcrumb URLs.
+  beforeBreadcrumb: (breadcrumb) => {
+    const scrubbed = scrubIdCheckBreadcrumb(breadcrumb);
+    return scrubbed ? stripHttpBreadcrumbQuery(scrubbed) : null;
+  },
   beforeSend: scrubIdCheckEvent,
 
   // uncomment the line below to enable Spotlight (https://spotlightjs.com)
@@ -297,7 +310,12 @@ function RootNavigator() {
   );
 }
 
-const linking = {
+const navigationRef = createNavigationContainerRef<RootStackParamList>();
+
+const rootRouteNames = () =>
+  navigationRef.isReady() ? navigationRef.getRootState()?.routeNames : undefined;
+
+const linking: LinkingOptions<RootStackParamList> = {
   prefixes: [Linking.createURL('/'), 'attend://'],
   config: {
     screens: {
@@ -320,26 +338,50 @@ const linking = {
       InboxMessage: 'messages/:messageId',
     },
   },
+  // Scan and Search live in Main (organizers only) and My tickets in
+  // ParticipantMain (participants only); a link to a route this user
+  // doesn't have opens their home instead of doing nothing.
+  getStateFromPath: (path, options) =>
+    fallbackToRegisteredRoute(defaultGetStateFromPath(path, options), rootRouteNames()),
 };
 
+// Only genuine attend:// deep links count. A loose substring check also
+// matched the Expo dev client's launch URL, which contains the app slug
+// ("attend-scanner") and fired before the navigator mounted.
+const isScannerLink = (url: string) => /^attend:\/\/(--\/)?scan(ner)?(\/|\?|$)/.test(url);
+
 export default Sentry.wrap(function App() {
-  const navigationRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
+  return (
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <AppProvider>
+          <AppNavigation />
+        </AppProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
+  );
+});
+
+function AppNavigation() {
+  const { state } = useApp();
+  const [navigationReady, setNavigationReady] = useState(false);
 
   // iOS home screen quick actions (Android shortcuts arrive as plain links).
-  useAppShortcutLaunch();
+  // Held until auth has loaded, the user is signed in and the navigator is
+  // mounted: on a cold start RootNavigator first shows the auth spinner, and
+  // a link opened then would be consumed and dropped.
+  useAppShortcutLaunch(
+    navigationReady && !state.auth.isLoading && state.auth.isAuthenticated
+  );
 
   useEffect(() => {
-    // Only genuine attend:// deep links count. A loose substring check also
-    // matched the Expo dev client's launch URL, which contains the app slug
-    // ("attend-scanner") and fired before the navigator mounted.
-    const isScannerLink = (url: string) =>
-      /^attend:\/\/(--\/)?scan(ner)?(\/|\?|$)/.test(url);
-
     const openScanner = (url?: string | null) => {
-      if (url && isScannerLink(url) && navigationRef.current?.isReady()) {
-        // Navigate to scanner tab when tapping Live Activity
-        navigationRef.current.navigate('Main', { screen: 'Scanner' } as any);
-      }
+      if (!url || !isScannerLink(url) || !navigationRef.isReady()) return;
+      // A participant-only user has no Scanner; the linking config's
+      // fallback already sends them home.
+      if (!rootRouteNames()?.includes('Main')) return;
+      // Navigate to scanner tab when tapping Live Activity
+      navigationRef.navigate('Main', { screen: 'Scanner' } as any);
     };
 
     const subscription = Linking.addEventListener('url', (event) => openScanner(event.url));
@@ -352,11 +394,11 @@ export default Sentry.wrap(function App() {
     // participant's tickets as before.
     const notifSub = notificationService.addNotificationResponseListener((response) => {
       const data = response.notification.request.content.data as { type?: string; message_id?: string } | undefined;
-      if (data?.type !== 'message' || !navigationRef.current) return;
+      if (data?.type !== 'message' || !navigationRef.isReady()) return;
       if (data.message_id) {
-        navigationRef.current.navigate('InboxMessage', { messageId: data.message_id });
+        navigationRef.navigate('InboxMessage', { messageId: data.message_id });
       } else {
-        navigationRef.current.navigate('ParticipantMain' as any);
+        navigationRef.navigate('ParticipantMain' as any);
       }
     });
 
@@ -367,29 +409,23 @@ export default Sentry.wrap(function App() {
   }, []);
 
   return (
-    <SafeAreaProvider>
-      <ThemeProvider>
-        <AppProvider>
-          <ThemedNavigationContainer navigationRef={navigationRef}>
-            <RootNavigator />
-          </ThemedNavigationContainer>
-        </AppProvider>
-      </ThemeProvider>
-    </SafeAreaProvider>
+    <ThemedNavigationContainer onReady={() => setNavigationReady(true)}>
+      <RootNavigator />
+    </ThemedNavigationContainer>
   );
-});
+}
 
 function ThemedNavigationContainer({
-  navigationRef,
+  onReady,
   children,
 }: {
-  navigationRef: React.RefObject<NavigationContainerRef<RootStackParamList> | null>;
+  onReady: () => void;
   children: React.ReactNode;
 }) {
   const theme = useNavigationTheme();
 
   return (
-    <NavigationContainer ref={navigationRef} theme={theme} linking={linking}>
+    <NavigationContainer ref={navigationRef} theme={theme} linking={linking} onReady={onReady}>
       {/* "auto" tracks the system appearance, so the clock and icons stay
           readable against whichever background the scheme paints. */}
       <StatusBar style="auto" />
