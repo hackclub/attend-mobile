@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   TextInput,
   Modal,
   Pressable,
@@ -12,25 +11,23 @@ import {
   ScrollView,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { haptics } from '../services/haptics';
 import { EventCover } from '../components/EventBanner';
-import { Button, Icon, pressedStyle, ripple } from '../components/ui';
-import { useTheme } from '../theme';
+import { Button, Icon, OverlayIconButton, StatusGlyph, type StatusType } from '../components/ui';
+import { overlayTokens, useTheme, type ThemeTokens } from '../theme';
 import { ParticipantAvatar } from '../components/ParticipantAvatar';
 import { useScanFeedback } from '../hooks/useScanFeedback';
 import { useScanner } from '../hooks/useScanner';
 import { useScannerPowerMode } from '../hooks/useScannerPowerMode';
 import { useApp } from '../context/AppContext';
 import type { ScannerResult } from '../services/scannerCore';
-import { colors } from '../theme/colors';
 import type { AppStackParamList } from '../types';
 import { startScreenPinning, stopScreenPinning } from '../../modules/activity-controller/src';
 
@@ -51,7 +48,7 @@ export function KioskScreen() {
     scanContextId,
   } = route.params;
   const { state } = useApp();
-  const { tokens, type, radii } = useTheme();
+  const { tokens, type } = useTheme();
   // Read from the provider rather than a native SafeAreaView: presented as a
   // full-screen modal, the native view under-reported the top inset on
   // iPhone and the header ran into the Dynamic Island.
@@ -59,7 +56,8 @@ export function KioskScreen() {
   // Measured per render, not once at import: the scene resizes under us every
   // time iPhone Duo is folded, unfolded or rotated.
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const scanSize = Math.min(windowWidth - 48, windowHeight * 0.42, 420);
+  // About 280 on a phone, more on a tablet.
+  const scanSize = Math.min(windowWidth - 48, windowHeight * 0.42, windowWidth >= 600 ? 420 : 280);
   const {
     handleScan,
     isProcessing,
@@ -135,18 +133,42 @@ export function KioskScreen() {
   };
 
   if (!permission) {
-    return <View style={styles.container} />;
+    return <View style={[kiosk.screen, { backgroundColor: tokens.bg }]} />;
   }
   if (!permission.granted) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.centered}>
-          <Text style={styles.permTitle}>Camera Access Required</Text>
-          <TouchableOpacity style={styles.permBtn} onPress={requestPermission}>
-            <Text style={styles.permBtnText}>Grant Permission</Text>
-          </TouchableOpacity>
+      <View
+        style={[
+          kiosk.screen,
+          kiosk.centered,
+          { backgroundColor: tokens.bg, paddingTop: insets.top, paddingBottom: insets.bottom },
+        ]}
+      >
+        <View style={[kiosk.stateIcon, { backgroundColor: tokens.tint.grey.bg }]}>
+          <Icon name="camera" size={28} color={tokens.tint.grey.fg} />
         </View>
-      </SafeAreaView>
+        <Text style={[type.h2, kiosk.center, { color: tokens.textH }]} accessibilityRole="header">
+          Camera access required
+        </Text>
+        <Text style={[type.body, kiosk.center, { color: tokens.text2 }]}>
+          Attend needs camera access to scan attendee QR codes.
+        </Text>
+        <Button variant="primary" title="Allow camera" onPress={requestPermission} style={kiosk.stateAction} />
+        {/* Without the camera there's nothing to pin the screen for. */}
+        <Button
+          variant="link"
+          icon="lock-closed"
+          title="Exit kiosk mode"
+          onPress={() => setEscapeOpen(true)}
+        />
+        <EscapeModal
+          visible={escapeOpen}
+          onClose={() => setEscapeOpen(false)}
+          onUnlocked={onUnlocked}
+          kioskPin={kioskPin}
+          biometricUnlock={biometricUnlock}
+        />
+      </View>
     );
   }
 
@@ -166,28 +188,30 @@ export function KioskScreen() {
     >
       {/* White type on the banner, whatever the system appearance. */}
       <StatusBar style="light" />
-      <View style={[kiosk.banner, { paddingTop: insets.top + 64 }]}>
+      <View
+        style={[
+          kiosk.banner,
+          { minHeight: Math.max(BANNER_HEIGHT, insets.top + 96), paddingTop: insets.top + 8 },
+        ]}
+      >
         {event ? <EventCover event={event} /> : null}
         <Text style={kiosk.eventName} numberOfLines={2}>{event?.name}</Text>
         {selectedContext ? <Text style={[type.body, kiosk.onBanner]}>{selectedContext.name}</Text> : null}
-        <Pressable
-          onPress={() => setEscapeOpen(true)}
-          style={({ pressed }) => [kiosk.lock, { top: insets.top + 8 }, pressedStyle(pressed)]}
-          android_ripple={ripple('rgba(255,255,255,0.3)', { borderless: true, radius: 24 })}
-          hitSlop={8}
-          accessibilityRole="button"
+        <OverlayIconButton
+          icon="lock-closed"
           accessibilityLabel="Exit kiosk mode"
           accessibilityHint={biometricUnlock ? 'Asks for the PIN or biometrics' : 'Asks for the PIN'}
-        >
-          <Icon name="lock-closed" size={20} color="#ffffff" />
-        </Pressable>
+          onPress={() => setEscapeOpen(true)}
+          hitSlop={8}
+          style={[kiosk.lock, { top: insets.top + 8 }]}
+        />
       </View>
 
       <View style={[kiosk.body, { paddingBottom: insets.bottom + 24 }]}>
         <Text style={[type.h1, kiosk.center, { color: tokens.textH }]} accessibilityRole="header" accessibilityLiveRegion="polite">
           {prompt}
         </Text>
-        <View style={[kiosk.camera, { width: scanSize, height: scanSize, borderRadius: radii.container }]}>
+        <View style={[kiosk.camera, { width: scanSize, height: scanSize }]}>
           <CameraView
             style={StyleSheet.absoluteFill}
             facing={facing}
@@ -195,10 +219,10 @@ export function KioskScreen() {
             onBarcodeScanned={contextValid && !escapeOpen ? onBarcode : undefined}
           />
           <View style={kiosk.frame} pointerEvents="none">
-            <View style={[styles.corner, kiosk.corner, styles.tl]} />
-            <View style={[styles.corner, kiosk.corner, styles.tr]} />
-            <View style={[styles.corner, kiosk.corner, styles.bl]} />
-            <View style={[styles.corner, kiosk.corner, styles.br]} />
+            <View style={[kiosk.corner, kiosk.tl]} />
+            <View style={[kiosk.corner, kiosk.tr]} />
+            <View style={[kiosk.corner, kiosk.bl]} />
+            <View style={[kiosk.corner, kiosk.br]} />
           </View>
         </View>
         <Button
@@ -222,37 +246,54 @@ export function KioskScreen() {
   );
 }
 
+const BANNER_HEIGHT = 150;
+const CAMERA_RADIUS = 20;
+const FRAME = { inset: '14%', size: 44, thickness: 6, radius: 20 } as const;
+
 const kiosk = StyleSheet.create({
   screen: { flex: 1 },
-  banner: { paddingHorizontal: 16, paddingBottom: 16, overflow: 'hidden' },
-  eventName: { color: '#ffffff', fontSize: 30, lineHeight: 36, fontWeight: '700', paddingRight: 56 },
-  onBanner: { color: '#ffffff' },
-  lock: {
-    position: 'absolute',
-    right: 16,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(15,20,26,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  centered: { alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 32 },
+  stateIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  stateAction: { marginTop: 16 },
+  // Name and context pinned to the bottom, so the photo shows above them.
+  banner: { paddingHorizontal: 16, paddingBottom: 16, overflow: 'hidden', justifyContent: 'flex-end' },
+  eventName: { color: overlayTokens.on, fontSize: 30, lineHeight: 36, fontWeight: '700', paddingRight: 56 },
+  onBanner: { color: overlayTokens.on },
+  lock: { position: 'absolute', right: 16 },
   body: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 24, paddingHorizontal: 24, paddingTop: 24 },
   center: { textAlign: 'center' },
-  camera: { overflow: 'hidden', backgroundColor: '#0b0b0f' },
-  frame: { position: 'absolute', top: '14%', left: '14%', right: '14%', bottom: '14%' },
-  corner: { borderColor: '#5be0b5' },
+  camera: { overflow: 'hidden', borderRadius: CAMERA_RADIUS, backgroundColor: overlayTokens.cameraStage },
+  frame: { position: 'absolute', top: FRAME.inset, left: FRAME.inset, right: FRAME.inset, bottom: FRAME.inset },
+  corner: { position: 'absolute', width: FRAME.size, height: FRAME.size, borderColor: overlayTokens.kioskFrame },
+  tl: { top: 0, left: 0, borderTopWidth: FRAME.thickness, borderLeftWidth: FRAME.thickness, borderTopLeftRadius: FRAME.radius },
+  tr: { top: 0, right: 0, borderTopWidth: FRAME.thickness, borderRightWidth: FRAME.thickness, borderTopRightRadius: FRAME.radius },
+  bl: { bottom: 0, left: 0, borderBottomWidth: FRAME.thickness, borderLeftWidth: FRAME.thickness, borderBottomLeftRadius: FRAME.radius },
+  br: { bottom: 0, right: 0, borderBottomWidth: FRAME.thickness, borderRightWidth: FRAME.thickness, borderBottomRightRadius: FRAME.radius },
 });
 
+const RESULT: Record<ScannerResult['outcome'], { status: StatusType; label: string }> = {
+  confirming: { status: 'in-progress', label: 'Confirming' },
+  scanned: { status: 'success', label: 'Scanned' },
+  already_scanned: { status: 'warning', label: 'Already Scanned' },
+  // Not confirmed by Attend yet, so never success-coloured.
+  queued: { status: 'pending', label: 'Saved offline' },
+  not_scanned: { status: 'error', label: 'Not Scanned' },
+};
+
+function resultColor(status: StatusType, tokens: ThemeTokens): string {
+  switch (status) {
+    case 'success': return tokens.success;
+    case 'warning': return tokens.warning;
+    case 'error': return tokens.error;
+    case 'in-progress': return tokens.info;
+    default: return tokens.inactive;
+  }
+}
+
 function KioskResult({ result }: { result: ScannerResult }) {
-  const status = {
-    confirming: { tint: colors.blue, icon: 'sync' as const, label: 'Confirming' },
-    scanned: { tint: colors.green, icon: 'checkmark-circle' as const, label: 'Scanned' },
-    already_scanned: { tint: colors.orange, icon: 'time' as const, label: 'Already Scanned' },
-    // Not confirmed by Attend yet, so never success-coloured.
-    queued: { tint: colors.gray[400], icon: 'cloud-offline' as const, label: 'Saved offline' },
-    not_scanned: { tint: colors.redOnDark, icon: 'close-circle' as const, label: 'Not Scanned' },
-  }[result.outcome];
+  const { tokens, type, radii, shadowOpacity, elevation } = useTheme();
+  const status = RESULT[result.outcome];
+  const tint = resultColor(status.status, tokens);
   const name = result.participant?.display_name || result.participant?.full_name || '';
 
   return (
@@ -263,20 +304,31 @@ function KioskResult({ result }: { result: ScannerResult }) {
         bounces={false}
         showsVerticalScrollIndicator={false}
       >
-      <View style={[styles.resultCard, { borderColor: status.tint }]}>
-        <ParticipantAvatar participant={result.participant} size={76} />
-        <View style={styles.resultCopy}>
-          <View style={styles.resultStatusRow}>
-            <Ionicons name={status.icon} size={22} color={status.tint} />
-            <Text style={[styles.resultLabel, { color: status.tint }]}>{status.label}</Text>
+        <View
+          style={[
+            styles.resultCard,
+            {
+              backgroundColor: tokens.bg,
+              borderColor: tint,
+              borderRadius: radii.container,
+              shadowOpacity: shadowOpacity * 2,
+              elevation,
+            },
+          ]}
+        >
+          <ParticipantAvatar participant={result.participant} size={64} />
+          <View style={styles.resultCopy}>
+            <View style={styles.resultStatusRow}>
+              <StatusGlyph type={status.status} color={tint} size={20} />
+              <Text style={[type.h3, { color: tint }]}>{status.label}</Text>
+            </View>
+            {name ? <Text style={[type.h1, { color: tokens.textH }]}>{name}</Text> : null}
+            {result.message ? <Text style={[type.body, { color: tokens.text2 }]}>{result.message}</Text> : null}
+            <Text style={[type.small, styles.resultReady, { color: tokens.muted }]}>
+              {result.outcome === 'confirming' ? 'Hold steady' : 'Ready for next attendee'}
+            </Text>
           </View>
-          {name ? <Text style={styles.resultName}>{name}</Text> : null}
-          {result.message ? <Text style={styles.resultMessage}>{result.message}</Text> : null}
-          <Text style={styles.resultReady}>
-            {result.outcome === 'confirming' ? 'Hold steady' : 'Ready for next attendee'}
-          </Text>
         </View>
-      </View>
       </ScrollView>
     </View>
   );
@@ -291,6 +343,7 @@ interface EscapeProps {
 }
 
 function EscapeModal({ visible, onClose, onUnlocked, kioskPin, biometricUnlock }: EscapeProps) {
+  const { tokens, type, radii } = useTheme();
   const [entry, setEntry] = useState('');
   const [attempts, setAttempts] = useState(0);
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
@@ -368,34 +421,38 @@ function EscapeModal({ visible, onClose, onUnlocked, kioskPin, biometricUnlock }
       animationType="fade"
       onRequestClose={onClose}
     >
-      <View style={styles.modalBackdrop}>
-        <View style={styles.modalCard}>
-          <TouchableOpacity
-            style={styles.modalClose}
+      <View style={[styles.modalBackdrop, { backgroundColor: tokens.overlay }]}>
+        <View style={[styles.modalCard, { backgroundColor: tokens.bg, borderRadius: radii.container }]}>
+          <Button
+            variant="plain-icon"
+            icon="close"
+            title="Close"
             onPress={onClose}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <Ionicons name="close" size={24} color={colors.gray[500]} />
-          </TouchableOpacity>
+            style={styles.modalClose}
+          />
 
-          <View style={styles.modalIcon}>
-            <Ionicons name="lock-closed" size={32} color={colors.red} />
+          <View style={[styles.modalIcon, { backgroundColor: tokens.tint.red.bg }]}>
+            <Icon name="lock-closed" size={28} color={tokens.tint.red.fg} />
           </View>
-          <Text style={styles.modalTitle}>Exit Kiosk Mode</Text>
-          <Text style={styles.modalSubtitle}>
+          <Text style={[type.h2, { color: tokens.textH }]} accessibilityRole="header">Exit kiosk mode</Text>
+          <Text style={[type.body, styles.modalSubtitle, { color: tokens.text2 }]}>
             Enter your {PIN_LENGTH}-digit PIN to unlock.
           </Text>
 
           <Pressable
             onPress={() => !locked && inputRef.current?.focus()}
             style={styles.dotsRow}
+            accessibilityRole="button"
+            accessibilityLabel={`PIN, ${entry.length} of ${PIN_LENGTH} digits entered`}
+            accessibilityHint="Opens the keypad"
           >
             {Array.from({ length: PIN_LENGTH }).map((_, i) => (
               <View
                 key={i}
                 style={[
                   styles.dot,
-                  i < entry.length && styles.dotFilled,
+                  { borderColor: tokens.input },
+                  i < entry.length && { backgroundColor: tokens.accent, borderColor: tokens.accent },
                 ]}
               />
             ))}
@@ -414,25 +471,20 @@ function EscapeModal({ visible, onClose, onUnlocked, kioskPin, biometricUnlock }
             autoFocus
           />
 
-          {locked ? (
-            <Text style={styles.lockoutText}>
-              Too many attempts. Try again in {remaining}s.
-            </Text>
-          ) : attempts > 0 ? (
-            <Text style={styles.errText}>
-              Wrong PIN — {MAX_PIN_ATTEMPTS - attempts} attempt
-              {MAX_PIN_ATTEMPTS - attempts === 1 ? '' : 's'} left
-            </Text>
-          ) : (
-            <View style={{ height: 18 }} />
-          )}
+          <Text
+            style={[type.body, styles.feedback, { color: locked ? tokens.warning : tokens.error }]}
+            accessibilityLiveRegion="polite"
+          >
+            {locked
+              ? `Too many attempts. Try again in ${remaining}s.`
+              : attempts > 0
+                ? `Wrong PIN — ${MAX_PIN_ATTEMPTS - attempts} attempt${MAX_PIN_ATTEMPTS - attempts === 1 ? '' : 's'} left`
+                : ''}
+          </Text>
 
-          {biometricUnlock && !locked && (
-            <TouchableOpacity style={styles.bioBtn} onPress={tryBiometric}>
-              <Ionicons name="finger-print" size={20} color={colors.red} />
-              <Text style={styles.bioBtnText}>Use biometrics</Text>
-            </TouchableOpacity>
-          )}
+          {biometricUnlock && !locked ? (
+            <Button icon="finger-print" title="Use biometrics" onPress={tryBiometric} style={styles.bioBtn} />
+          ) : null}
         </View>
       </View>
     </Modal>
@@ -440,27 +492,6 @@ function EscapeModal({ visible, onClose, onUnlocked, kioskPin, biometricUnlock }
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.black },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  permTitle: { color: colors.white, fontSize: 20, fontWeight: '700', marginBottom: 16 },
-  permBtn: {
-    backgroundColor: colors.red,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 10,
-  },
-  permBtnText: { color: colors.white, fontSize: 16, fontWeight: '600' },
-
-
-
-
-  corner: { position: 'absolute', width: 48, height: 48, borderColor: colors.white },
-  tl: { top: 0, left: 0, borderTopWidth: 5, borderLeftWidth: 5, borderTopLeftRadius: 6 },
-  tr: { top: 0, right: 0, borderTopWidth: 5, borderRightWidth: 5, borderTopRightRadius: 6 },
-  bl: { bottom: 0, left: 0, borderBottomWidth: 5, borderLeftWidth: 5, borderBottomLeftRadius: 6 },
-  br: { bottom: 0, right: 0, borderBottomWidth: 5, borderRightWidth: 5, borderBottomRightRadius: 6 },
-
-
   resultBackdrop: {
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
@@ -472,87 +503,49 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 640,
     minHeight: 116,
-    backgroundColor: 'rgba(15,23,42,0.97)',
     padding: 18,
-    borderRadius: 22,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 18,
+    gap: 16,
     borderWidth: 2,
     shadowColor: '#000',
-    shadowOpacity: 0.25,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 12 },
-    elevation: 12,
   },
   resultScroll: { width: '100%', maxWidth: 640, maxHeight: '55%' },
   resultScrollContent: { flexGrow: 1, justifyContent: 'flex-end' },
-  resultName: {
-    fontSize: 24,
-    lineHeight: 29,
-    fontWeight: '800',
-    color: colors.white,
-  },
-  resultCopy: { flex: 1, gap: 3 },
-  resultStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  resultLabel: { fontSize: 17, fontWeight: '800' },
-  resultMessage: { color: colors.gray[200], fontSize: 14, lineHeight: 19 },
-  resultReady: { color: colors.gray[400], fontSize: 13, fontWeight: '600', marginTop: 3 },
+  resultCopy: { flex: 1, gap: 4 },
+  resultStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  resultReady: { marginTop: 2 },
 
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
   },
   modalCard: {
-    backgroundColor: colors.white,
-    borderRadius: 24,
-    padding: 28,
+    padding: 24,
+    paddingTop: 28,
     width: '100%',
     maxWidth: 360,
     alignItems: 'center',
   },
-  modalClose: { position: 'absolute', top: 12, right: 12, padding: 4 },
+  modalClose: { position: 'absolute', top: 4, right: 4 },
   modalIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(236,55,80,0.1)',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
   },
-  modalTitle: { fontSize: 20, fontWeight: '700', color: colors.text.primary },
-  modalSubtitle: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    marginTop: 6,
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  dotsRow: { flexDirection: 'row', gap: 16, marginBottom: 12 },
-  dot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: colors.gray[300],
-  },
-  dotFilled: { backgroundColor: colors.red, borderColor: colors.red },
+  modalSubtitle: { marginTop: 4, marginBottom: 20, textAlign: 'center' },
+  // 44pt tall, so the whole row is an easy target for the keypad.
+  dotsRow: { flexDirection: 'row', alignItems: 'center', gap: 16, minHeight: 44, paddingHorizontal: 8 },
+  dot: { width: 16, height: 16, borderRadius: 8, borderWidth: 2 },
   hiddenInput: { position: 'absolute', width: 1, height: 1, opacity: 0 },
-  errText: { color: colors.red, fontSize: 13, marginTop: 6, height: 18 },
-  lockoutText: { color: colors.orange, fontSize: 13, marginTop: 6, height: 18 },
-  bioBtn: {
-    marginTop: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    backgroundColor: 'rgba(236,55,80,0.08)',
-  },
-  bioBtnText: { color: colors.red, fontSize: 15, fontWeight: '600' },
+  // Reserves its line so the card doesn't jump when a message appears.
+  feedback: { minHeight: 20, marginTop: 8, textAlign: 'center' },
+  bioBtn: { marginTop: 12 },
 });

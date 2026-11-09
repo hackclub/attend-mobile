@@ -199,6 +199,8 @@ export const overlayTokens = {
   onActive: '#0f141a',
   /** Scan frame corners. */
   scanFrame: '#2bb534',
+  /** The kiosk's larger, softer frame inside its camera tile. */
+  kioskFrame: '#5be0b5',
   /** Behind the camera preview before it starts. */
   cameraStage: '#0b0b0f',
 } as const;

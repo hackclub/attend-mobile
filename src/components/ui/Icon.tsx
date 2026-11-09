@@ -21,6 +21,7 @@ import ExclamationCircleIcon from 'react-native-heroicons/outline/ExclamationCir
 import ExclamationIcon from 'react-native-heroicons/outline/ExclamationIcon';
 import ExternalLinkIcon from 'react-native-heroicons/outline/ExternalLinkIcon';
 import FilterIcon from 'react-native-heroicons/outline/FilterIcon';
+import FingerPrintIcon from 'react-native-heroicons/outline/FingerPrintIcon';
 import HomeIcon from 'react-native-heroicons/outline/HomeIcon';
 import IdentificationIcon from 'react-native-heroicons/outline/IdentificationIcon';
 import InboxIcon from 'react-native-heroicons/outline/InboxIcon';
@@ -148,6 +149,7 @@ export const icons = {
   camera: CameraIcon,
   'device-mobile': DeviceMobileIcon,
   identification: IdentificationIcon,
+  'finger-print': FingerPrintIcon,
   wifi: WifiIcon,
   ban: BanIcon,
   'clipboard-list': ClipboardListIcon,
