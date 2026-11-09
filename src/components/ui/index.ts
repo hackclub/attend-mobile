@@ -16,6 +16,7 @@ export {
   type SegmentOption,
   type SegmentedControlProps,
 } from './SegmentedControl';
+export { Screen, ScreenHeading, type ScreenProps, type ScreenHeadingProps } from './Screen';
 export { Stat, type StatProps } from './Stat';
 export {
   StatusIndicator,
