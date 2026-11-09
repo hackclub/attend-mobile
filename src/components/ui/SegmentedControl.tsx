@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { PixelRatio, Platform, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import NativeSegmentedControlClass, {
   type SegmentedControlProps as NativeSegmentedControlProps,
 } from '@react-native-segmented-control/segmented-control';
@@ -58,7 +58,7 @@ function IosSegmentedControl<T extends string>({
   const { tokens, isDark } = useTheme();
   const [width, setWidth] = useState(0);
   const values = options.map(segmentLabel);
-  const fontSize = iosSegmentFontSize(values, width);
+  const fontSize = iosSegmentFontSize(values, width, PixelRatio.getFontScale());
   return (
     <NativeSegmentedControl
       values={values}
