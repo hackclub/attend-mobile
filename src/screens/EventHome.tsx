@@ -51,6 +51,7 @@ import {
   type OverviewSection,
 } from '../services/overview';
 import { radii, useTheme } from '../theme';
+import { travelClock, travelWeekday } from '../services/travelTimes';
 import type { Event, MainTabParamList, AppStackParamList, TravelCalendarEntry } from '../types';
 import { SwitchEventList } from './SwitchEventScreen';
 
@@ -272,7 +273,7 @@ function Overview({
         title="Next arrivals"
         actions={<Button variant="link" title="Travel" onPress={() => navigation.navigate('Travel')} />}
       >
-        <Arrivals travel={travel} live={running} />
+        <Arrivals travel={travel} live={running} timeZone={event.timezone} />
       </Container>
     ) : null,
 
@@ -525,7 +526,15 @@ function Placeholder({ icon, title, detail, onPress }: { icon?: IconName; title:
   );
 }
 
-function Arrivals({ travel, live }: { travel: Remote<{ entries: TravelCalendarEntry[] }>; live: boolean }) {
+function Arrivals({
+  travel,
+  live,
+  timeZone,
+}: {
+  travel: Remote<{ entries: TravelCalendarEntry[]; eventTimezone?: string | null }>;
+  live: boolean;
+  timeZone?: string | null;
+}) {
   const { tokens, type } = useTheme();
   const groups = useMemo(
     () => (travel.state === 'ready' ? nextArrivals(travel.data.entries) : []),
@@ -555,21 +564,37 @@ function Arrivals({ travel, live }: { travel: Remote<{ entries: TravelCalendarEn
       ) : null}
       {groups.length === 0 ? (
         <Text style={[type.body, { color: tokens.text2 }]}>No upcoming arrivals.</Text>
-      ) : groups.map((group) => <ArrivalRow key={group.key} group={group} />)}
+      ) : groups.map((group) => (
+        <ArrivalRow
+          key={group.key}
+          group={group}
+          timeZone={(travel.state === 'ready' ? travel.data.eventTimezone : null) ?? timeZone}
+        />
+      ))}
     </View>
   );
 }
 
-function ArrivalRow({ group }: { group: ArrivalGroup }) {
+// Times read as the Travel tab's do: "2:15 PM" in the event's timezone, the
+// period muted, and the weekday above for a later day.
+function ArrivalRow({ group, timeZone }: { group: ArrivalGroup; timeZone?: string | null }) {
   const { tokens, type } = useTheme();
-  const at = new Date(group.at);
-  const today = sameDay(at, new Date());
+  const today = sameDay(new Date(group.at), new Date());
+  const time = travelClock(group.at, timeZone);
+  const weekday = today ? null : travelWeekday(group.at, timeZone);
+  const spoken = time ? [weekday, time.time, time.period].filter(Boolean).join(' ') : null;
   const service = group.reference || MODE_LABEL[group.mode];
   const who = group.people.length === 1 ? group.people[0] : `${group.people.length} people`;
   return (
-    <View style={styles.arrivalRow} accessible accessibilityLabel={[clock(group.at), service, who, group.route].filter(Boolean).join(', ')}>
+    <View style={styles.arrivalRow} accessible accessibilityLabel={[spoken, service, who, group.route].filter(Boolean).join(', ')}>
       <Text style={[type.label, styles.arrivalTime, { color: tokens.textH }]}>
-        {today ? clock(group.at) : `${at.toLocaleDateString([], { weekday: 'short' })}\n${clock(group.at)}`}
+        {weekday ? `${weekday}\n` : null}
+        {time ? (
+          <>
+            <Text style={styles.tabular}>{time.time}</Text>
+            <Text style={[type.body, { color: tokens.muted }]}> {time.period}</Text>
+          </>
+        ) : '—:—'}
       </Text>
       <View style={styles.flex}>
         <Text style={[type.body, { color: tokens.text }]}>
@@ -635,5 +660,6 @@ const styles = StyleSheet.create({
   },
   placeholderIcon: { width: 40, height: 40, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
   arrivalRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
-  arrivalTime: { width: 64 },
+  arrivalTime: { width: 72 },
+  tabular: { fontVariant: ['tabular-nums'] },
 });

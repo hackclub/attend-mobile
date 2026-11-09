@@ -1,4 +1,4 @@
-import { travelClock, travelDayTime } from '../travelTimes';
+import { travelClock, travelDayTime, travelWeekday } from '../travelTimes';
 
 describe('travelClock', () => {
   it('splits the time from its period in the event timezone', () => {
@@ -13,6 +13,14 @@ describe('travelClock', () => {
 
   it('falls back to the device timezone for an unknown name', () => {
     expect(travelClock('2026-11-14T03:15:00Z', 'Nowhere/Special')).not.toBeNull();
+  });
+});
+
+describe('travelWeekday', () => {
+  it('reads the weekday in the event timezone', () => {
+    expect(travelWeekday('2026-11-13T23:30:00Z', 'Australia/Sydney')).toBe('Sat');
+    expect(travelWeekday('2026-11-13T23:30:00Z', 'UTC')).toBe('Fri');
+    expect(travelWeekday(null)).toBeNull();
   });
 });
 

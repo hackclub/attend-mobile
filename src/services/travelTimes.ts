@@ -25,11 +25,15 @@ export function travelClock(
   return { time: `${get('hour')}:${get('minute')}`, period: get('dayPeriod').toUpperCase() };
 }
 
+/** "Sat", or null for a missing or bad timestamp. */
+export function travelWeekday(iso: string | null | undefined, timeZone?: string | null): string | null {
+  if (!iso) return null;
+  return parts(iso, timeZone, { weekday: 'short' })?.find((x) => x.type === 'weekday')?.value ?? null;
+}
+
 /** "Sat 10:30 AM", or null for a missing or bad timestamp. */
 export function travelDayTime(iso: string | null | undefined, timeZone?: string | null): string | null {
   const clock = travelClock(iso, timeZone);
   if (!clock || !iso) return null;
-  const p = parts(iso, timeZone, { weekday: 'short' });
-  const weekday = p?.find((x) => x.type === 'weekday')?.value;
-  return [weekday, clock.time, clock.period].filter(Boolean).join(' ');
+  return [travelWeekday(iso, timeZone), clock.time, clock.period].filter(Boolean).join(' ');
 }
