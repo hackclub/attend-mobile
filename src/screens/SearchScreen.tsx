@@ -3,10 +3,8 @@ import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   FlatList,
-  TouchableOpacity,
-  Keyboard,
+  Pressable,
   ActivityIndicator,
   RefreshControl,
   ScrollView,
@@ -14,7 +12,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
 import { useEventAccess } from '../hooks/useEventAccess';
 import { useParticipants } from '../hooks/useParticipants';
 import { useParticipantViews } from '../hooks/useParticipantViews';
@@ -24,8 +21,16 @@ import { SplitView } from '../components/SplitView';
 import { FilterSheet } from '../components/FilterSheet';
 import { ParticipantDetailContent } from './ParticipantDetailContent';
 import { api } from '../services/api';
-import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
-import { ScreenHeader, SearchField, useUiStyles } from '../components/ui';
+import { useTheme } from '../theme';
+import {
+  Icon,
+  SegmentedControl,
+  TextField,
+  isAndroid,
+  pressedStyle,
+  ripple,
+  type IconName,
+} from '../components/ui';
 import {
   applyFilters,
   applySort,
@@ -34,16 +39,22 @@ import {
   ruleIsComplete,
   operatorNeedsValue,
   OPERATOR_LABELS,
+  PRESET_VIEWS,
   type FilterContext,
-  type SavedView,
 } from '../services/participantFilters';
 import type { RootStackParamList, Participant, ScanContext } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
+// The three preset views, shown as the segmented control.
+const SEGMENT_LABELS: Record<string, string> = {
+  'preset-everyone': 'Everyone',
+  'preset-checked-in': 'Checked in',
+  'preset-not-checked-in': 'Not checked in',
+};
+
 export function SearchScreen() {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
+  const { tokens, type } = useTheme();
   const navigation = useNavigation<NavigationProp>();
   const { useSplitView } = useResponsiveLayout();
   const { canViewParticipantRecords, roleLabel } = useEventAccess();
@@ -110,12 +121,6 @@ export function SearchScreen() {
     }
   }, [search, clearSearch]);
 
-  const handleClear = useCallback(() => {
-    setInputValue('');
-    clearSearch();
-    Keyboard.dismiss();
-  }, [clearSearch]);
-
   const handleParticipantPress = (participant: Participant) => {
     if (useSplitView) {
       setSelectedParticipant(participant);
@@ -159,11 +164,21 @@ export function SearchScreen() {
     return counts;
   }, [allViews, baseParticipants, filterContext]);
 
-  const handleViewPress = useCallback(
-    (view: SavedView) => {
-      applyView(view);
+  const segmentOptions = useMemo(
+    () => PRESET_VIEWS.map(view => ({
+      value: view.id,
+      label: SEGMENT_LABELS[view.id] ?? view.name,
+      count: viewCounts[view.id] ?? 0,
+    })),
+    [viewCounts],
+  );
+
+  const handleSegmentChange = useCallback(
+    (viewId: string) => {
+      const view = allViews.find(v => v.id === viewId);
+      if (view) applyView(view);
     },
-    [applyView],
+    [allViews, applyView],
   );
 
   const removeRule = useCallback(
@@ -175,10 +190,10 @@ export function SearchScreen() {
 
   if (!currentEvent) {
     return (
-      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={[styles.container, { backgroundColor: tokens.bg }]} edges={['top', 'left', 'right']}>
         <View style={styles.centered}>
-          <Text style={styles.emptyTitle}>No Event Selected</Text>
-          <Text style={styles.emptyText}>
+          <Text style={[type.h2, { color: tokens.textH }]}>No Event Selected</Text>
+          <Text style={[type.body, styles.centeredText, { color: tokens.text2 }]}>
             Please select an event from the Events tab.
           </Text>
         </View>
@@ -191,17 +206,19 @@ export function SearchScreen() {
   // an empty roster that pull-to-refresh will never fill.
   if (!canViewParticipantRecords) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <ScreenHeader title="Participants" subtitle={currentEvent.name} />
+      <SafeAreaView style={[styles.container, { backgroundColor: tokens.bg }]} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={[type.h1, { color: tokens.textH }]} accessibilityRole="header">Participants</Text>
+        </View>
         <View style={styles.centered}>
-          <Ionicons name="lock-closed-outline" size={42} color={colors.gray[400]} />
-          <Text style={styles.emptyTitle}>Participant records unavailable</Text>
-          <Text style={styles.emptyText}>
+          <Icon name="lock-closed" size={40} color={tokens.muted} />
+          <Text style={[type.h2, { color: tokens.textH }]}>Participant records unavailable</Text>
+          <Text style={[type.body, styles.centeredText, { color: tokens.text2 }]}>
             {roleLabel
               ? `Your role on this event (${roleLabel}) doesn't include participant records.`
               : "Your role on this event doesn't include participant records."}
           </Text>
-          <Text style={styles.emptyText}>
+          <Text style={[type.body, styles.centeredText, { color: tokens.text2 }]}>
             You can still scan attendees in and use the travel calendar.
           </Text>
         </View>
@@ -209,141 +226,142 @@ export function SearchScreen() {
     );
   }
 
-  const hasActiveFilters = activeRules.length > 0 || sort !== null;
+  const sortField = sort ? getSortField(sort.field) : undefined;
+  // A preset is already shown by the segmented control, so its rules and sort
+  // don't get chips of their own.
+  const presetActive = activeViewId !== null && activeViewId in SEGMENT_LABELS;
+  const customRules = presetActive ? [] : activeRules;
+  const customSort = presetActive ? null : sort;
+  const hasToolbar = savedViews.length > 0 || customRules.length > 0 || Boolean(customSort);
+
+  const emptyState = searchQuery.length >= 2 ? (
+    { title: 'No Results', text: `No participants found matching "${searchQuery}"` }
+  ) : searchQuery.length > 0 ? (
+    { title: null, text: 'Type at least 2 characters to search' }
+  ) : activeRules.length > 0 ? (
+    { title: 'No Participants', text: 'No participants match the current filters' }
+  ) : (
+    { title: 'No Participants', text: 'Pull to refresh or search by name/email' }
+  );
 
   const sidebar = (
-    <View style={styles.container}>
-      <ScreenHeader title="Participants" subtitle={currentEvent.name} />
+    <View style={[styles.container, { backgroundColor: tokens.bg }]}>
+      <View style={styles.header}>
+        <View style={styles.titleRow}>
+          <Text style={[type.h1, styles.title, { color: tokens.textH }]} accessibilityRole="header" numberOfLines={1}>
+            Participants
+          </Text>
+          <ToolChip
+            icon="filter"
+            label={customRules.length > 0 ? `Filter · ${customRules.length}` : 'Filter'}
+            active={customRules.length > 0 || customSort !== null}
+            onPress={() => setIsFilterSheetVisible(true)}
+            accessibilityLabel="Filter and sort"
+          />
+        </View>
 
-      <SearchField
-        value={inputValue}
-        onChangeText={handleSearch}
-        onClear={handleClear}
-        placeholder="Search by name or email"
-      />
+        <TextField
+          icon="search"
+          value={inputValue}
+          onChangeText={handleSearch}
+          clearable
+          placeholder="Search by name or email"
+          accessibilityLabel="Search participants"
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+        />
 
-      <View style={styles.filtersContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersScroll}>
-          {allViews.map(view => (
-            <ViewChip
+        <SegmentedControl
+          options={segmentOptions}
+          value={activeViewId ?? ''}
+          onChange={handleSegmentChange}
+          accessibilityLabel="View"
+          role="tab"
+        />
+      </View>
+
+      {hasToolbar && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.toolbar}
+          contentContainerStyle={styles.toolbarContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          {savedViews.map(view => (
+            <ToolChip
               key={view.id}
-              label={view.name}
-              count={viewCounts[view.id] ?? 0}
-              isActive={activeViewId === view.id}
-              isSaved={savedViews.some(v => v.id === view.id)}
-              onPress={() => handleViewPress(view)}
+              icon="clipboard-list"
+              label={`${view.name} · ${viewCounts[view.id] ?? 0}`}
+              active={activeViewId === view.id}
+              onPress={() => applyView(view)}
             />
           ))}
-        </ScrollView>
-
-        <View style={styles.filterSpacer} />
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersScroll}>
-          <TouchableOpacity
-            style={[styles.toolButton, hasActiveFilters && styles.toolButtonActive]}
-            onPress={() => setIsFilterSheetVisible(true)}
-          >
-            <Ionicons
-              name="funnel-outline"
-              size={15}
-              color={hasActiveFilters ? colors.red : colors.text.secondary}
+          {customSort && (
+            <ToolChip
+              label={`${sortField?.label ?? 'Sort'} ${customSort.direction === 'asc' ? '↑' : '↓'}`}
+              active
+              onPress={() => setIsFilterSheetVisible(true)}
+              accessibilityLabel={`Sorted by ${sortField?.label ?? 'field'}, ${customSort.direction === 'asc' ? 'ascending' : 'descending'}`}
             />
-            <Text style={[styles.toolButtonText, hasActiveFilters && styles.toolButtonTextActive]}>
-              Filter{activeRules.length > 0 ? ` · ${activeRules.length}` : ''}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.toolButton, sort && styles.toolButtonActive]}
-            onPress={() => setIsFilterSheetVisible(true)}
-          >
-            <Ionicons
-              name="swap-vertical"
-              size={15}
-              color={sort ? colors.red : colors.text.secondary}
-            />
-            <Text style={[styles.toolButtonText, sort && styles.toolButtonTextActive]}>
-              {sort
-                ? `${getSortField(sort.field)?.label ?? 'Sort'} ${sort.direction === 'asc' ? '↑' : '↓'}`
-                : 'Sort'}
-            </Text>
-          </TouchableOpacity>
-
-          {activeRules.map(rule => {
+          )}
+          {customRules.map(rule => {
             const field = getField(rule.field);
             if (!field) return null;
             const valueLabel = operatorNeedsValue(rule.operator)
               ? field.getOptions?.(filterContext).find(o => o.value === rule.value)?.label ?? rule.value
               : null;
+            const label = `${field.label} ${OPERATOR_LABELS[rule.operator]}${valueLabel ? ` ${valueLabel}` : ''}`;
             return (
-              <TouchableOpacity
+              <ToolChip
                 key={rule.id}
-                style={styles.ruleChip}
+                label={label}
+                trailingIcon="x"
+                active
                 onPress={() => removeRule(rule.id)}
-              >
-                <Text style={styles.ruleChipText} numberOfLines={1}>
-                  {field.label} {OPERATOR_LABELS[rule.operator]}
-                  {valueLabel ? ` ${valueLabel}` : ''}
-                </Text>
-                <Ionicons name="close" size={14} color={colors.text.accent} />
-              </TouchableOpacity>
+                accessibilityLabel={`Remove filter: ${label}`}
+              />
             );
           })}
         </ScrollView>
-      </View>
+      )}
 
       {isSearching && (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator color={colors.text.accent} />
+          <ActivityIndicator color={tokens.accent} />
         </View>
       )}
 
       <FlatList
         data={filteredParticipants}
-        renderItem={({ item }) => (
+        renderItem={({ item, index }) => (
           <ParticipantRow
             participant={item}
             onPress={() => handleParticipantPress(item)}
             selected={useSplitView && selectedParticipant?.participant_event_id === item.participant_event_id}
+            first={index === 0}
+            last={index === filteredParticipants.length - 1}
           />
         )}
         keyExtractor={(item, index) => item.participant_id || item.participant_event_id || `item-${index}`}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={refresh}
-            tintColor={colors.text.accent}
+            tintColor={tokens.accent}
+            colors={[tokens.accent]}
+            progressBackgroundColor={tokens.bg}
           />
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            {searchQuery.length >= 2 ? (
-              <>
-                <Text style={styles.emptyTitle}>No Results</Text>
-                <Text style={styles.emptyText}>
-                  No participants found matching &quot;{searchQuery}&quot;
-                </Text>
-              </>
-            ) : searchQuery.length > 0 ? (
-              <Text style={styles.emptyText}>
-                Type at least 2 characters to search
-              </Text>
-            ) : activeRules.length > 0 ? (
-              <>
-                <Text style={styles.emptyTitle}>No Participants</Text>
-                <Text style={styles.emptyText}>
-                  No participants match the current filters
-                </Text>
-              </>
-            ) : (
-              <>
-                <Text style={styles.emptyTitle}>No Participants</Text>
-                <Text style={styles.emptyText}>
-                  Pull to refresh or search by name/email
-                </Text>
-              </>
-            )}
+            {emptyState.title ? (
+              <Text style={[type.h2, { color: tokens.textH }]}>{emptyState.title}</Text>
+            ) : null}
+            <Text style={[type.body, styles.centeredText, { color: tokens.text2 }]}>{emptyState.text}</Text>
           </View>
         }
         contentContainerStyle={filteredParticipants.length === 0 ? styles.emptyList : styles.listContent}
@@ -368,7 +386,7 @@ export function SearchScreen() {
 
   if (useSplitView) {
     return (
-      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={[styles.container, { backgroundColor: tokens.bg }]} edges={['top', 'left', 'right']}>
         <SplitView
           sidebar={sidebar}
           detail={selectedParticipant ? (
@@ -387,97 +405,88 @@ export function SearchScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: tokens.bg }]} edges={['top', 'left', 'right']}>
       {sidebar}
     </SafeAreaView>
   );
 }
 
-interface ViewChipProps {
+interface ToolChipProps {
   label: string;
-  count: number;
-  isActive: boolean;
-  isSaved: boolean;
+  icon?: IconName;
+  trailingIcon?: IconName;
+  active?: boolean;
   onPress: () => void;
+  accessibilityLabel?: string;
 }
 
-function ViewChip({ label, count, isActive, isSaved, onPress }: ViewChipProps) {
-  const { colors } = useTheme();
-  const ui = useUiStyles();
+/** A compact outlined chip for the filter toolbar (Material filter-chip shape). */
+function ToolChip({ label, icon, trailingIcon, active = false, onPress, accessibilityLabel }: ToolChipProps) {
+  const { tokens, type, radii } = useTheme();
+  const color = active ? tokens.accent : tokens.text;
   return (
-    <TouchableOpacity
-      style={[ui.chip, isActive && ui.chipActive]}
+    <Pressable
       onPress={onPress}
-      activeOpacity={0.7}
       accessibilityRole="button"
-      accessibilityState={{ selected: isActive }}
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityState={{ selected: active }}
+      android_ripple={ripple(tokens.pressed)}
+      hitSlop={{ top: 6, bottom: 6 }}
+      style={({ pressed }) => [
+        styles.chip,
+        {
+          borderRadius: radii.item,
+          borderColor: active ? tokens.accent : tokens.input,
+          backgroundColor: active ? tokens.selected : tokens.bg,
+        },
+        !isAndroid && pressedStyle(pressed),
+      ]}
     >
-      {isSaved && (
-        <Ionicons name="bookmark" size={12} color={isActive ? colors.text.inverse : colors.gray[400]} />
-      )}
-      <Text style={[ui.chipText, isActive && ui.chipTextActive]}>{label}</Text>
-      <View style={[ui.chipBadge, isActive && ui.chipBadgeActive]}>
-        <Text style={[ui.chipBadgeText, isActive && ui.chipBadgeTextActive]}>{count}</Text>
-      </View>
-    </TouchableOpacity>
+      {icon ? <Icon name={icon} size={16} color={color} /> : null}
+      <Text style={[type.label, styles.chipText, { color }]} numberOfLines={1}>{label}</Text>
+      {trailingIcon ? <Icon name={trailingIcon} size={14} color={color} /> : null}
+    </Pressable>
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
-  filtersContainer: {
+  header: {
+    paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 4,
+    paddingBottom: 12,
+    gap: 12,
   },
-  filtersScroll: {
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  title: {
+    flex: 1,
+  },
+  toolbar: {
+    flexGrow: 0,
+    marginBottom: 12,
+  },
+  toolbarContent: {
     paddingHorizontal: 16,
     gap: 8,
   },
-  filterSpacer: {
-    height: 8,
-  },
-  toolButton: {
-    minHeight: 36,
+  chip: {
+    minHeight: 32,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.gray[300],
-    backgroundColor: colors.surface,
+    gap: 6,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+    maxWidth: 260,
   },
-  toolButtonActive: {
-    borderColor: colors.red,
-    backgroundColor: colors.red + '10',
-  },
-  toolButtonText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.gray[600],
-  },
-  toolButtonTextActive: {
-    color: colors.text.accent,
-  },
-  ruleChip: {
-    minHeight: 36,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.red + '55',
-    backgroundColor: colors.red + '10',
-    maxWidth: 240,
-  },
-  ruleChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.text.accent,
+  chipText: {
+    flexShrink: 1,
   },
   loadingContainer: {
     padding: 16,
@@ -490,30 +499,21 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     padding: 32,
     gap: 10,
   },
+  centeredText: {
+    textAlign: 'center',
+    maxWidth: 300,
+  },
   emptyContainer: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
     padding: 32,
     paddingTop: 64,
+    gap: 8,
   },
   emptyList: {
     flexGrow: 1,
   },
   listContent: {
     paddingBottom: 100,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text.primary,
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    textAlign: 'center',
-    maxWidth: 300,
-    lineHeight: 20,
   },
 });
