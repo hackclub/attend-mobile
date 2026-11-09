@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import {
   ActionMenu,
   Button,
@@ -10,6 +11,7 @@ import {
   SegmentedControl,
   Spinner,
   Screen,
+  QuickActionTile,
   Toggle,
 } from '../../components/ui';
 import { DateTimeField, MultiSelectField, SelectField } from '../../components/forms';
@@ -126,7 +128,7 @@ const APPEARANCE_OPTIONS = [
  * made with EXPO_PUBLIC_UI_GALLERY=1, and reachable while signed out.
  */
 export function UiGallery() {
-  const { tokens, type, spacing } = useTheme();
+  const { tokens, type, spacing, radii } = useTheme();
   const { preference, setPreference } = useThemePreference();
   const openSheet = useOpenSheet();
   const navigation = useNavigation();
@@ -267,6 +269,18 @@ export function UiGallery() {
             }}
           />
           <Button title="Scanner layout" onPress={() => setScannerPreview(true)} />
+        </View>
+      </Container>
+
+      <Container title="Cards">
+        <View style={styles.stack}>
+          <View style={styles.row}>
+            <QuickActionTile icon="chat" tint="sky" label="Messages" subLabel="2 unread" onPress={() => {}} />
+            <QuickActionTile icon="shield-exclamation" tint="red" label="Report an incident" onPress={() => {}} />
+          </View>
+          <View style={[styles.placeholder, { borderColor: tokens.box, borderRadius: radii.container }]}>
+            <Text style={[type.h3, { color: tokens.textH }]}>A dashed placeholder</Text>
+          </View>
         </View>
       </Container>
 
@@ -436,6 +450,7 @@ function ScannerPreview({ onClose }: { onClose: () => void }) {
   const size = scanFrameSize(width, height, isRegular);
   return (
     <SafeAreaView style={styles.scanner} edges={['top', 'bottom', 'left', 'right']}>
+      <StatusBar style="light" />
       <View style={styles.scannerHeader}>
         <View style={styles.scannerPill}>
           <Text style={[type.body, { color: overlayTokens.onMuted }]} numberOfLines={1}>Sample Hackathon</Text>
@@ -496,6 +511,7 @@ const styles = StyleSheet.create({
   scannerStage: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   scannerDock: { paddingHorizontal: 10, paddingBottom: 12 },
   stack: { gap: 12 },
+  placeholder: { borderWidth: 1, borderStyle: 'dashed', padding: 16 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   fill: { flex: 1 },
   chips: { gap: 8 },
