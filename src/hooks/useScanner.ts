@@ -11,6 +11,7 @@ import {
   createAttemptId,
   failedResult,
   isRetryableScanError,
+  nfcScanTarget,
   parseQRCode,
   queuedResult,
   resultFromResponse,
@@ -330,19 +331,9 @@ export function useScanner(options: {
   ): Promise<ScannerResult | null> => {
     if (!codeGateRef.current.accept(`nfc:${payload}`)) return null;
 
-    if (isBadgeToken) {
-      return runRequest({
-        kind: 'badge',
-        identifier: payload,
-        rawData: payload,
-        source: 'nfc',
-        scanContext: selectedContext,
-      });
-    }
-
-    const parsed = parseQRCode(payload);
-    if (!parsed) {
-      const result = failedResult(new Error('Unrecognized Attend NFC data.'), {
+    const target = nfcScanTarget(payload, isBadgeToken);
+    if (!target) {
+      const result = failedResult(new Error('Not an Attend badge.'), {
         attemptId: createAttemptId(),
         rawData: payload,
         source: 'nfc',
@@ -352,8 +343,8 @@ export function useScanner(options: {
     }
 
     return runRequest({
-      kind: 'participant',
-      identifier: parsed.id,
+      kind: target.kind,
+      identifier: target.identifier,
       rawData: payload,
       source: 'nfc',
       scanContext: selectedContext,
@@ -416,12 +407,17 @@ export function useScanner(options: {
   }, [contextRequiredResult, contextsReady, needsContext, scanNfcPayload]);
 
   // Android reads badges continuously (useNfcAutoRead) and hands over the
-  // token: a badge token, or an attend:// link written to the tag.
-  const handleNfcToken = useCallback(async (token: string): Promise<ScannerResult | null> => {
+  // token with its record type: `isBadge` only for the Attend external
+  // record. A URI/text record must be an Attend link; anything else (a
+  // business card, a transit tag) never reaches the server.
+  const handleNfcToken = useCallback(async (
+    token: string,
+    isBadge = false
+  ): Promise<ScannerResult | null> => {
     const payload = token.trim();
     if (!payload || processingRef.current || !contextsReady) return null;
     if (needsContext) return contextRequiredResult('nfc');
-    return scanNfcPayload(payload, !parseQRCode(payload));
+    return scanNfcPayload(payload, isBadge);
   }, [contextRequiredResult, contextsReady, needsContext, scanNfcPayload]);
 
   const retryLastScan = useCallback((): Promise<ScannerResult | null> => {

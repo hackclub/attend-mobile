@@ -46,6 +46,20 @@ export function parseQRCode(data: string): QRCodeData | null {
   return null;
 }
 
+/**
+ * Where an NFC read goes. Only the Attend external record (`isBadge`) is a
+ * badge token for the badge endpoint; URI/text content must be an Attend
+ * code, and anything else is null ("Not an Attend badge", no server call).
+ */
+export function nfcScanTarget(
+  payload: string,
+  isBadge: boolean
+): { kind: 'badge'; identifier: string } | { kind: 'participant'; identifier: string } | null {
+  if (isBadge) return { kind: 'badge', identifier: payload };
+  const parsed = parseQRCode(payload);
+  return parsed ? { kind: 'participant', identifier: parsed.id } : null;
+}
+
 export function responseOutcome(
   response: Pick<CreateScanResponse, 'outcome' | 'first_scan_in_context'>
 ): ScanOutcome {

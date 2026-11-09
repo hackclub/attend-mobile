@@ -118,16 +118,29 @@ export function parseNdefMessage(
   return { success: false, error: 'Could not parse NDEF data', tagId };
 }
 
+/** What a badge tap hands to the scanner. */
+export interface NFCBadgeRead {
+  /** The Attend token, or the URI/text record's content. */
+  payload: string;
+  /**
+   * True only for the `hackclub.com:attend` external record: the payload is a
+   * badge token for the badge endpoint. A URI/text record is just content
+   * (an attend://checkin/… link when it is an Attend badge at all) and must
+   * be recognised by `parseQRCode` before it goes anywhere.
+   */
+  isBadge: boolean;
+}
+
 /**
- * The string a badge tap hands to the scanner: the Attend token from the
- * external record, or else the URI/text record (an attend://checkin/… link).
- * Null when the tag carries nothing Attend could use.
+ * The payload a badge tap hands to the scanner: the Attend token from the
+ * external record, or else the URI/text record. Null when the tag carries
+ * nothing Attend could use.
  */
-export function badgeTokenFromResult(result: NFCReadResult): string | null {
+export function badgeReadFromResult(result: NFCReadResult): NFCBadgeRead | null {
   if (!result.success || !result.payload) return null;
   if (result.type === 'external' || result.type === 'uri' || result.type === 'text') {
-    const token = result.payload.trim();
-    return token || null;
+    const payload = result.payload.trim();
+    return payload ? { payload, isBadge: result.type === 'external' } : null;
   }
   return null;
 }
@@ -155,8 +168,13 @@ class NFCService {
   // through `serial` so register/unregister calls never interleave.
   private autoReadListener: AutoReadListener | null = null;
   private autoReadRegistered = false;
-  private techRequestInFlight = false;
   private queue: Promise<void> = Promise.resolve();
+
+  // One-shot reads/writes run one at a time through `techQueue` (the native
+  // module holds a single tech request). `techRequests` counts the running
+  // one plus any waiting, so auto-read stays paused until the last finishes.
+  private techRequests = 0;
+  private techQueue: Promise<unknown> = Promise.resolve();
 
   /** Android has no system NFC sheet, so the app must show its own. */
   get needsInAppPrompt(): boolean {
@@ -302,12 +320,12 @@ class NFCService {
 
   private handleDiscoveredTag = (tag: TagEvent | null | undefined) => {
     const listener = this.autoReadListener;
-    if (!listener || this.techRequestInFlight || !tag) return;
+    if (!listener || this.techRequests > 0 || !tag) return;
     listener(parseNdefMessage(tag.ndefMessage, tag.id));
   };
 
   private async syncAutoRead(): Promise<void> {
-    const wanted = !!this.autoReadListener && !this.techRequestInFlight;
+    const wanted = !!this.autoReadListener && this.techRequests === 0;
     if (wanted && !this.autoReadRegistered) {
       if (!(await this.init())) return;
       try {
@@ -347,31 +365,43 @@ class NFCService {
    * The outcome is published before cleanup, which on Android waits ~1s so a
    * badge still on the phone is not handed to the system dispatcher.
    */
-  private async withTechRequest<T extends { success: boolean; error?: string }>(
+  private withTechRequest<T extends { success: boolean; error?: string }>(
     operation: 'read' | 'write',
     body: () => Promise<T>
   ): Promise<T | { success: false; error: string }> {
-    if (Platform.OS === 'android' && !(await this.init())) {
-      return { success: false, error: 'NFC not supported on this device' };
-    }
-    this.techRequestInFlight = true;
-    this.update({ session: { status: 'waiting', operation } });
+    this.techRequests += 1;
+    const run = this.techQueue.then(() => this.runTechRequest(operation, body));
+    this.techQueue = run.catch(() => undefined);
+    return run;
+  }
+
+  private async runTechRequest<T extends { success: boolean; error?: string }>(
+    operation: 'read' | 'write',
+    body: () => Promise<T>
+  ): Promise<T | { success: false; error: string }> {
     try {
-      if (Platform.OS === 'android') {
-        await this.serial(() => this.unregisterAutoRead());
+      if (Platform.OS === 'android' && !(await this.init())) {
+        return { success: false, error: 'NFC not supported on this device' };
       }
-      let result: T | { success: false; error: string };
+      this.update({ session: { status: 'waiting', operation } });
       try {
-        result = await body();
-      } catch (error: any) {
-        const message = error?.message || `NFC ${operation} failed`;
-        result = { success: false, error: isCancelled(message) ? 'Cancelled' : message };
+        if (Platform.OS === 'android') {
+          await this.serial(() => this.unregisterAutoRead());
+        }
+        let result: T | { success: false; error: string };
+        try {
+          result = await body();
+        } catch (error: any) {
+          const message = error?.message || `NFC ${operation} failed`;
+          result = { success: false, error: isCancelled(message) ? 'Cancelled' : message };
+        }
+        return this.finish(operation, result);
+      } finally {
+        await this.cleanup();
       }
-      return this.finish(operation, result);
     } finally {
-      await this.cleanup();
-      this.techRequestInFlight = false;
-      if (Platform.OS === 'android') {
+      this.techRequests -= 1;
+      if (Platform.OS === 'android' && this.techRequests === 0) {
         this.serial(() => this.syncAutoRead());
       }
     }

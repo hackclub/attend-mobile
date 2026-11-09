@@ -68,17 +68,19 @@ beforeEach(() => {
 });
 
 describe('parseNdefMessage', () => {
-  const { parseNdefMessage, badgeTokenFromResult } = load('android');
+  const { parseNdefMessage, badgeReadFromResult } = load('android');
 
   it('prefers the Attend external record over a URI record', () => {
     const result = parseNdefMessage([uriRecord('attend://checkin/abc'), attendRecord('tok-123')] as never, '04AB');
     expect(result).toEqual({ success: true, type: 'external', payload: 'tok-123', tagId: '04AB' });
-    expect(badgeTokenFromResult(result)).toBe('tok-123');
+    expect(badgeReadFromResult(result)).toEqual({ payload: 'tok-123', isBadge: true });
   });
 
   it('decodes URI prefixes and text records', () => {
-    expect(parseNdefMessage([{ tnf: 1, type: bytes('U'), payload: [0x04, ...bytes('hack.club')] }] as never))
-      .toMatchObject({ type: 'uri', payload: 'https://hack.club' });
+    const uri = parseNdefMessage([{ tnf: 1, type: bytes('U'), payload: [0x04, ...bytes('hack.club')] }] as never);
+    expect(uri).toMatchObject({ type: 'uri', payload: 'https://hack.club' });
+    // URI/text content is never a badge token, whatever it says.
+    expect(badgeReadFromResult(uri)).toEqual({ payload: 'https://hack.club', isBadge: false });
     expect(parseNdefMessage([{ tnf: 1, type: bytes('T'), payload: [0x02, ...bytes('enhello')] }] as never))
       .toMatchObject({ type: 'text', payload: 'hello' });
   });
@@ -87,7 +89,7 @@ describe('parseNdefMessage', () => {
     expect(parseNdefMessage(undefined)).toMatchObject({ success: false, error: 'No NDEF data on tag' });
     const unknown = parseNdefMessage([{ tnf: 2, type: bytes('x/y'), payload: bytes('raw') }] as never);
     expect(unknown).toMatchObject({ success: true, type: 'unknown' });
-    expect(badgeTokenFromResult(unknown)).toBeNull();
+    expect(badgeReadFromResult(unknown)).toBeNull();
   });
 });
 
@@ -195,6 +197,44 @@ describe('NFC service on Android', () => {
     expect(seen).toEqual([]);
     expect(mockNfc.registerTagEvent).toHaveBeenCalledTimes(2);
     expect(nfcService.getSnapshot().autoReadActive).toBe(true);
+  });
+});
+
+describe('NFC tech requests', () => {
+  it('runs overlapping reads and writes one at a time and keeps auto-read paused until both finish', async () => {
+    const { nfcService } = load('android');
+    nfcService.startAutoRead(() => {});
+    await flush();
+    await flush();
+    expect(mockNfc.registerTagEvent).toHaveBeenCalledTimes(1);
+
+    const releases: ((tech: string) => void)[] = [];
+    mockNfc.requestTechnology.mockImplementation(() => new Promise(resolve => { releases.push(resolve); }));
+    mockNfc.getTag.mockResolvedValue({ id: '1', ndefMessage: [attendRecord('tok')] });
+
+    const write = nfcService.writeTag({ badgeUrl: 'u', attendToken: 't' });
+    const read = nfcService.readTag();
+    await flush();
+    await flush();
+    // Only the first request reached the native module.
+    expect(mockNfc.requestTechnology).toHaveBeenCalledTimes(1);
+
+    releases[0]('Ndef');
+    await write;
+    await flush();
+    await flush();
+    expect(mockNfc.requestTechnology).toHaveBeenCalledTimes(2);
+    // The read is still waiting, so auto-read must not have come back.
+    expect(mockNfc.registerTagEvent).toHaveBeenCalledTimes(1);
+    expect(nfcService.getSnapshot().autoReadActive).toBe(false);
+
+    releases[1]('Ndef');
+    expect(await read).toMatchObject({ success: true, payload: 'tok' });
+    await flush();
+    await flush();
+    expect(mockNfc.registerTagEvent).toHaveBeenCalledTimes(2);
+    expect(nfcService.getSnapshot().autoReadActive).toBe(true);
+    mockNfc.requestTechnology.mockReset();
   });
 });
 

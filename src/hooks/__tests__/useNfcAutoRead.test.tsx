@@ -18,7 +18,7 @@ const mockStop = jest.fn();
 jest.mock('../../services/nfc', () => {
   const actual = jest.requireActual('../../services/nfc');
   return {
-    badgeTokenFromResult: actual.badgeTokenFromResult,
+    badgeReadFromResult: actual.badgeReadFromResult,
     nfcService: {
       startAutoRead: jest.fn((listener: (result: unknown) => void) => {
         mockTagListener = listener;
@@ -39,7 +39,7 @@ jest.mock('react-native-nfc-manager', () => ({ __esModule: true, default: {}, Nf
 import { nfcService } from '../../services/nfc';
 import { useNfcAutoRead } from '../useNfcAutoRead';
 
-function setup(enabled: boolean, onToken: (t: string) => void) {
+function setup(enabled: boolean, onToken: (t: string, isBadge: boolean) => void) {
   const result: { active?: boolean } = {};
   function Probe(props: { enabled: boolean }) {
     Object.assign(result, useNfcAutoRead({ enabled: props.enabled, onToken }));
@@ -80,7 +80,11 @@ it('forwards badge tokens, suppresses quick repeats and stops on disable', () =>
   tap('tok-1');
   tap('tok-2');
   mockTagListener?.({ success: false, error: 'No NDEF data on tag' });
-  expect(onToken.mock.calls).toEqual([['tok-1'], ['tok-2']]);
+  expect(onToken.mock.calls).toEqual([['tok-1', true], ['tok-2', true]]);
+
+  // A URI record is handed over as content, not as a badge token.
+  mockTagListener?.({ success: true, type: 'uri', payload: 'https://example.com' });
+  expect(onToken).toHaveBeenLastCalledWith('https://example.com', false);
 
   rerender(false);
   expect(mockStop).toHaveBeenCalledTimes(1);

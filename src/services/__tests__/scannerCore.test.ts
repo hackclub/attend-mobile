@@ -5,6 +5,7 @@ import {
   failedResult,
   isRetryableScanError,
   queuedResult,
+  nfcScanTarget,
   parseQRCode,
   responseOutcome,
   resultFromResponse,
@@ -251,5 +252,23 @@ describe('queued offline outcome', () => {
     expect(isRetryableScanError(Object.assign(new Error('busy'), { status: 503 }))).toBe(true);
     expect(isRetryableScanError(Object.assign(new Error('missing'), { status: 404 }))).toBe(false);
     expect(isRetryableScanError(new Error('Unrecognised QR code'))).toBe(false);
+  });
+});
+
+describe('nfcScanTarget', () => {
+  it('sends only the Attend external record to the badge endpoint', () => {
+    expect(nfcScanTarget('tok-123', true)).toEqual({ kind: 'badge', identifier: 'tok-123' });
+  });
+
+  it('accepts an Attend link from a URI or text record', () => {
+    expect(nfcScanTarget('attend://checkin/0a1b2c3d-0000-4000-8000-000000000001', false)).toEqual({
+      kind: 'participant',
+      identifier: '0a1b2c3d-0000-4000-8000-000000000001',
+    });
+  });
+
+  it('rejects any other NDEF content instead of treating it as a badge token', () => {
+    expect(nfcScanTarget('https://example.com/menu', false)).toBeNull();
+    expect(nfcScanTarget('hello world', false)).toBeNull();
   });
 });

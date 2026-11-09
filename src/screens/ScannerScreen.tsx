@@ -142,13 +142,20 @@ export function ScannerScreen() {
     }, [])
   );
 
-  // Android reads NFC badges the whole time the scanner is open; iOS needs
-  // the NFC button's system sheet instead.
+  // Android reads NFC badges while the scanner is open, under the camera's
+  // conditions: not behind the context picker, the More sheet or manual
+  // entry. Unlike the camera it stays on before a context is chosen, so a
+  // tap explains that one is needed. iOS needs the NFC button's system sheet.
   useNfcAutoRead({
-    enabled: isFocused && hasEvent && contextsReady && manualEntryMode === 'none',
-    onToken: (token) => {
+    enabled: isFocused
+      && hasEvent
+      && contextsReady
+      && manualEntryMode === 'none'
+      && !contextPickerOpen
+      && !moreOpen,
+    onToken: (token, isBadge) => {
       recordScannerActivity();
-      void handleNfcToken(token);
+      void handleNfcToken(token, isBadge);
     },
   });
 
