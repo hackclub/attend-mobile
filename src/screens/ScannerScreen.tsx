@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -50,6 +50,9 @@ import type { Participant, RootStackParamList } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type ManualEntryMode = 'none' | 'search';
+
+// How long the camera ignores codes after a sheet over it closes.
+const SHEET_CLOSE_SCAN_COOLDOWN_MS = 400;
 
 // A query that reads as an attendee/participant-event ID rather than a name or
 // email: one unbroken run of hex/dash characters (UUIDs) or 8+ alphanumerics.
@@ -116,11 +119,22 @@ export function ScannerScreen() {
   const canScan = contextsReady && !needsContext;
   // Until staff choose a context the camera sends nothing: the scan frame is
   // covered with the reason instead of failing a scan they lined up.
-  const cameraScanningEnabled = isFocused
-    && manualEntryMode === 'none'
-    && !contextPickerOpen
-    && !moreOpen
-    && canScan;
+  const sheetOpen = manualEntryMode !== 'none' || contextPickerOpen || moreOpen;
+  const cameraScanningEnabled = isFocused && !sheetOpen && canScan;
+  // The camera always gets the same handler: toggling onBarcodeScanned makes
+  // expo-camera rebuild its capture session, which blanks the preview every
+  // time a sheet opens. Scans are gated here instead. A short cooldown after a
+  // sheet closes stops the code that was in frame behind it from firing.
+  const scanGateRef = useRef(false);
+  const scanCooldownUntilRef = useRef(0);
+  const wasSheetOpenRef = useRef(sheetOpen);
+  useLayoutEffect(() => {
+    if (wasSheetOpenRef.current && !sheetOpen) {
+      scanCooldownUntilRef.current = Date.now() + SHEET_CLOSE_SCAN_COOLDOWN_MS;
+    }
+    wasSheetOpenRef.current = sheetOpen;
+    scanGateRef.current = cameraScanningEnabled;
+  }, [cameraScanningEnabled, sheetOpen]);
   const scannerStatus = isProcessing
     ? 'Confirming scan'
     : !contextsReady
@@ -192,6 +206,14 @@ export function ScannerScreen() {
     if (isProcessing) return;
     await handleScan(result.data, 'qr');
   }, [handleScan, isProcessing, recordScannerActivity]);
+  const barcodeHandlerRef = useRef(handleBarcodeScanned);
+  useLayoutEffect(() => {
+    barcodeHandlerRef.current = handleBarcodeScanned;
+  }, [handleBarcodeScanned]);
+  const onBarcodeScanned = useCallback((result: BarcodeScanningResult) => {
+    if (!scanGateRef.current || Date.now() < scanCooldownUntilRef.current) return;
+    void barcodeHandlerRef.current(result);
+  }, []);
 
   // Typed/pasted attendee IDs go through the search sheet's input.
   const handleDirectIdScan = useCallback(async (identifier: string) => {
@@ -311,7 +333,7 @@ export function ScannerScreen() {
           facing="back"
           enableTorch={torchOn}
           barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-          onBarcodeScanned={cameraScanningEnabled ? handleBarcodeScanned : undefined}
+          onBarcodeScanned={onBarcodeScanned}
         />
       ) : null}
 
