@@ -1,0 +1,151 @@
+import React from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type GestureResponderEvent,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
+import { useTheme } from '../../theme';
+import { haptics, type HapticImpact } from '../../services/haptics';
+import { Icon, type IconName } from './Icon';
+import { pressedStyle, ripple } from './pressFeedback';
+
+export type ButtonVariant = 'normal' | 'primary' | 'link' | 'icon';
+
+export interface ButtonProps {
+  /** Visible label. For `variant="icon"` it becomes the accessibility label. */
+  title: string;
+  onPress?: (event: GestureResponderEvent) => void;
+  variant?: ButtonVariant;
+  icon?: IconName;
+  iconPosition?: 'start' | 'end';
+  loading?: boolean;
+  disabled?: boolean;
+  /** Stretch to the container width. */
+  fullWidth?: boolean;
+  /** Tactile feedback on press. Off by default; use for commits like "Check in". */
+  haptic?: HapticImpact | 'success' | false;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
+  style?: StyleProp<ViewStyle>;
+  testID?: string;
+}
+
+/**
+ * Console button (.cs-btn) as a pill: min height 44, 2px accent border.
+ * `primary` fills with the accent, `link` drops the border, `icon` is a
+ * 44pt round button showing only `icon`.
+ */
+export function Button({
+  title,
+  onPress,
+  variant = 'normal',
+  icon,
+  iconPosition = 'start',
+  loading = false,
+  disabled = false,
+  fullWidth = false,
+  haptic = false,
+  accessibilityLabel,
+  accessibilityHint,
+  style,
+  testID,
+}: ButtonProps) {
+  const { tokens, type, radii, hitTarget } = useTheme();
+  const inactive = disabled || loading;
+  const isPrimary = variant === 'primary';
+  const isLink = variant === 'link';
+  const isIcon = variant === 'icon';
+
+  let bg = tokens.bg;
+  let border = tokens.accent;
+  let fg = tokens.accent;
+  if (isPrimary) {
+    bg = tokens.accent;
+    fg = tokens.accentOn;
+  }
+  if (isLink) {
+    bg = 'transparent';
+    border = 'transparent';
+  }
+  if (disabled) {
+    fg = tokens.disabled;
+    if (isPrimary) {
+      bg = tokens.inputDisabled;
+      border = tokens.inputDisabled;
+    } else if (!isLink) {
+      border = tokens.input;
+    }
+  }
+
+  const handlePress = (event: GestureResponderEvent) => {
+    if (haptic === 'success') haptics.success();
+    else if (haptic) haptics.impact(haptic);
+    onPress?.(event);
+  };
+
+  const iconNode = loading ? (
+    <ActivityIndicator size="small" color={fg} />
+  ) : icon ? (
+    <Icon name={icon} size={isIcon ? 20 : 16} color={fg} />
+  ) : null;
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      disabled={inactive}
+      accessibilityRole={isLink ? 'link' : 'button'}
+      accessibilityLabel={accessibilityLabel ?? title}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled: inactive, busy: loading }}
+      android_ripple={ripple(isPrimary ? 'rgba(255,255,255,0.24)' : tokens.pressed, { foreground: true })}
+      hitSlop={isLink ? 4 : undefined}
+      style={({ pressed }) => [
+        styles.base,
+        {
+          minHeight: hitTarget,
+          borderRadius: radii.pill,
+          backgroundColor: bg,
+          borderColor: border,
+        },
+        isLink && styles.link,
+        isIcon && { width: hitTarget, height: hitTarget, paddingHorizontal: 0 },
+        fullWidth && styles.full,
+        pressedStyle(pressed),
+        style,
+      ]}
+      testID={testID}
+    >
+      {isIcon ? (
+        iconNode
+      ) : (
+        <View style={styles.content}>
+          {iconPosition === 'start' && iconNode}
+          <Text style={[type.label, styles.title, { color: fg }]} numberOfLines={1}>
+            {title}
+          </Text>
+          {iconPosition === 'end' && iconNode}
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  base: {
+    borderWidth: 2,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+    overflow: 'hidden',
+  },
+  link: { paddingHorizontal: 12 },
+  full: { alignSelf: 'stretch' },
+  content: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  title: { letterSpacing: 0.07 },
+});

@@ -1,7 +1,7 @@
 import React, { ReactNode } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View, type TextInputProps } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
+import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../../theme';
 
 // Shared surface primitives for the paper-world tab screens (Events,
 // Participants, Travel). These follow the system light/dark setting. The
