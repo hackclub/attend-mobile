@@ -225,7 +225,8 @@ export const authService = {
    * - `expired` (401): signed out here through logout, the same full cleanup
    *   as any sign-out, minus revoking a token the server already rejected.
    *   Scans still waiting to sync are kept for when this user signs back in.
-   * - `unverified`: network or server error; the session is kept.
+   * - `unverified`: network or server error, or the stored token couldn't
+   *   be read back; the session is kept and checked again later.
    * - `superseded`: the stored token changed while /me was in flight (a
    *   sign-out or another sign-in), so the answer no longer applies.
    */
@@ -236,7 +237,15 @@ export const authService = {
     } catch {
       return { status: 'unverified' };
     }
-    const current = await secureStorage.getToken().catch(() => null);
+    let current: string | null;
+    try {
+      current = await secureStorage.getToken();
+    } catch {
+      // Couldn't read the stored token (keychain locked or failing), so
+      // whether it changed is unknown: keep the session and check again
+      // later rather than treat it as replaced.
+      return { status: 'unverified' };
+    }
     if (current !== token) {
       return { status: 'superseded' };
     }

@@ -260,6 +260,20 @@ describe('authService.restoreSession', () => {
     expect(secureStorage.clear).not.toHaveBeenCalled();
   });
 
+  it('keeps the session, unverified, when the stored token can\'t be read back', async () => {
+    jest.mocked(secureStorage.getToken)
+      .mockResolvedValueOnce('token-1')
+      .mockRejectedValue(new Error('keychain read failed'));
+    jest.mocked(secureStorage.getUser).mockResolvedValue({ id: 'u1' } as never);
+    jest.mocked(api.validateToken).mockResolvedValue(null);
+
+    const result = await authService.restoreSession();
+
+    await expect(result.validation).resolves.toEqual({ status: 'unverified' });
+    expect(secureStorage.clearPersisted).not.toHaveBeenCalled();
+    expect(secureStorage.clear).not.toHaveBeenCalled();
+  });
+
   it('reports a locked keychain', async () => {
     const { KeychainLockedError } = jest.requireMock('../storage');
     jest.mocked(secureStorage.getUser).mockRejectedValue(new KeychainLockedError());
