@@ -19,6 +19,7 @@ import ClockIcon from 'react-native-heroicons/outline/ClockIcon';
 import CogIcon from 'react-native-heroicons/outline/CogIcon';
 import DeviceMobileIcon from 'react-native-heroicons/outline/DeviceMobileIcon';
 import DotsHorizontalIcon from 'react-native-heroicons/outline/DotsHorizontalIcon';
+import DotsVerticalIcon from 'react-native-heroicons/outline/DotsVerticalIcon';
 import ExclamationCircleIcon from 'react-native-heroicons/outline/ExclamationCircleIcon';
 import ExclamationIcon from 'react-native-heroicons/outline/ExclamationIcon';
 import ExternalLinkIcon from 'react-native-heroicons/outline/ExternalLinkIcon';
@@ -28,6 +29,7 @@ import HomeIcon from 'react-native-heroicons/outline/HomeIcon';
 import IdentificationIcon from 'react-native-heroicons/outline/IdentificationIcon';
 import InboxIcon from 'react-native-heroicons/outline/InboxIcon';
 import InformationCircleIcon from 'react-native-heroicons/outline/InformationCircleIcon';
+import LightningBoltIcon from 'react-native-heroicons/outline/LightningBoltIcon';
 import LocationMarkerIcon from 'react-native-heroicons/outline/LocationMarkerIcon';
 import LockClosedIcon from 'react-native-heroicons/outline/LockClosedIcon';
 import LogoutIcon from 'react-native-heroicons/outline/LogoutIcon';
@@ -170,6 +172,9 @@ export const icons = {
   plus: PlusIcon,
   pencil: PencilIcon,
   'dots-horizontal': DotsHorizontalIcon,
+  bolt: LightningBoltIcon,
+  // A ⋯ menu's glyph: Material's vertical dots, iOS's horizontal ones.
+  overflow: Platform.OS === 'android' ? DotsVerticalIcon : DotsHorizontalIcon,
   more: DotsHorizontalIcon,
   filter: FilterIcon,
   camera: CameraIcon,

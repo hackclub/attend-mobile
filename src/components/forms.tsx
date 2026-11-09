@@ -160,7 +160,7 @@ export function SelectField({
   isOptionDisabled?: (option: SelectOption) => boolean;
   renderOption?: (option: SelectOption) => ReactNode;
 }) {
-  const { tokens } = useTheme();
+  const { tokens, radii } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
   const selected = options.find(o => o.value === value);
@@ -186,6 +186,7 @@ export function SelectField({
     return (
       <ActionMenu
         accessibilityLabel={`${title}: ${label}`}
+        feedbackRadius={radii.input}
         actions={options.map(option => ({
           key: option.value,
           title: option.label,
