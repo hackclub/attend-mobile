@@ -1,10 +1,13 @@
 import React, { type ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, Text, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
 import { useEventPassColor } from '../hooks/useEventPassColor';
 import { Icon, PressableSurface, pressedStyle, ripple, type IconName } from './ui';
 import { useTheme } from '../theme';
+
+export { eventBannerText } from '../services/eventBanner';
+import { bannerHeight } from '../services/eventBanner';
 import type { Event } from '../types';
 
 const ON_BANNER = '#ffffff';
@@ -67,16 +70,34 @@ interface EventBannerProps {
   topInset?: number;
   /** Top-right slot, e.g. the account avatar. Sits outside the pressable area. */
   accessory?: ReactNode;
+  /** Shows a back button top left, for a banner on a pushed screen. */
+  onBack?: () => void;
   style?: StyleProp<ViewStyle>;
 }
 
-/** The Overview's header: the current event, and the way into the switcher. */
-export function EventBanner({ event, eyebrow, eyebrowIcon = 'calendar', meta, onPress, topInset = 0, accessory, style }: EventBannerProps) {
+/**
+ * An event's home header, shared by the Overview and the attendee's pass: the
+ * event's photo at a 16:9 ratio with its name, day count and dates pinned to
+ * the bottom, and (when `onPress` is set) the way into the switcher.
+ */
+export function EventBanner({
+  event,
+  eyebrow,
+  eyebrowIcon = 'calendar',
+  meta,
+  onPress,
+  topInset = 0,
+  accessory,
+  onBack,
+  style,
+}: EventBannerProps) {
   const { type } = useTheme();
+  const { width } = useWindowDimensions();
+  const height = bannerHeight(width, topInset);
   const label = [event.name, eyebrow, meta].filter(Boolean).join('. ');
 
   const content = (
-    <View style={[styles.heroContent, { paddingTop: topInset + 64 }]}>
+    <View style={[styles.heroContent, { minHeight: height, paddingTop: topInset + 56 }]}>
       {eyebrow ? (
         <View style={styles.eyebrow}>
           <Icon name={eyebrowIcon} size={16} color={ON_BANNER} />
@@ -114,6 +135,18 @@ export function EventBanner({ event, eyebrow, eyebrowIcon = 'calendar', meta, on
       ) : (
         <View accessible accessibilityLabel={label}>{content}</View>
       )}
+      {onBack ? (
+        <Pressable
+          onPress={onBack}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          android_ripple={ripple(ON_BANNER, { alpha: 0.3, borderless: true, radius: 22 })}
+          style={({ pressed }) => [styles.back, { top: topInset + 8 }, pressedStyle(pressed)]}
+          hitSlop={4}
+        >
+          <Icon name="chevron-left" size={22} color={ON_BANNER} />
+        </Pressable>
+      ) : null}
       {accessory ? <View style={[styles.accessory, { top: topInset + 8 }]}>{accessory}</View> : null}
     </View>
   );
@@ -162,7 +195,8 @@ export function EventCard({ event, meta, selected, onPress, accessibilityHint }:
 
 const styles = StyleSheet.create({
   hero: { overflow: 'hidden' },
-  heroContent: { paddingHorizontal: 16, paddingBottom: 16 },
+  // Text pinned to the bottom, so the photo shows above it.
+  heroContent: { paddingHorizontal: 16, paddingBottom: 16, justifyContent: 'flex-end' },
   photoScrim: { backgroundColor: 'rgba(15, 20, 26, 0.45)' },
   onBanner: { color: ON_BANNER },
   eyebrow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -178,6 +212,16 @@ const styles = StyleSheet.create({
   },
   meta: { marginTop: 2 },
   accessory: { position: 'absolute', right: 16 },
+  back: {
+    position: 'absolute',
+    left: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
   card: { height: 150 },
   cardContent: { justifyContent: 'flex-end' },
   selectedMark: {

@@ -1,10 +1,8 @@
 import React, { useCallback, useContext, useEffect, useState } from 'react';
 import {
   Alert,
-  Image,
   Linking,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,6 +15,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BottomTabBarHeightContext } from 'react-native-bottom-tabs';
 import { setStatusBarStyle } from 'expo-status-bar';
 import QRCode from 'react-native-qrcode-svg';
+import { AccountButton, AccountSheet } from '../components/AccountSheet';
+import { EventBanner, eventBannerText } from '../components/EventBanner';
 import { WalletButtons } from '../components/WalletButtons';
 import {
   startTicketActivity,
@@ -35,8 +35,6 @@ import {
   ListRow,
   StatusIndicator,
   Toggle,
-  pressedStyle,
-  ripple,
 } from '../components/ui';
 import type { RootStackParamList, Ticket } from '../types';
 
@@ -69,34 +67,6 @@ function formatStart(iso?: string, timezone?: string): { date: string; time: str
       return { date: '', time: '' };
     }
   }
-}
-
-// Live "starts in" countdown, ticking each second.
-function useCountdown(startsAt?: string, endsAt?: string): string {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  if (!startsAt) return '';
-  const start = new Date(startsAt).getTime();
-  const end = endsAt ? new Date(endsAt).getTime() : start;
-
-  if (now >= start && now <= end) return 'Happening now';
-  if (now > end) return 'Event ended';
-
-  const diff = start - now;
-  const days = Math.floor(diff / 86400000);
-  const hours = Math.floor((diff % 86400000) / 3600000);
-  const mins = Math.floor((diff % 3600000) / 60000);
-  const secs = Math.floor((diff % 60000) / 1000);
-
-  let label: string;
-  if (days > 0) label = `${days}d ${hours}h ${mins}m`;
-  else if (hours > 0) label = `${hours}h ${mins}m ${secs}s`;
-  else label = `${mins}m ${secs}s`;
-  return `${label} until doors open`;
 }
 
 function formatFlightWhen(iso?: string): string {
@@ -168,11 +138,14 @@ export function TicketDetailScreen() {
 
   const event = ticket.event;
   const start = formatStart(event.starts_at, event.timezone);
-  const countdown = useCountdown(event.starts_at, event.ends_at);
+  const banner = eventBannerText(event, 'Attendee');
   const venue = event.location_address || event.location_city || event.location_country || 'TBA';
   const venueValue =
     event.location_address && event.location_city ? `${event.location_address}, ${event.location_city}` : venue;
+  // Pushed from the ticket list it has a way back; as an event's home (an
+  // event the user only attends) it has the account avatar instead.
   const canGoBack = navigation.canGoBack();
+  const [accountOpen, setAccountOpen] = useState(false);
 
   // Live Activity: let confirmed attendees pin their pass to the Lock Screen.
   // iOS: a Live Activity. Android: an ongoing notification (a Live Update on
@@ -233,47 +206,18 @@ export function TicketDetailScreen() {
     Linking.openURL(url).catch(() => {});
   };
 
-  const meta = [start.date, event.location_city].filter(Boolean).join(' · ');
-
   return (
     <View style={[styles.screen, { backgroundColor: tokens.shaded }]}>
       <ScrollView contentContainerStyle={{ paddingBottom: bottomInset + spacing.xxl }}>
-        {/* Event header band */}
-        <View style={[styles.hero, { paddingTop: insets.top + 56, backgroundColor: tokens.brand }]}>
-          {event.banner_url ? (
-            <>
-              <Image source={{ uri: event.banner_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-              <View style={[StyleSheet.absoluteFill, styles.heroScrim]} />
-            </>
-          ) : null}
-          {canGoBack ? (
-            <Pressable
-              onPress={() => navigation.goBack()}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-              android_ripple={ripple('rgba(255,255,255,0.3)', { borderless: true, radius: 22 })}
-              style={({ pressed }) => [styles.back, { top: insets.top + 8 }, pressedStyle(pressed)]}
-              hitSlop={8}
-            >
-              <Icon name="chevron-left" size={22} color="#ffffff" />
-            </Pressable>
-          ) : null}
-          <View style={styles.heroBody}>
-            {event.logo_url ? (
-              <Image source={{ uri: event.logo_url }} style={styles.heroLogo} resizeMode="cover" />
-            ) : null}
-            {countdown ? (
-              <View style={styles.heroCountdown}>
-                <Icon name="clock" size={16} color="#ffffff" />
-                <Text style={styles.heroCountdownText}>{countdown}</Text>
-              </View>
-            ) : null}
-            <Text style={styles.heroTitle} numberOfLines={2} accessibilityRole="header">
-              {event.name}
-            </Text>
-            {meta ? <Text style={styles.heroMeta}>{meta}</Text> : null}
-          </View>
-        </View>
+        <EventBanner
+          event={event}
+          eyebrow={banner.eyebrow}
+          eyebrowIcon={banner.eyebrowIcon}
+          meta={banner.meta}
+          topInset={insets.top}
+          onBack={canGoBack ? () => navigation.goBack() : undefined}
+          accessory={canGoBack ? undefined : <AccountButton onBanner onPress={() => setAccountOpen(true)} />}
+        />
 
         <View style={[{ padding: spacing.lg, gap: spacing.lg }]}>
           <AttendeePass ticket={ticket} />
@@ -323,6 +267,7 @@ export function TicketDetailScreen() {
           </Container>
         </View>
       </ScrollView>
+      <AccountSheet visible={accountOpen} onClose={() => setAccountOpen(false)} />
     </View>
   );
 }
@@ -451,24 +396,6 @@ function MessagesCard({ messages }: { messages?: Ticket['messages'] }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  hero: { minHeight: 200, justifyContent: 'flex-end', overflow: 'hidden' },
-  heroScrim: { backgroundColor: 'rgba(15,20,26,0.5)' },
-  back: {
-    position: 'absolute',
-    left: 12,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.22)',
-  },
-  heroBody: { paddingHorizontal: 16, paddingBottom: 16, paddingTop: 8, gap: 4 },
-  heroLogo: { width: 44, height: 44, borderRadius: 10, backgroundColor: '#ffffff', marginBottom: 8 },
-  heroCountdown: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  heroCountdownText: { color: '#ffffff', fontSize: 14, lineHeight: 20, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  heroTitle: { color: '#ffffff', fontSize: 30, lineHeight: 36, fontWeight: '700' },
-  heroMeta: { color: '#ffffff', fontSize: 14, lineHeight: 20 },
   pass: {
     borderWidth: 1,
     paddingTop: 16,

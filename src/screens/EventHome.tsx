@@ -13,7 +13,7 @@ import { setStatusBarStyle } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, type NavigationProp } from '@react-navigation/native';
 import { AccountButton, AccountSheet } from '../components/AccountSheet';
-import { EventBanner } from '../components/EventBanner';
+import { EventBanner, eventBannerText } from '../components/EventBanner';
 import { RoleRestricted, roleRestrictedMessage } from '../components/RoleRestricted';
 import {
   Avatar,
@@ -38,7 +38,7 @@ import { useTabBarInset, useTopTabBarInset } from '../hooks/useTabBarInset';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { useRemote, type Remote } from '../hooks/useRemote';
 import { api } from '../services/api';
-import { eventDays, eventPhaseLabel, formatEventDateRange } from '../services/eventDates';
+import { eventDays } from '../services/eventDates';
 import { eventRoleLabel } from '../services/eventRoles';
 import { computeEventStats, formatPercent } from '../services/eventStats';
 import { liveActivityService } from '../services/liveActivity';
@@ -399,9 +399,7 @@ function Overview({
     ? [ordered.filter((_, i) => i % 2 === 0), ordered.filter((_, i) => i % 2 === 1)]
     : [ordered];
 
-  const meta = [formatEventDateRange(event), event.location_city, eventRoleLabel(event.role)]
-    .filter(Boolean)
-    .join(' · ');
+  const banner = eventBannerText(event, eventRoleLabel(event.role));
 
   return (
     <View style={[styles.screen, { backgroundColor: tokens.bg }]}>
@@ -421,9 +419,9 @@ function Overview({
         <View onLayout={e => setBannerHeight(e.nativeEvent.layout.height)}>
           <EventBanner
             event={event}
-            eyebrow={eventPhaseLabel(event)}
-            eyebrowIcon={running ? 'check-circle' : 'clock'}
-            meta={meta}
+            eyebrow={banner.eyebrow}
+            eyebrowIcon={banner.eyebrowIcon}
+            meta={banner.meta}
             topInset={insets.top + topTabInset}
             onPress={canSwitch ? () => navigation.navigate('SwitchEvent') : undefined}
             accessory={<AccountButton onBanner onPress={() => setAccountOpen(true)} />}
