@@ -25,13 +25,15 @@ import { useScannerPowerMode } from '../hooks/useScannerPowerMode';
 import { useNFC } from '../hooks/useNFC';
 import { useNfcAutoRead } from '../hooks/useNfcAutoRead';
 import {
-  ActionMenu,
   Button,
   Icon,
   OverlayIconButton,
   PressableSurface,
   type IconName,
+  type MenuAction,
 } from '../components/ui';
+import { ScanFrame, ScannerDock } from '../components/ScannerChrome';
+import { scanFrameSize } from '../services/scannerLayout';
 import { CHROME_MAX_FONT_SCALE } from '../components/ui/fontScale';
 import { scanContextSheet, scannerSearchSheet } from '../navigation/sheetData';
 import { useIsUnderSheet } from '../navigation/useIsUnderSheet';
@@ -89,7 +91,7 @@ export function ScannerScreen() {
   const lastFeedbackAttemptRef = useRef<string | null>(null);
   const { type, radii } = useTheme();
 
-  const scanAreaSize = Math.min(width * 0.6, height * 0.32, isRegular ? 280 : 200);
+  const scanAreaSize = scanFrameSize(width, height, isRegular);
   const selectedContext = contextsReady
     ? scanContexts.find(context => context.id === selectedContextId)
     : undefined;
@@ -278,9 +280,34 @@ export function ScannerScreen() {
     );
   }
 
+  const menuActions: MenuAction[] = [
+    {
+      key: 'power-mode',
+      title: 'Power mode',
+      subtitle: 'Prevents auto-lock and dims the screen after 30 seconds of inactivity',
+      checked: isPowerModeEnabled,
+      onSelect: () => {
+        recordScannerActivity();
+        setPowerModeEnabled(!isPowerModeEnabled);
+      },
+    },
+    {
+      key: 'kiosk',
+      title: 'Kiosk mode',
+      subtitle: canScan ? 'Self-serve check-in' : 'Choose a context first',
+      iosIcon: 'lock',
+      disabled: !canScan,
+      onSelect: () =>
+        navigation.navigate('KioskSetup', {
+          scanContextId: selectedContext?.id,
+          scanContextName: selectedContext?.name,
+        }),
+    },
+  ];
+
   const contextLabel = selectedContext?.name
     ?? (isLoadingContexts && scanContexts.length === 0 ? 'Loading contexts' : 'Choose a context');
-  // Room under the card for the dock: Search pill (44) + gap (12).
+  // Room under the card for the dock: its row (44) + gap (12).
   const dockHeight = 44 + 12;
 
   return (
@@ -317,47 +344,6 @@ export function ScannerScreen() {
             </Text>
             {scanContexts.length > 0 ? <Icon name="chevron-down" size={16} color={overlayTokens.on} /> : null}
           </PressableSurface>
-          <View style={scan.flexSpacer} />
-          <OverlayIconButton
-            surface="camera"
-            icon="torch"
-            accessibilityLabel={torchOn ? 'Turn torch off' : 'Turn torch on'}
-            active={torchOn}
-            onPress={() => {
-              recordScannerActivity();
-              setTorchOn(on => !on);
-            }}
-          />
-          <ActionMenu
-            feedbackColor={overlayTokens.on}
-            accessibilityLabel="More: Power mode, Kiosk mode"
-            actions={[
-              {
-                key: 'power-mode',
-                title: 'Power mode',
-                subtitle: 'Prevents auto-lock and dims the screen after 30 seconds of inactivity',
-                checked: isPowerModeEnabled,
-                onSelect: () => {
-                  recordScannerActivity();
-                  setPowerModeEnabled(!isPowerModeEnabled);
-                },
-              },
-              {
-                key: 'kiosk',
-                title: 'Kiosk mode',
-                subtitle: canScan ? 'Self-serve check-in' : 'Choose a context first',
-                iosIcon: 'lock',
-                disabled: !canScan,
-                onSelect: () =>
-                  navigation.navigate('KioskSetup', {
-                    scanContextId: selectedContext?.id,
-                    scanContextName: selectedContext?.name,
-                  }),
-              },
-            ]}
-          >
-            <OverlayIconButton surface="camera" icon="overflow" accessibilityLabel="More" />
-          </ActionMenu>
         </View>
 
         {/* Power mode is a setting, not a control that's on, so it shows as
@@ -372,26 +358,13 @@ export function ScannerScreen() {
         ) : null}
 
         <View style={styles.scanStage}>
-          <View
-            style={[styles.scanArea, { width: scanAreaSize, height: scanAreaSize }]}
-            accessible
+          {/* Until a context is chosen the reason takes the frame's place. */}
+          <ScanFrame
+            size={scanAreaSize}
+            corners={!needsContext}
+            processing={isProcessing}
             accessibilityLabel={`QR code scanning area. ${scannerStatus}`}
-          >
-            {/* Until a context is chosen the reason takes the frame's place. */}
-            {needsContext ? null : (
-              <>
-                <View style={[styles.corner, styles.topLeft]} />
-                <View style={[styles.corner, styles.topRight]} />
-                <View style={[styles.corner, styles.bottomLeft]} />
-                <View style={[styles.corner, styles.bottomRight]} />
-              </>
-            )}
-            {isProcessing ? (
-              <View style={styles.processingIndicator}>
-                <ActivityIndicator color={overlayTokens.on} size="small" />
-              </View>
-            ) : null}
-          </View>
+          />
 
           {needsContext ? (
             <View style={styles.contextRequired} pointerEvents="none">
@@ -441,16 +414,17 @@ export function ScannerScreen() {
             </View>
           ) : null}
 
-          <View style={scan.dockRow}>
-            <Button
-              variant="primary"
-              icon="search"
-              title={canViewParticipantRecords ? 'Search' : 'Enter ID'}
-              disabled={!contextsReady}
-              onPress={openSearch}
-              style={scan.flexSpacer}
-            />
-            {nfcSupported && Platform.OS === 'ios' ? (
+          <ScannerDock
+            torchOn={torchOn}
+            onTorch={() => {
+              recordScannerActivity();
+              setTorchOn(on => !on);
+            }}
+            menuActions={menuActions}
+            searchTitle={canViewParticipantRecords ? 'Search' : 'Enter ID'}
+            searchDisabled={!contextsReady}
+            onSearch={openSearch}
+            trailing={nfcSupported && Platform.OS === 'ios' ? (
               <OverlayIconButton
                 surface="camera"
                 icon="nfc"
@@ -462,7 +436,7 @@ export function ScannerScreen() {
                 }}
               />
             ) : null}
-          </View>
+          />
         </View>
 
       </SafeAreaView>
@@ -481,7 +455,7 @@ const scan = StyleSheet.create({
   },
   pill: { height: 44, borderRadius: radii.pill, backgroundColor: overlayTokens.cameraControl },
   pillContent: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16 },
-  contextPill: { flexShrink: 1, maxWidth: '72%' },
+  contextPill: { flexShrink: 1 },
   pillMuted: { color: overlayTokens.onMuted, flexShrink: 1 },
   pillStrong: { color: overlayTokens.on, flexShrink: 1 },
   pillWarning: { color: overlayTokens.active },
@@ -498,8 +472,6 @@ const scan = StyleSheet.create({
     backgroundColor: overlayTokens.cameraControl,
   },
   dock: { paddingHorizontal: 10 },
-  flexSpacer: { flex: 1 },
-  dockRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 });
 
 /** Before the camera can run: no permission yet, or no event. */
@@ -545,8 +517,6 @@ function CenteredState({
   );
 }
 
-const CORNER = { width: 40, height: 40, thickness: 5, radius: 18 };
-
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   container: { flex: 1, backgroundColor: overlayTokens.cameraStage },
@@ -559,15 +529,8 @@ const styles = StyleSheet.create({
   onCamera: { color: overlayTokens.on },
   onCameraMuted: { color: overlayTokens.onMuted },
   scanStage: { flex: 1, minHeight: 150, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, paddingVertical: 12 },
-  scanArea: { position: 'relative' },
   contextRequired: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
   contextRequiredCard: { alignItems: 'center', gap: 6, padding: 20, maxWidth: 360, backgroundColor: overlayTokens.cameraControl },
-  corner: { position: 'absolute', width: CORNER.width, height: CORNER.height, borderColor: overlayTokens.scanFrame },
-  topLeft: { top: 0, left: 0, borderTopWidth: CORNER.thickness, borderLeftWidth: CORNER.thickness, borderTopLeftRadius: CORNER.radius },
-  topRight: { top: 0, right: 0, borderTopWidth: CORNER.thickness, borderRightWidth: CORNER.thickness, borderTopRightRadius: CORNER.radius },
-  bottomLeft: { bottom: 0, left: 0, borderBottomWidth: CORNER.thickness, borderLeftWidth: CORNER.thickness, borderBottomLeftRadius: CORNER.radius },
-  bottomRight: { bottom: 0, right: 0, borderBottomWidth: CORNER.thickness, borderRightWidth: CORNER.thickness, borderBottomRightRadius: CORNER.radius },
-  processingIndicator: { position: 'absolute', left: '50%', top: '50%', width: 48, height: 48, marginLeft: -24, marginTop: -24, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: overlayTokens.cameraControl },
   // Anchored above the dock, outside layout flow, so the scan frame never shifts
   resultCardOverlay: { position: 'absolute', left: 14, right: 14 },
   resultCardScroll: { width: '100%', maxWidth: 620, alignSelf: 'center' },
