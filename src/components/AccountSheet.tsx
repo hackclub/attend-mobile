@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import * as WebBrowser from 'expo-web-browser';
 import { useApp } from '../context/AppContext';
+import { useOpenLink } from '../hooks/useOpenLink';
 import { biometricService } from '../services/biometric';
 import { notificationService } from '../services/notifications';
 import { useTheme, useThemePreference, type ThemePreference } from '../theme';
@@ -101,6 +101,7 @@ function useBiometricRemaining() {
  */
 export function AccountSheet() {
   const { tokens, type, spacing } = useTheme();
+  const openLink = useOpenLink();
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
   const onClose = useCallback(() => navigation.goBack(), [navigation]);
   const { state, logout, flushBeforeSignOut } = useApp();
@@ -209,7 +210,7 @@ export function AccountSheet() {
             subtitle="attend.hackclub.com"
             external
             divider={false}
-            onPress={() => void Linking.openURL(PROFILE_URL)}
+            onPress={() => openLink(PROFILE_URL)}
             accessibilityHint="Opens in your browser"
           />
         </Container>
@@ -252,7 +253,7 @@ export function AccountSheet() {
           <ListRow
             title="Privacy policy"
             external
-            onPress={() => void WebBrowser.openBrowserAsync(PRIVACY_URL)}
+            onPress={() => openLink(PRIVACY_URL)}
           />
           <ListRow title="Version" value={appVersionLabel()} divider={false} />
         </Container>

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Linking, Platform, StyleSheet, Text, View, type TextStyle } from 'react-native';
+import { Platform, StyleSheet, Text, View, type TextStyle } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { PressableSurface } from './ui/PressableSurface';
@@ -7,6 +7,7 @@ import { Icon, type IconName } from './ui/Icon';
 import { parseHtml, type Block, type Inline } from '../services/richText';
 import { TextField } from './forms';
 import { linkSheet } from '../navigation/sheetData';
+import { useOpenLink } from '../hooks/useOpenLink';
 import type { AppStackParamList } from '../types';
 import { useTheme, useThemedStyles, type Theme } from '../theme';
 
@@ -65,6 +66,7 @@ function BlockView({ block, size }: { block: Block; size: number }) {
 
 function InlineText({ inlines, style }: { inlines: Inline[]; style: TextStyle | TextStyle[] }) {
   const styles = useThemedStyles(makeStyles);
+  const openLink = useOpenLink();
   return (
     <Text style={style}>
       {inlines.map((inline, i) => {
@@ -82,7 +84,7 @@ function InlineText({ inlines, style }: { inlines: Inline[]; style: TextStyle | 
           <Text
             key={i}
             style={marks}
-            onPress={inline.href ? () => Linking.openURL(inline.href!).catch(() => {}) : undefined}
+            onPress={inline.href ? () => openLink(inline.href!) : undefined}
             accessibilityRole={inline.href ? 'link' : undefined}
           >
             {inline.text}

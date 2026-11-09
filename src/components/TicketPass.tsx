@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Linking,
   Modal,
   Pressable,
   StatusBar,
@@ -13,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
 import { useEventPassColor } from '../hooks/useEventPassColor';
 import { useBrightnessBoost } from '../hooks/useBrightnessBoost';
+import { useOpenLink } from '../hooks/useOpenLink';
 import { passColorsFor } from '../services/eventPassColors';
 import { formatEventDay, formatEventTime } from '../services/eventStatus';
 import { lightTokens, useTheme } from '../theme';
@@ -39,6 +39,7 @@ interface TicketPassProps {
  * below a perforation.
  */
 export function TicketPass({ ticket, pageColor }: TicketPassProps) {
+  const openLink = useOpenLink();
   const { tokens, type, radii, spacing, isDark } = useTheme();
   const event = ticket.event;
   const [enlarged, setEnlarged] = useState(false);
@@ -116,7 +117,7 @@ export function TicketPass({ ticket, pageColor }: TicketPassProps) {
                 title="Complete registration"
                 variant="primary"
                 fullWidth
-                onPress={() => Linking.openURL(ticket.onboarding_url).catch(() => {})}
+                onPress={() => openLink(ticket.onboarding_url)}
               />
             </View>
           )}

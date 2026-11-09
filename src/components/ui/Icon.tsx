@@ -1,6 +1,8 @@
 import React from 'react';
+import { Platform } from 'react-native';
 import Svg, { Circle, Path, type SvgProps } from 'react-native-svg';
 // One module per glyph: the package's barrel would pull in every icon.
+import ArrowLeftIcon from 'react-native-heroicons/outline/ArrowLeftIcon';
 import BanIcon from 'react-native-heroicons/outline/BanIcon';
 import BellIcon from 'react-native-heroicons/outline/BellIcon';
 import CalendarIcon from 'react-native-heroicons/outline/CalendarIcon';
@@ -45,6 +47,8 @@ import UsersIcon from 'react-native-heroicons/outline/UsersIcon';
 import WifiIcon from 'react-native-heroicons/outline/WifiIcon';
 import XCircleIcon from 'react-native-heroicons/outline/XCircleIcon';
 import XIcon from 'react-native-heroicons/outline/XIcon';
+import ShareIcon from 'react-native-heroicons/outline/ShareIcon';
+import UploadIcon from 'react-native-heroicons/outline/UploadIcon';
 import ChatAltIcon from 'react-native-heroicons/outline/ChatAltIcon';
 import DocumentIcon from 'react-native-heroicons/outline/DocumentIcon';
 import LinkIcon from 'react-native-heroicons/outline/LinkIcon';
@@ -128,6 +132,9 @@ export const icons = {
   travel: PaperAirplaneIcon,
   search: SearchIcon,
   'chevron-left': ChevronLeftIcon,
+  'arrow-left': ArrowLeftIcon,
+  // Each platform's own share glyph: iOS's box-and-arrow, Android's nodes.
+  share: Platform.OS === 'ios' ? UploadIcon : ShareIcon,
   'chevron-right': ChevronRightIcon,
   'chevron-up': ChevronUpIcon,
   'chevron-down': ChevronDownIcon,
