@@ -126,18 +126,21 @@ function useNavigationTheme() {
 const tabIcon = (sfSymbol: AppleIcon['sfSymbol'], androidSource: number) => () =>
   Platform.OS === 'ios' ? ({ sfSymbol } satisfies AppleIcon) : androidSource;
 
-// Android-only bar styling: the Material bar's own theming doesn't track our
-// palette, so we paint it from the active scheme's surface color.
+// Android-only bar styling. The Material 3 app theme (plugins/
+// withAndroidBrandTheme.js) already gives the bar our surface, indicator and
+// ripple colours, but only for the system scheme: it's resolved once when the
+// bar is created, and an in-app light/dark override doesn't recreate it. So
+// the colours that change between schemes still come from the active palette.
 function useAndroidTabBarProps() {
   const { colors } = useTheme();
   if (Platform.OS !== 'android') return {};
   return {
-    // The native barTintColor is read from tabBarStyle.backgroundColor;
-    // without it the bar paints the theme's colorPrimary (near-black).
+    // The native barTintColor is read from tabBarStyle.backgroundColor.
     tabBarStyle: { backgroundColor: colors.surface },
+    // Unset, the library falls back to android:textColorSecondary.
     tabBarInactiveTintColor: colors.gray[500],
+    // Translucent, so it reads on either surface.
     activeIndicatorColor: `${colors.red}1F`,
-    rippleColor: `${colors.red}22`,
   };
 }
 
