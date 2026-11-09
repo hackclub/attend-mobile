@@ -16,6 +16,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Linking from 'expo-linking';
 import * as ScreenOrientation from 'expo-screen-orientation';
+import { holdSplash, hideSplash, isAppReady } from './src/services/splash';
 import { notificationService } from './src/services/notifications';
 import { AppProvider, useApp } from './src/context/AppContext';
 import { useEventAccess } from './src/hooks/useEventAccess';
@@ -99,6 +100,10 @@ Sentry.init({
   // uncomment the line below to enable Spotlight (https://spotlightjs.com)
   // spotlight: __DEV__,
 });
+
+// The splash stays up until the first real screen is ready (see
+// AppNavigation), so a restored session opens straight onto its event.
+holdSplash();
 
 // Portrait is requested at runtime instead of android:screenOrientation in
 // the manifest: Play flags the manifest attribute, and Android 16+ ignores
@@ -389,6 +394,11 @@ function AppNavigation() {
   useAppShortcutLaunch(
     navigationReady && !state.auth.isLoading && state.auth.isAuthenticated
   );
+
+  const appReady = isAppReady({ authLoading: state.auth.isLoading, navigationReady });
+  useEffect(() => {
+    if (appReady) hideSplash();
+  }, [appReady]);
 
   useEffect(() => {
     const openScanner = (url?: string | null) => {

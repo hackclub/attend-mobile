@@ -197,6 +197,44 @@ export function appReducer(state: AppState, action: AppAction): AppState {
   }
 }
 
+export interface CachedSelection {
+  event: Event | null;
+  participants: Participant[];
+  events: Event[];
+}
+
+// The last selected event, its roster and the event list, from disk. A failed
+// read restores nothing rather than blocking sign-in.
+async function loadCachedSelection(): Promise<CachedSelection> {
+  try {
+    const [event, events] = await Promise.all([
+      syncService.getCurrentEvent(),
+      syncService.getCachedEvents(),
+    ]);
+    const participants = event ? await syncService.getCachedParticipants(event.id) : [];
+    return { event, participants, events };
+  } catch (error) {
+    console.error('Failed to restore cached data:', error);
+    return { event: null, participants: [], events: [] };
+  }
+}
+
+/**
+ * The actions that put a restored session's cached data in place, in order:
+ * the event first (it clears any other event's roster), then its roster, then
+ * the event list (which refreshes the selected event's copy). Dispatched just
+ * before SET_AUTH.
+ */
+export function restoredSelectionActions(cached: CachedSelection): AppAction[] {
+  const actions: AppAction[] = [];
+  if (cached.event) {
+    actions.push({ type: 'SET_CURRENT_EVENT', payload: cached.event });
+    actions.push({ type: 'SET_PARTICIPANTS', payload: cached.participants });
+  }
+  actions.push({ type: 'SET_EVENTS', payload: cached.events });
+  return actions;
+}
+
 interface AppContextValue {
   state: AppState;
   login: () => Promise<boolean>;
@@ -240,15 +278,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Scopes the scan queue to this user (discarding anyone else's queued
   // scans) before the app shows them as signed in.
+  // `preload` (a restored session's cached event and roster) is dispatched in
+  // the same tick as SET_AUTH, so the first signed-in render already has them.
   const beginSession = useCallback(async (
     user: User,
-    { restored, token: knownToken }: { restored: boolean; token?: string }
+    { restored, token: knownToken, preload }: {
+      restored: boolean;
+      token?: string;
+      preload?: Promise<AppAction[]>;
+    }
   ) => {
-    await scanQueue.setUser(user.id, { adoptUntagged: restored }).catch(error => {
-      console.warn('[Session] Failed to scope the scan queue:', error);
-    });
+    const [, preloadActions] = await Promise.all([
+      scanQueue.setUser(user.id, { adoptUntagged: restored }).catch(error => {
+        console.warn('[Session] Failed to scope the scan queue:', error);
+      }),
+      preload ?? Promise.resolve([]),
+    ]);
     const token = knownToken ?? await authService.getToken();
     authTokenRef.current = token;
+    for (const action of preloadActions) dispatch(action);
     dispatch({ type: 'SET_AUTH', payload: { user, token: token! } });
     refreshSyncStatus();
   }, [refreshSyncStatus]);
@@ -276,34 +324,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         if (result.success && result.user) {
           // Signed in from the cached user straight away; /me may still be
-          // checking the token in the background (result.validation).
-          await beginSession(result.user, { restored: true, token: result.token });
+          // checking the token in the background (result.validation). The
+          // cached event and roster are read alongside and land with SET_AUTH,
+          // so home never flashes "Choose an event" or a spinner.
+          const cached = loadCachedSelection();
+          await beginSession(result.user, {
+            restored: true,
+            token: result.token,
+            preload: cached.then(restoredSelectionActions),
+          });
 
-          try {
-            const cachedEvent = await syncService.getCurrentEvent();
-            if (cachedEvent) {
-              const generation = ++eventSelectionGenerationRef.current;
-              dispatch({ type: 'SET_CURRENT_EVENT', payload: cachedEvent });
-              const participants = await syncService.getCachedParticipants(cachedEvent.id);
-              if (eventSelectionGenerationRef.current === generation) {
-                dispatch({ type: 'SET_PARTICIPANTS', payload: participants });
-              }
-              void syncService.refreshParticipants(cachedEvent.id)
-                .then(fresh => {
-                  if (
-                    eventSelectionGenerationRef.current === generation
-                    && currentEventIdRef.current === cachedEvent.id
-                  ) {
-                    dispatch({ type: 'SET_PARTICIPANTS', payload: fresh });
-                  }
-                })
-                .catch(() => {});
-            }
-            
-            const events = await syncService.getCachedEvents();
-            dispatch({ type: 'SET_EVENTS', payload: events });
-          } catch (cacheError) {
-            console.error('Failed to restore cached data:', cacheError);
+          const { event: cachedEvent } = await cached;
+          if (cachedEvent) {
+            const generation = ++eventSelectionGenerationRef.current;
+            void syncService.refreshParticipants(cachedEvent.id)
+              .then(fresh => {
+                if (
+                  eventSelectionGenerationRef.current === generation
+                  && currentEventIdRef.current === cachedEvent.id
+                ) {
+                  dispatch({ type: 'SET_PARTICIPANTS', payload: fresh });
+                }
+              })
+              .catch(() => {});
           }
 
           // Handled after the cached data, so an expired session's sign-out
