@@ -7,6 +7,7 @@ import { api } from '../services/api';
 import { BiometricGate } from '../components/BiometricGate';
 import { useTheme } from '../theme';
 import { ParticipantDetailContent } from './ParticipantDetailContent';
+import { participantDetailTarget } from '../services/deepLinks';
 import type { Participant, RootStackParamList } from '../types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ParticipantDetail'>;
@@ -17,15 +18,16 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ParticipantDetail'>;
 // gated before the lookup too, so nothing is fetched for a locked device.
 export function ParticipantDetailScreen({ route }: Props) {
   const { tokens } = useTheme();
-  const params = route.params;
+  // Deep link params are untyped strings, whatever the route type says.
+  const target = participantDetailTarget<Participant>(route.params);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: tokens.bg }]} edges={['bottom']}>
-      {'participant' in params && params.participant ? (
-        <ParticipantDetailContent participant={params.participant} />
+      {'participant' in target ? (
+        <ParticipantDetailContent participant={target.participant} />
       ) : (
         <BiometricGate topInset={100}>
-          <ParticipantById id={'id' in params ? params.id : undefined} />
+          <ParticipantById id={target.id} />
         </BiometricGate>
       )}
     </SafeAreaView>

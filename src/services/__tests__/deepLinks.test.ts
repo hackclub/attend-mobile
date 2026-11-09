@@ -1,4 +1,4 @@
-import { fallbackToRegisteredRoute, homeRouteName } from '../deepLinks';
+import { fallbackToRegisteredRoute, homeRouteName, participantDetailTarget } from '../deepLinks';
 
 const scan = { routes: [{ name: 'Main', state: { routes: [{ name: 'Scanner' }] } }] };
 const tickets = { routes: [{ name: 'ParticipantMain' }] };
@@ -32,5 +32,23 @@ describe('fallbackToRegisteredRoute', () => {
   it('passes through before the navigator has mounted', () => {
     expect(fallbackToRegisteredRoute(scan, undefined)).toBe(scan);
     expect(fallbackToRegisteredRoute(undefined, ['Main'])).toBeUndefined();
+  });
+});
+
+describe('participantDetailTarget', () => {
+  it('uses a pushed participant object', () => {
+    const participant = { participant_id: 'p1' };
+    expect(participantDetailTarget({ participant })).toEqual({ participant });
+  });
+
+  it('takes the id path for a deep link', () => {
+    expect(participantDetailTarget({ id: 'abc' })).toEqual({ id: 'abc' });
+  });
+
+  it('ignores a string smuggled in as the participant', () => {
+    expect(participantDetailTarget({ id: 'abc', participant: 'foo' })).toEqual({ id: 'abc' });
+    expect(participantDetailTarget({ participant: 'foo' })).toEqual({ id: undefined });
+    expect(participantDetailTarget({ participant: ['x'] })).toEqual({ id: undefined });
+    expect(participantDetailTarget(undefined)).toEqual({ id: undefined });
   });
 });
