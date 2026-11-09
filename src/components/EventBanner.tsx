@@ -5,6 +5,7 @@ import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
 import { useEventPassColor } from '../hooks/useEventPassColor';
 import { Badge, Icon, OverlayIconButton, PressableSurface, pressedStyle, ripple, type BadgeColor, type IconName } from './ui';
 import { hackClubColors, overlayTokens, radii, typography, useTheme, withAlpha } from '../theme';
+import { CHROME_MAX_FONT_SCALE } from './ui/fontScale';
 import { bannerHeight } from '../services/eventBanner';
 import type { Event } from '../types';
 
@@ -101,7 +102,9 @@ export function EventBanner({
       {eyebrow ? (
         <View style={styles.eyebrow}>
           <Icon name={eyebrowIcon} size={16} color={ON_BANNER} />
-          <Text style={[type.label, styles.onBanner]}>{eyebrow}</Text>
+          <Text style={[type.label, styles.onBanner]} maxFontSizeMultiplier={CHROME_MAX_FONT_SCALE}>
+            {eyebrow}
+          </Text>
         </View>
       ) : null}
       <View style={styles.nameRow}>
@@ -114,7 +117,11 @@ export function EventBanner({
           </View>
         ) : null}
       </View>
-      {meta ? <Text style={[type.body, styles.onBanner, styles.meta]}>{meta}</Text> : null}
+      {meta ? (
+        <Text style={[type.body, styles.onBanner, styles.meta]} maxFontSizeMultiplier={CHROME_MAX_FONT_SCALE}>
+          {meta}
+        </Text>
+      ) : null}
     </View>
   );
 
