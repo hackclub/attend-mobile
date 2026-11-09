@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as WebBrowser from 'expo-web-browser';
 import { useApp } from '../context/AppContext';
 import { biometricService } from '../services/biometric';
@@ -7,15 +9,17 @@ import { notificationService } from '../services/notifications';
 import { useTheme, useThemePreference, type ThemePreference } from '../theme';
 import { appVersionLabel } from './VersionFooter';
 import { signOutConfirmation } from './signOutConfirmation';
+import type { AppStackParamList } from '../types';
 import {
   Avatar,
   Badge,
-  BottomSheet,
   Button,
   Container,
   Icon,
   ListRow,
   SegmentedControl,
+  Sheet,
+  SHEET_INSET,
   Toggle,
   pressedStyle,
   ripple,
@@ -37,13 +41,15 @@ export function AccountButton({
   size = 40,
   onBanner = false,
 }: {
-  onPress: () => void;
+  /** Defaults to opening the Account sheet. */
+  onPress?: () => void;
   size?: number;
   /** A white ring so it reads on a coloured banner or photo. */
   onBanner?: boolean;
 }) {
   const { state } = useApp();
   const { tokens } = useTheme();
+  const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
   const user = state.auth.user;
   const name = user?.name || user?.email || 'Account';
   // A borderless ripple draws on whatever is behind the avatar: white over a
@@ -53,7 +59,7 @@ export function AccountButton({
     : ripple(tokens.text, { alpha: STATE_LAYER_ALPHA, borderless: true, radius: size / 2 + 4 });
   return (
     <Pressable
-      onPress={onPress}
+      onPress={onPress ?? (() => navigation.navigate('AccountSheet'))}
       hitSlop={4}
       android_ripple={rippleConfig}
       style={({ pressed }) => [
@@ -73,10 +79,9 @@ function minutesLeft(ms: number): number {
   return Math.max(1, Math.ceil(ms / 60_000));
 }
 
-function useBiometricRemaining(active: boolean) {
+function useBiometricRemaining() {
   const [remaining, setRemaining] = useState(() => biometricService.sessionRemainingMs());
   useEffect(() => {
-    if (!active) return;
     const tick = () => setRemaining(biometricService.sessionRemainingMs());
     tick();
     const timer = setInterval(tick, 10_000);
@@ -85,17 +90,19 @@ function useBiometricRemaining(active: boolean) {
       clearInterval(timer);
       unsubscribe();
     };
-  }, [active]);
+  }, []);
   return [remaining, setRemaining] as const;
 }
 
 /**
  * Account and app settings: who is signed in, appearance, notifications, the
  * biometric lock, and sign out. Profile edits happen on the web; the API's
- * /me is read-only.
+ * /me is read-only. A form-sheet route (AccountSheet).
  */
-export function AccountSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+export function AccountSheet() {
   const { tokens, type, spacing } = useTheme();
+  const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
+  const onClose = useCallback(() => navigation.goBack(), [navigation]);
   const { state, logout, flushBeforeSignOut } = useApp();
   const [signingOut, setSigningOut] = useState(false);
   const { preference, setPreference } = useThemePreference();
@@ -103,10 +110,9 @@ export function AccountSheet({ visible, onClose }: { visible: boolean; onClose: 
   const name = user?.name || user?.email || 'Signed in';
   const [pushEnabled, setPushEnabled] = useState<boolean | null>(null);
   const [pushBusy, setPushBusy] = useState(false);
-  const [remaining, setRemaining] = useBiometricRemaining(visible);
+  const [remaining, setRemaining] = useBiometricRemaining();
 
   useEffect(() => {
-    if (!visible) return;
     let cancelled = false;
     void notificationService.isPushEnabled().then((enabled) => {
       if (!cancelled) setPushEnabled(enabled);
@@ -114,7 +120,7 @@ export function AccountSheet({ visible, onClose }: { visible: boolean; onClose: 
     return () => {
       cancelled = true;
     };
-  }, [visible]);
+  }, []);
 
   const togglePush = useCallback(async (next: boolean) => {
     setPushBusy(true);
@@ -178,17 +184,10 @@ export function AccountSheet({ visible, onClose }: { visible: boolean; onClose: 
   const unlocked = remaining > 0;
 
   return (
-    <BottomSheet
-      visible={visible}
-      onClose={onClose}
+    <Sheet
       title="Account"
-      maxHeightRatio={0.92}
-      headerActions={<Button variant="icon" icon="x" title="Close" onPress={onClose} />}
+      contentContainerStyle={{ gap: spacing.lg, paddingHorizontal: SHEET_INSET - spacing.xs }}
     >
-      <ScrollView
-        contentContainerStyle={[styles.content, { gap: spacing.lg, paddingBottom: spacing.xxl }]}
-        showsVerticalScrollIndicator={false}
-      >
         <Container bodyStyle={{ gap: 14 }}>
           <View style={styles.identity}>
             <Avatar name={name} uri={user?.avatarUrl} size={56} tint="red" decorative />
@@ -272,14 +271,12 @@ export function AccountSheet({ visible, onClose }: { visible: boolean; onClose: 
             Signs you out of Attend on this device and stops its notifications.
           </Text>
         </View>
-      </ScrollView>
-    </BottomSheet>
+    </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
   bannerRing: { borderWidth: 2, borderColor: 'rgba(255,255,255,0.45)' },
-  content: { paddingTop: 4 },
   identity: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   identityText: { flex: 1, minWidth: 0 },
   badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },

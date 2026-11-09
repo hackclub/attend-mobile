@@ -6,7 +6,7 @@ import { api } from '../services/api';
 import { eventPhaseLabel } from '../services/eventDates';
 import { groupTickets, ticketBadge } from '../services/eventSwitcher';
 import { VersionFooter } from '../components/VersionFooter';
-import { AccountButton, AccountSheet } from '../components/AccountSheet';
+import { AccountButton } from '../components/AccountSheet';
 import { EventCard } from '../components/EventBanner';
 import { useTheme } from '../theme';
 import { Button, Icon, QuickActionTile, Screen } from '../components/ui';
@@ -65,7 +65,6 @@ export function MyTicketsScreen() {
   }, [loadTickets]);
 
   // Sign out, appearance and notifications live in the shared Account sheet.
-  const [accountOpen, setAccountOpen] = useState(false);
 
   const { upcoming, past } = useMemo(() => groupTickets(tickets), [tickets]);
 
@@ -86,7 +85,7 @@ export function MyTicketsScreen() {
     <>
       <Screen
         title="My tickets"
-        action={<AccountButton onPress={() => setAccountOpen(true)} />}
+        action={<AccountButton />}
         refreshing={isRefreshing}
         onRefresh={handleRefresh}
       >
@@ -163,7 +162,6 @@ export function MyTicketsScreen() {
 
         <VersionFooter />
       </Screen>
-      <AccountSheet visible={accountOpen} onClose={() => setAccountOpen(false)} />
     </>
   );
 }

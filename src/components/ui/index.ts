@@ -1,5 +1,6 @@
 // The redesign UI kit. Every component reads the console tokens from
 // useTheme(), so it follows the system / user appearance.
+export { ActionMenu, type ActionMenuProps, type MenuAction } from './ActionMenu';
 export { Avatar, initialsFor, tintFor, type AvatarProps } from './Avatar';
 export { Badge, type BadgeColor, type BadgeProps } from './Badge';
 export { BottomSheet, type BottomSheetProps } from './BottomSheet';
@@ -17,6 +18,7 @@ export {
   type SegmentedControlProps,
 } from './SegmentedControl';
 export { Screen, ScreenHeading, type ScreenProps, type ScreenHeadingProps } from './Screen';
+export { Sheet, SheetHeader, SHEET_INSET, type SheetProps, type SheetHeaderProps } from './Sheet';
 export { Stat, type StatProps } from './Stat';
 export {
   StatusIndicator,

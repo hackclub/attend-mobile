@@ -13,7 +13,7 @@ import { haptics, type HapticImpact } from '../../services/haptics';
 import { Icon, type IconName } from './Icon';
 import { PressableSurface } from './PressableSurface';
 
-export type ButtonVariant = 'normal' | 'primary' | 'link' | 'icon';
+export type ButtonVariant = 'normal' | 'primary' | 'link' | 'icon' | 'plain-icon';
 
 export interface ButtonProps {
   /** Visible label. For `variant="icon"` it becomes the accessibility label. */
@@ -37,7 +37,8 @@ export interface ButtonProps {
 /**
  * Console button (.cs-btn) as a pill: min height 44, 2px accent border.
  * `primary` fills with the accent, `link` drops the border, `icon` is a
- * 44pt round button showing only `icon`.
+ * 44pt round button showing only `icon`, and `plain-icon` is the same 44pt
+ * target with no border or fill (a sheet's close button).
  */
 export function Button({
   title,
@@ -58,7 +59,8 @@ export function Button({
   const inactive = disabled || loading;
   const isPrimary = variant === 'primary';
   const isLink = variant === 'link';
-  const isIcon = variant === 'icon';
+  const isPlainIcon = variant === 'plain-icon';
+  const isIcon = variant === 'icon' || isPlainIcon;
 
   let bg = tokens.bg;
   let border = tokens.accent;
@@ -67,16 +69,17 @@ export function Button({
     bg = tokens.accent;
     fg = tokens.accentOn;
   }
-  if (isLink) {
+  if (isLink || isPlainIcon) {
     bg = 'transparent';
     border = 'transparent';
   }
+  if (isPlainIcon) fg = tokens.text2;
   if (disabled) {
     fg = tokens.disabled;
     if (isPrimary) {
       bg = tokens.inputDisabled;
       border = tokens.inputDisabled;
-    } else if (!isLink) {
+    } else if (!isLink && !isPlainIcon) {
       border = tokens.input;
     }
   }

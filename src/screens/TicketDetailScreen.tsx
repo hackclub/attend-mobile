@@ -15,7 +15,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BottomTabBarHeightContext } from 'react-native-bottom-tabs';
 import { setStatusBarStyle } from 'expo-status-bar';
 import QRCode from 'react-native-qrcode-svg';
-import { AccountButton, AccountSheet } from '../components/AccountSheet';
+import { AccountButton } from '../components/AccountSheet';
 import { EventBanner, eventBannerText } from '../components/EventBanner';
 import { WalletButtons } from '../components/WalletButtons';
 import { rootNavigation } from '../navigation/rootNavigation';
@@ -146,7 +146,6 @@ export function TicketDetailScreen() {
   // Pushed from the ticket list it has a way back; as an event's home (an
   // event the user only attends) it has the account avatar instead.
   const canGoBack = navigation.canGoBack();
-  const [accountOpen, setAccountOpen] = useState(false);
   // As an organizer's home for an event they attend, the banner switches
   // events like the Overview's does. (Only organizers have the switcher.)
   const canSwitch = !canGoBack && !!rootNavigation(navigation).getState()?.routeNames?.includes('SwitchEvent');
@@ -221,7 +220,7 @@ export function TicketDetailScreen() {
           topInset={insets.top}
           onBack={canGoBack ? () => navigation.goBack() : undefined}
           onPress={canSwitch ? () => navigation.navigate('SwitchEvent', { currentTicketId: ticket.id }) : undefined}
-          accessory={canGoBack ? undefined : <AccountButton onBanner onPress={() => setAccountOpen(true)} />}
+          accessory={canGoBack ? undefined : <AccountButton onBanner />}
         />
 
         <View style={[{ padding: spacing.lg, gap: spacing.lg }]}>
@@ -272,7 +271,6 @@ export function TicketDetailScreen() {
           </Container>
         </View>
       </ScrollView>
-      <AccountSheet visible={accountOpen} onClose={() => setAccountOpen(false)} />
     </View>
   );
 }

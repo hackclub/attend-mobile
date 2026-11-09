@@ -5,7 +5,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { eventHomeState, passHomeState } from '../navigation/routes';
 import { resetRoot } from '../navigation/rootNavigation';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { AccountButton, AccountSheet } from '../components/AccountSheet';
+import { AccountButton } from '../components/AccountSheet';
 import { EventCard } from '../components/EventBanner';
 import { Button, TextField } from '../components/ui';
 import { useApp } from '../context/AppContext';
@@ -57,7 +57,6 @@ export function SwitchEventList({
   const route = useRoute();
   const { state, selectEvent } = useApp();
   const { groups: allGroups, isLoading, loadFailed, refresh } = switcher;
-  const [accountOpen, setAccountOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [query, setQuery] = useState('');
   const [pastOpen, setPastOpen] = useState(false);
@@ -111,7 +110,7 @@ export function SwitchEventList({
           <Text style={[type.h1, styles.title, { color: tokens.textH }]} accessibilityRole="header">
             {embedded ? 'Choose an event' : 'Switch event'}
           </Text>
-          <AccountButton size={44} onPress={() => setAccountOpen(true)} />
+          <AccountButton size={44} />
           {embedded ? null : (
             <Button variant="icon" icon="x" title="Close" onPress={() => navigation.goBack()} />
           )}
@@ -233,7 +232,6 @@ export function SwitchEventList({
           </View>
         ) : null}
       </ScrollView>
-      <AccountSheet visible={accountOpen} onClose={() => setAccountOpen(false)} />
     </View>
   );
 }

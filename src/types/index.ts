@@ -479,7 +479,7 @@ type ParticipantDetailParams =
 /**
  * The root stack: the homes (the organizer tabs, and the attendee's tickets
  * and passes) and whatever is presented over every tab: the switcher, the
- * ID check, kiosk mode and, later, form sheets.
+ * ID check, kiosk mode and the form sheets.
  */
 export type RootStackParamList = {
   Login: undefined;
@@ -495,6 +495,15 @@ export type RootStackParamList = {
     scanContextId?: string;
     scanContextName?: string;
   };
+  // Form sheets (navigation/sheets). Their data comes through a sheet
+  // channel, not params.
+  AccountSheet: undefined;
+  ScanContextSheet: undefined;
+  ScannerSearchSheet: undefined;
+  FilterSheet: undefined;
+  OptionsSheet: undefined;
+  MultiSelectSheet: undefined;
+  LinkSheet: undefined;
 };
 
 /** The organizer tabs. Each holds its own stack, so the tab bar stays put. */

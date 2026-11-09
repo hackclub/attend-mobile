@@ -47,6 +47,7 @@ import { fallbackToRegisteredRoute, preferOrganizerTabs } from './src/services/d
 import { ROOT_NAVIGATOR } from './src/navigation/routes';
 import { linkingConfig } from './src/navigation/linking';
 import { lazyScreens } from './src/navigation/lazyScreens';
+import { useSheetScreens } from './src/navigation/sheetScreens';
 
 const REPLAY_ENABLED = Platform.OS === 'ios';
 
@@ -282,6 +283,7 @@ function RootNavigator() {
   const { state } = useApp();
   const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
+  const sheetScreens = useSheetScreens();
 
   if (state.auth.isLoading) {
     return (
@@ -332,6 +334,15 @@ function RootNavigator() {
               animation: 'fade',
             }}
           />
+          {/* Form sheets: the account sheet and every picker (navigation/sheets). */}
+          {sheetScreens.map((sheet) => (
+            <Stack.Screen
+              key={sheet.name}
+              name={sheet.name}
+              getComponent={sheet.getComponent}
+              options={sheet.options}
+            />
+          ))}
         </>
       ) : (
         <Stack.Screen name="Login" component={LoginScreen} />

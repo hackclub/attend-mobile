@@ -2,15 +2,11 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
-  Keyboard,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -20,11 +16,9 @@ import { useTabBarInset } from '../hooks/useTabBarInset';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
 import { ScannerResultCard } from '../components/ScannerResultCard';
 import { useApp } from '../context/AppContext';
 import { useEventAccess } from '../hooks/useEventAccess';
-import { useParticipants } from '../hooks/useParticipants';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { useScanFeedback } from '../hooks/useScanFeedback';
 import { useScanner } from '../hooks/useScanner';
@@ -32,41 +26,30 @@ import { useScannerPowerMode } from '../hooks/useScannerPowerMode';
 import { useNFC } from '../hooks/useNFC';
 import { useNfcAutoRead } from '../hooks/useNfcAutoRead';
 import {
-  BottomSheet,
+  ActionMenu,
   Button,
   Icon,
-  ListRow,
   PressableSurface,
-  Toggle,
   pressedStyle,
   ripple,
   type IconName,
 } from '../components/ui';
+import { scanContextSheet, scannerSearchSheet } from '../navigation/sheetData';
+import { useIsUnderSheet } from '../navigation/useIsUnderSheet';
 import { api } from '../services/api';
 import { computeEventStats } from '../services/eventStats';
 import { participantAfterUndo } from '../services/scanUndo';
-import { useTheme } from '../theme';
 import { colors } from '../theme/colors';
 import type { Participant, AppStackParamList } from '../types';
 
 type NavigationProp = NativeStackNavigationProp<AppStackParamList>;
-type ManualEntryMode = 'none' | 'search';
 
 // How long the camera ignores codes after a sheet over it closes.
 const SHEET_CLOSE_SCAN_COOLDOWN_MS = 400;
 
-// A query that reads as an attendee/participant-event ID rather than a name or
-// email: one unbroken run of hex/dash characters (UUIDs) or 8+ alphanumerics.
-function looksLikeAttendeeId(query: string): boolean {
-  const trimmed = query.trim();
-  if (trimmed.includes('@') || /\s/.test(trimmed)) return false;
-  return /^[0-9a-fA-F-]{16,}$/.test(trimmed) || /^[A-Za-z0-9_-]{8,}$/.test(trimmed);
-}
-
 export function ScannerScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { state, updateParticipant } = useApp();
-  const { tokens } = useTheme();
   const {
     handleScan,
     handleNFCScan,
@@ -83,7 +66,6 @@ export function ScannerScreen() {
     contextsReady,
     needsContext,
   } = useScanner();
-  const { search, clearSearch, searchResults, isSearching } = useParticipants();
   // Scanning itself works for every staff role; searching the roster and
   // opening a participant do not, so both entry points come and go with access.
   const { canViewParticipantRecords } = useEventAccess();
@@ -99,10 +81,6 @@ export function ScannerScreen() {
     setPowerModeEnabled,
     recordScannerActivity,
   } = useScannerPowerMode(hasEvent && !!permission?.granted);
-  const [manualEntryMode, setManualEntryMode] = useState<ManualEntryMode>('none');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [contextPickerOpen, setContextPickerOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
   const [undoing, setUndoing] = useState(false);
   const [isFocused, setIsFocused] = useState(true);
@@ -118,10 +96,14 @@ export function ScannerScreen() {
     ? scanContexts.find(context => context.id === selectedContextId)
     : undefined;
   const canScan = contextsReady && !needsContext;
+  // A form sheet (the context picker, search) blurs this screen but leaves
+  // it on show, so the camera stays mounted under it, paused: restarting it
+  // blanks the preview. It unmounts on a tab switch or a full-screen route.
+  const { underSheet: sheetOpen, checkUnderSheet } = useIsUnderSheet();
+  const cameraMounted = isFocused || sheetOpen;
   // Until staff choose a context the camera sends nothing: the scan frame is
   // covered with the reason instead of failing a scan they lined up.
-  const sheetOpen = manualEntryMode !== 'none' || contextPickerOpen || moreOpen;
-  const cameraScanningEnabled = isFocused && !sheetOpen && canScan;
+  const cameraScanningEnabled = isFocused && canScan;
   // The camera always gets the same handler: toggling onBarcodeScanned makes
   // expo-camera rebuild its capture session, which blanks the preview every
   // time a sheet opens. Scans are gated here instead. A short cooldown after a
@@ -151,23 +133,19 @@ export function ScannerScreen() {
       setIsFocused(true);
       return () => {
         setIsFocused(false);
-        // The torch never outlives the screen that turned it on.
-        setTorchOn(false);
+        // The torch never outlives the screen that turned it on, though it
+        // stays on under a sheet, like the camera.
+        if (!checkUnderSheet()) setTorchOn(false);
       };
-    }, [])
+    }, [checkUnderSheet])
   );
 
   // Android reads NFC badges while the scanner is open, under the camera's
-  // conditions: not behind the context picker, the More sheet or manual
-  // entry. Unlike the camera it stays on before a context is chosen, so a
-  // tap explains that one is needed. iOS needs the NFC button's system sheet.
+  // conditions: not behind the context picker or search (which blur it).
+  // Unlike the camera it stays on before a context is chosen, so a tap
+  // explains that one is needed. iOS needs the NFC button's system sheet.
   useNfcAutoRead({
-    enabled: isFocused
-      && hasEvent
-      && contextsReady
-      && manualEntryMode === 'none'
-      && !contextPickerOpen
-      && !moreOpen,
+    enabled: isFocused && hasEvent && contextsReady,
     onToken: (token, isBadge) => {
       recordScannerActivity();
       void handleNfcToken(token, isBadge);
@@ -216,57 +194,46 @@ export function ScannerScreen() {
     void barcodeHandlerRef.current(result);
   }, []);
 
-  // Typed/pasted attendee IDs go through the search sheet's input.
-  const handleDirectIdScan = useCallback(async (identifier: string) => {
-    const trimmed = identifier.trim();
+  // The search sheet scans a typed/pasted attendee ID or a roster match in
+  // this screen's context; its result shows here, over the camera.
+  const scanFromSheet = useCallback(async (identifier: string | undefined) => {
+    const trimmed = identifier?.trim();
     if (!trimmed || isProcessing) return;
     recordScannerActivity();
     if (!canScan) return;
     await handleScan(trimmed, 'manual');
-    setSearchQuery('');
-    clearSearch();
-    setManualEntryMode('none');
-    Keyboard.dismiss();
-  }, [canScan, clearSearch, handleScan, isProcessing, recordScannerActivity]);
+  }, [canScan, handleScan, isProcessing, recordScannerActivity]);
 
-  const handleSearchChange = useCallback((text: string) => {
+  const claimSearchSheet = scannerSearchSheet.useOpener({
+    canSearchRoster: canViewParticipantRecords,
+    needsContext,
+    isProcessing,
+    onScanId: scanFromSheet,
+    onScanParticipant: (participant: Participant) =>
+      scanFromSheet(participant.participant_event_id || participant.participant_id),
+    onActivity: recordScannerActivity,
+  });
+  const openSearch = useCallback(() => {
     recordScannerActivity();
-    setSearchQuery(text);
-    // Without roster access there is nothing to look up as you type; the sheet
-    // becomes a plain attendee-ID field, and scanning by ID still works.
-    if (!canViewParticipantRecords) return;
-    if (text.length >= 2) {
-      void search(text);
-    } else {
-      clearSearch();
-    }
-  }, [canViewParticipantRecords, clearSearch, recordScannerActivity, search]);
+    claimSearchSheet();
+    navigation.navigate('ScannerSearchSheet');
+  }, [claimSearchSheet, navigation, recordScannerActivity]);
 
-  const handleSearchScan = useCallback(async (participant: Participant) => {
-    const identifier = participant.participant_event_id || participant.participant_id;
-    if (!identifier || isProcessing) return;
+  const claimContextSheet = scanContextSheet.useOpener({
+    title: 'Scan context',
+    eventName: state.currentEvent?.name,
+    contexts: scanContexts,
+    selectedId: selectedContextId,
+    onSelect: (context) => {
+      recordScannerActivity();
+      selectContext(context.id);
+    },
+  });
+  const openContextPicker = useCallback(() => {
     recordScannerActivity();
-    if (!canScan) return;
-    await handleScan(identifier, 'manual');
-    setSearchQuery('');
-    clearSearch();
-    setManualEntryMode('none');
-    Keyboard.dismiss();
-  }, [canScan, clearSearch, handleScan, isProcessing, recordScannerActivity]);
-
-  const closeManualEntry = useCallback(() => {
-    recordScannerActivity();
-    setManualEntryMode('none');
-    setSearchQuery('');
-    clearSearch();
-    Keyboard.dismiss();
-  }, [clearSearch, recordScannerActivity]);
-
-  const openManualEntry = useCallback((mode: ManualEntryMode) => {
-    recordScannerActivity();
-    setContextPickerOpen(false);
-    setManualEntryMode(mode);
-  }, [recordScannerActivity]);
+    claimContextSheet();
+    navigation.navigate('ScanContextSheet');
+  }, [claimContextSheet, navigation, recordScannerActivity]);
 
   const viewDetails = useCallback(() => {
     if (!lastScan?.participant) return;
@@ -328,7 +295,7 @@ export function ScannerScreen() {
     <View style={styles.container} onTouchStart={recordScannerActivity}>
       {/* The camera stage is always dark, whatever the system appearance. */}
       {isFocused ? <StatusBar style="light" /> : null}
-      {isFocused ? (
+      {cameraMounted ? (
         <CameraView
           style={StyleSheet.absoluteFill}
           facing="back"
@@ -358,10 +325,7 @@ export function ScannerScreen() {
             contentStyle={scan.pillContent}
             rippleColor={ON_CAMERA}
             rippleAlpha={0.2}
-            onPress={() => {
-              recordScannerActivity();
-              setContextPickerOpen(true);
-            }}
+            onPress={openContextPicker}
             disabled={scanContexts.length === 0}
             accessibilityRole="button"
             accessibilityLabel={`Scan context: ${selectedContext?.name ?? 'not chosen'}. Change`}
@@ -384,15 +348,35 @@ export function ScannerScreen() {
               setTorchOn(on => !on);
             }}
           />
-          <RoundButton
-            icon="dots-horizontal"
-            label="More: Power mode, Kiosk mode"
-            active={isPowerModeEnabled}
-            onPress={() => {
-              recordScannerActivity();
-              setMoreOpen(true);
-            }}
-          />
+          <ActionMenu
+            accessibilityLabel="More: Power mode, Kiosk mode"
+            actions={[
+              {
+                key: 'power-mode',
+                title: 'Power mode',
+                subtitle: 'Prevents auto-lock and dims the screen after 30 seconds of inactivity',
+                checked: isPowerModeEnabled,
+                onSelect: () => {
+                  recordScannerActivity();
+                  setPowerModeEnabled(!isPowerModeEnabled);
+                },
+              },
+              {
+                key: 'kiosk',
+                title: 'Kiosk mode',
+                subtitle: canScan ? 'Self-serve check-in' : 'Choose a context first',
+                iosIcon: 'lock',
+                disabled: !canScan,
+                onSelect: () =>
+                  navigation.navigate('KioskSetup', {
+                    scanContextId: selectedContext?.id,
+                    scanContextName: selectedContext?.name,
+                  }),
+              },
+            ]}
+          >
+            <RoundGlyph icon="dots-horizontal" active={isPowerModeEnabled} />
+          </ActionMenu>
         </View>
 
         <View style={styles.scanStage} onLayout={measureScanArea}>
@@ -465,7 +449,7 @@ export function ScannerScreen() {
               icon="search"
               title={canViewParticipantRecords ? 'Search' : 'Enter ID'}
               disabled={!contextsReady}
-              onPress={() => openManualEntry('search')}
+              onPress={openSearch}
               style={scan.flexSpacer}
             />
             {nfcSupported && Platform.OS === 'ios' ? (
@@ -482,90 +466,8 @@ export function ScannerScreen() {
           </View>
         </View>
 
-        {manualEntryMode === 'search' ? (
-          <SearchSheet
-            canSearchRoster={canViewParticipantRecords}
-            needsContext={needsContext}
-            query={searchQuery}
-            results={searchResults || []}
-            isSearching={isSearching}
-            isProcessing={isProcessing}
-            onChange={handleSearchChange}
-            onClear={() => {
-              setSearchQuery('');
-              clearSearch();
-            }}
-            onSelect={handleSearchScan}
-            onSubmitId={handleDirectIdScan}
-            onClose={closeManualEntry}
-          />
-        ) : null}
       </SafeAreaView>
 
-      {/* The event can't be changed here: that's the Overview's switcher. */}
-      <BottomSheet
-        visible={contextPickerOpen}
-        onClose={() => setContextPickerOpen(false)}
-        title="Scan context"
-        headerActions={<Button variant="icon" icon="x" title="Close" onPress={() => setContextPickerOpen(false)} />}
-      >
-        <ScrollView>
-          <Text style={[scan.sheetNote, { color: tokens.text2 }]}>{state.currentEvent?.name}</Text>
-          {scanContexts.map((context, index) => {
-            const selected = context.id === selectedContextId;
-            return (
-              <ListRow
-                key={context.id}
-                title={context.name}
-                subtitle={context.is_airport ? 'Airport' : context.checks_in ? 'Checks in' : undefined}
-                icon={context.is_airport ? 'travel' : context.checks_in ? 'check-circle' : 'qrcode'}
-                trailing={selected ? <Icon name="check" color={tokens.accent} /> : undefined}
-                chevron={false}
-                divider={index < scanContexts.length - 1}
-                onPress={() => {
-                  recordScannerActivity();
-                  selectContext(context.id);
-                  setContextPickerOpen(false);
-                }}
-              />
-            );
-          })}
-        </ScrollView>
-      </BottomSheet>
-
-      <BottomSheet
-        visible={moreOpen}
-        onClose={() => setMoreOpen(false)}
-        title="Scanner"
-        headerActions={<Button variant="icon" icon="x" title="Close" onPress={() => setMoreOpen(false)} />}
-      >
-        <ListRow
-          title="Power mode"
-          subtitle="Prevents auto-lock and dims the screen after 30 seconds of inactivity"
-          icon="device-mobile"
-          trailing={(
-            <Toggle
-              value={isPowerModeEnabled}
-              onValueChange={setPowerModeEnabled}
-              accessibilityLabel="Power mode"
-            />
-          )}
-        />
-        <ListRow
-          title="Kiosk mode"
-          subtitle={canScan ? 'Self-serve check-in' : 'Choose a context first'}
-          icon="lock-closed"
-          disabled={!canScan}
-          divider={false}
-          onPress={() => {
-            setMoreOpen(false);
-            navigation.navigate('KioskSetup', {
-              scanContextId: selectedContext?.id,
-              scanContextName: selectedContext?.name,
-            });
-          }}
-        />
-      </BottomSheet>
     </View>
   );
 }
@@ -608,6 +510,15 @@ function RoundButton({
   );
 }
 
+/** RoundButton's look without the press handling, for a native menu's trigger. */
+function RoundGlyph({ icon, active }: { icon: IconName; active?: boolean }) {
+  return (
+    <View style={[scan.round, active && scan.roundActive]}>
+      <Icon name={icon} size={20} color={active ? '#0f141a' : ON_CAMERA} />
+    </View>
+  );
+}
+
 const scan = StyleSheet.create({
   header: {
     flexDirection: 'row',
@@ -635,7 +546,6 @@ const scan = StyleSheet.create({
   dock: { paddingHorizontal: 10 },
   flexSpacer: { flex: 1 },
   dockRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sheetNote: { fontSize: 14, lineHeight: 20, paddingHorizontal: 20, paddingBottom: 8 },
 });
 
 function CenteredState({
@@ -667,177 +577,6 @@ function CenteredState({
   );
 }
 
-function SheetHeader({ title, onClose }: { title: string; onClose: () => void }) {
-  return (
-    <View style={styles.sheetHeader}>
-      <Text style={styles.sheetTitle}>{title}</Text>
-      <Pressable
-        style={({ pressed }) => [styles.sheetClose, pressed && styles.pressed]}
-        onPress={onClose}
-        accessibilityRole="button"
-        accessibilityLabel={`Close ${title.toLowerCase()}`}
-      >
-        <Ionicons name="close" size={24} color={colors.white} />
-      </Pressable>
-    </View>
-  );
-}
-
-function SearchSheet({
-  canSearchRoster,
-  needsContext,
-  query,
-  results,
-  isSearching,
-  isProcessing,
-  onChange,
-  onClear,
-  onSelect,
-  onSubmitId,
-  onClose,
-}: {
-  canSearchRoster: boolean;
-  needsContext: boolean;
-  query: string;
-  results: Participant[];
-  isSearching: boolean;
-  isProcessing: boolean;
-  onChange: (value: string) => void;
-  onClear: () => void;
-  onSelect: (participant: Participant) => void;
-  onSubmitId: (identifier: string) => void;
-  onClose: () => void;
-}) {
-  const idCandidate = looksLikeAttendeeId(query) ? query.trim() : null;
-  return (
-    <KeyboardAvoidingView
-      style={styles.searchSheetBackdrop}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <View style={[styles.sheet, styles.searchSheet]}>
-        <SheetHeader
-          title={canSearchRoster ? 'Find an attendee' : 'Enter an attendee ID'}
-          onClose={onClose}
-        />
-        {needsContext ? (
-          <View style={styles.sheetNotice} accessibilityRole="alert">
-            <Ionicons name="alert-circle" size={18} color={colors.orange} />
-            <Text style={styles.sheetNoticeText}>
-              {'Choose a context before scanning. Close this and pick one from '
-                + 'the context picker — what you type here is kept.'}
-            </Text>
-          </View>
-        ) : null}
-
-        <View style={styles.searchInputRow}>
-          <Ionicons
-            name={canSearchRoster ? 'search' : 'keypad-outline'}
-            size={19}
-            color={colors.gray[400]}
-          />
-          <TextInput
-            style={styles.searchInput}
-            placeholder={canSearchRoster ? 'Name, email, or attendee ID' : 'Attendee ID'}
-            placeholderTextColor={colors.gray[400]}
-            value={query}
-            onChangeText={onChange}
-            onSubmitEditing={() => {
-              if (idCandidate && !isProcessing && !needsContext) onSubmitId(idCandidate);
-            }}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType={idCandidate ? 'go' : 'search'}
-            autoFocus
-          />
-          {isSearching ? <ActivityIndicator color={colors.white} size="small" /> : null}
-          {query.length > 0 && !isSearching ? (
-            <Pressable
-              style={styles.searchClearButton}
-              onPress={onClear}
-              accessibilityRole="button"
-              accessibilityLabel="Clear search"
-            >
-              <Ionicons name="close-circle" size={20} color={colors.gray[400]} />
-            </Pressable>
-          ) : null}
-        </View>
-
-        <FlatList
-          data={canSearchRoster ? results : []}
-          keyExtractor={(item, index) => item.participant_event_id || item.participant_id || `attendee-${index}`}
-          keyboardShouldPersistTaps="handled"
-          style={styles.searchResults}
-          ListHeaderComponent={idCandidate ? (
-            <Pressable
-              style={({ pressed }) => [
-                styles.searchResult,
-                pressed && styles.searchResultPressed,
-                needsContext && styles.searchResultBlocked,
-              ]}
-              onPress={() => onSubmitId(idCandidate)}
-              disabled={isProcessing || needsContext}
-            >
-              <View style={styles.searchResultText}>
-                <Text style={styles.searchResultName} numberOfLines={1}>Scan as attendee ID</Text>
-                <Text style={styles.searchResultDetail} numberOfLines={1}>{idCandidate}</Text>
-              </View>
-              <View style={styles.searchResultAction}>
-                {isProcessing ? (
-                  <ActivityIndicator color={colors.green} size="small" />
-                ) : (
-                  <>
-                    <Text style={styles.searchResultActionText}>Scan</Text>
-                    <Ionicons name="arrow-forward" size={18} color={colors.green} />
-                  </>
-                )}
-              </View>
-            </Pressable>
-          ) : undefined}
-          renderItem={({ item }) => (
-            <Pressable
-              style={({ pressed }) => [
-                styles.searchResult,
-                pressed && styles.searchResultPressed,
-                needsContext && styles.searchResultBlocked,
-              ]}
-              onPress={() => onSelect(item)}
-              disabled={needsContext}
-            >
-              <View style={styles.searchResultText}>
-                <Text style={styles.searchResultName} numberOfLines={1}>
-                  {item.display_name || item.full_name}
-                </Text>
-                {/* Name and pronouns only: this list is read at the door,
-                    over the scanner's shoulder, so no contact details. */}
-                {item.pronouns ? (
-                  <Text style={styles.searchResultDetail} numberOfLines={1}>{item.pronouns}</Text>
-                ) : null}
-              </View>
-              <View style={styles.searchResultAction}>
-                <Text style={styles.searchResultActionText}>Scan</Text>
-                <Ionicons name="arrow-forward" size={18} color={colors.green} />
-              </View>
-            </Pressable>
-          )}
-          ListEmptyComponent={idCandidate ? undefined : (
-            <Text style={styles.searchEmptyText}>
-              {!canSearchRoster
-                ? "Your role on this event doesn't include participant records, so scan or paste an attendee ID."
-                : query.length === 0
-                  ? 'Search by name or email, or paste an attendee ID'
-                  : query.length < 2
-                    ? 'Type at least 2 characters'
-                    : isSearching
-                      ? 'Searching'
-                      : 'No attendees found'}
-            </Text>
-          )}
-        />
-      </View>
-    </KeyboardAvoidingView>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.gray[900] },
   overlay: { flex: 1 },
@@ -863,25 +602,4 @@ const styles = StyleSheet.create({
   resultCardOverlay: { position: 'absolute', left: 14, right: 14 },
   resultCardScroll: { width: '100%', maxWidth: 620, alignSelf: 'center' },
   pressed: { opacity: 0.72 },
-  searchSheetBackdrop: { ...StyleSheet.absoluteFill, zIndex: 100, justifyContent: 'flex-end', backgroundColor: 'rgba(2,6,23,0.78)' },
-  sheet: { width: '100%', maxWidth: 680, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 18, paddingBottom: 28, gap: 14, borderTopLeftRadius: 26, borderTopRightRadius: 26, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.gray[600], backgroundColor: colors.gray[900] },
-  searchSheet: { height: '72%' },
-  sheetHeader: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  sheetTitle: { color: colors.white, fontSize: 22, lineHeight: 28, fontWeight: '800', letterSpacing: -0.3 },
-  sheetClose: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
-  searchInputRow: { minHeight: 52, paddingHorizontal: 14, borderRadius: 13, borderWidth: 1, borderColor: colors.gray[600], backgroundColor: colors.gray[800], flexDirection: 'row', alignItems: 'center', gap: 9 },
-  searchInput: { minHeight: 50, flex: 1, color: colors.white, fontSize: 16 },
-  searchClearButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', marginRight: -10 },
-  searchResults: { flex: 1 },
-  searchResult: { minHeight: 68, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.gray[700] },
-  searchResultPressed: { backgroundColor: colors.gray[800] },
-  searchResultBlocked: { opacity: 0.5 },
-  sheetNotice: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, padding: 12, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.orange, backgroundColor: 'rgba(255,140,55,0.12)' },
-  sheetNoticeText: { flex: 1, color: colors.gray[100], fontSize: 13, lineHeight: 19, fontWeight: '600' },
-  searchResultText: { flex: 1, gap: 3 },
-  searchResultName: { color: colors.white, fontSize: 16, fontWeight: '700' },
-  searchResultDetail: { color: colors.gray[400], fontSize: 13 },
-  searchResultAction: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 5 },
-  searchResultActionText: { color: colors.green, fontSize: 14, fontWeight: '800' },
-  searchEmptyText: { paddingVertical: 34, color: colors.gray[400], fontSize: 15, textAlign: 'center' },
 });

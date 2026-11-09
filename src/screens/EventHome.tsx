@@ -12,18 +12,16 @@ import {
 import { setStatusBarStyle } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, type NavigationProp } from '@react-navigation/native';
-import { AccountButton, AccountSheet } from '../components/AccountSheet';
+import { AccountButton } from '../components/AccountSheet';
 import { EventBanner, eventBannerText } from '../components/EventBanner';
 import { RoleRestricted, roleRestrictedMessage } from '../components/RoleRestricted';
 import {
   Avatar,
   Badge,
-  BottomSheet,
   Button,
   Container,
   Flashbar,
   Icon,
-  ListRow,
   QuickActionTile,
   Stat,
   Toggle,
@@ -33,6 +31,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { useEventAccess } from '../hooks/useEventAccess';
 import { useEventScanContexts } from '../hooks/useEventScanContexts';
+import { scanContextSheet } from '../navigation/sheetData';
 import { useSwitcherEvents } from '../hooks/useSwitcherEvents';
 import { useTabBarInset, useTopTabBarInset } from '../hooks/useTabBarInset';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
@@ -146,8 +145,6 @@ function Overview({
   const { state, refreshParticipants, syncNow } = useApp();
   const access = useEventAccess();
   const { contexts, isLoading: contextsLoading } = useEventScanContexts(event.id);
-  const [accountOpen, setAccountOpen] = useState(false);
-  const [kioskContexts, setKioskContexts] = useState<ScanContext[] | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const participants = state.participants;
@@ -198,10 +195,20 @@ function Overview({
   // same context rule: when the event has several contexts, staff pick one.
   const startKiosk = (context?: ScanContext) =>
     navigation.navigate('KioskSetup', { scanContextId: context?.id, scanContextName: context?.name });
+  const kioskChoice = kioskContextChoice(contexts);
+  const claimKioskContextSheet = scanContextSheet.useOpener({
+    title: 'Kiosk context',
+    eventName: event.name,
+    contexts: kioskChoice.kind === 'choose' ? kioskChoice.contexts : [],
+    onSelect: startKiosk,
+  });
   const openKiosk = () => {
-    const choice = kioskContextChoice(contexts);
-    if (choice.kind === 'start') startKiosk(choice.context);
-    else setKioskContexts(choice.contexts);
+    if (kioskChoice.kind === 'start') {
+      startKiosk(kioskChoice.context);
+      return;
+    }
+    claimKioskContextSheet();
+    navigation.navigate('ScanContextSheet');
   };
   const kioskReady = !(contextsLoading && contexts.length === 0);
   const twoColumns = width >= TWO_COLUMN_MIN_WIDTH;
@@ -424,7 +431,7 @@ function Overview({
             meta={banner.meta}
             topInset={insets.top + topTabInset}
             onPress={canSwitch ? () => navigation.navigate('SwitchEvent') : undefined}
-            accessory={<AccountButton onBanner onPress={() => setAccountOpen(true)} />}
+            accessory={<AccountButton onBanner />}
           />
         </View>
 
@@ -460,29 +467,6 @@ function Overview({
           style={[styles.statusScrim, { height: insets.top, backgroundColor: tokens.bg }]}
         />
       ) : null}
-      <AccountSheet visible={accountOpen} onClose={() => setAccountOpen(false)} />
-      <BottomSheet
-        visible={kioskContexts !== null}
-        onClose={() => setKioskContexts(null)}
-        title="Kiosk context"
-        headerActions={<Button variant="icon" icon="x" title="Close" onPress={() => setKioskContexts(null)} />}
-      >
-        <ScrollView>
-          {(kioskContexts ?? []).map((context, index, list) => (
-            <ListRow
-              key={context.id}
-              title={context.name}
-              subtitle={context.is_airport ? 'Airport' : context.checks_in ? 'Checks in' : undefined}
-              icon={context.is_airport ? 'travel' : context.checks_in ? 'check-circle' : 'qrcode'}
-              divider={index < list.length - 1}
-              onPress={() => {
-                setKioskContexts(null);
-                startKiosk(context);
-              }}
-            />
-          ))}
-        </ScrollView>
-      </BottomSheet>
     </View>
   );
 }
