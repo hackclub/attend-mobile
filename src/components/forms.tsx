@@ -11,7 +11,7 @@ import {
   type TextInputProps,
   type ViewStyle,
 } from 'react-native';
-import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import {
   ActionMenu,
   Badge as KitBadge,
@@ -36,6 +36,7 @@ import { hackClubColors, useTheme, useThemedStyles, type Theme } from '../theme'
 import type { IncidentLevel, SelectOption } from '../types';
 import { multiSelectSheet, optionsSheet, type MultiSelectSheetItem } from '../navigation/sheetData';
 import { useOpenSheet } from '../navigation/sheetPresenter';
+import { DateTimeDialogs } from './DateTimeDialogs';
 
 // Form and detail-page building blocks for the stack screens (incidents,
 // messages, inbox, the report form), drawn with the console tokens and the
@@ -354,7 +355,7 @@ export function SwitchRow({
 
 /**
  * A date and time, or none. iOS shows the compact inline picker; Android
- * opens its date dialog and then its time dialog.
+ * opens Material 3's date dialog and then its time dialog.
  */
 export function DateTimeField({
   value,
@@ -371,22 +372,8 @@ export function DateTimeField({
 }) {
   const { tokens, isDark } = useTheme();
   const styles = useThemedStyles(makeStyles);
-
-  const openAndroid = () => {
-    const start = value ?? new Date();
-    DateTimePickerAndroid.open({
-      value: start,
-      mode: 'date',
-      minimumDate,
-      onValueChange: (_event, date) => {
-        DateTimePickerAndroid.open({
-          value: date,
-          mode: 'time',
-          onValueChange: (_e, time) => onChange(time),
-        });
-      },
-    });
-  };
+  // Android: where the dialogs start, while they're open.
+  const [pickingFrom, setPickingFrom] = useState<Date | null>(null);
 
   return (
     <View style={styles.dateRow}>
@@ -405,7 +392,7 @@ export function DateTimeField({
           style={[styles.selectShape, styles.flex]}
           contentStyle={styles.selectButton}
           rippleColor={tokens.text}
-          onPress={() => (Platform.OS === 'ios' ? onChange(new Date()) : openAndroid())}
+          onPress={() => (Platform.OS === 'ios' ? onChange(new Date()) : setPickingFrom(value ?? new Date()))}
           accessibilityRole="button"
         >
           <Text style={[styles.selectText, !value && styles.placeholderText]}>
@@ -422,6 +409,14 @@ export function DateTimeField({
             </View>
           )}
         </Pressable>
+      ) : null}
+      {pickingFrom ? (
+        <DateTimeDialogs
+          value={pickingFrom}
+          minimumDate={minimumDate}
+          onChange={onChange}
+          onClose={() => setPickingFrom(null)}
+        />
       ) : null}
     </View>
   );
