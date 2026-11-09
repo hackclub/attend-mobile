@@ -5,7 +5,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { haptics } from '../../services/haptics';
 import { useBiometricLabel } from '../../services/biometricLabel';
 import { radii, useTheme } from '../../theme';
-import { Button, Container, Flashbar, Icon, ListRow, Sheet, SHEET_INSET } from '../../components/ui';
+import { Button, Container, Icon, ListRow, Sheet, SHEET_INSET } from '../../components/ui';
 import { useApp } from '../../context/AppContext';
 import { useBiometric } from '../../hooks/useBiometric';
 import { kioskSetupSheet, type KioskSetupSheetData } from '../../navigation/sheetData';
@@ -181,17 +181,11 @@ function KioskSetup({ scanContextId, scanContextName, preview }: KioskSetupSheet
 
         {/* iOS has no app-side lock, so Guided Access is suggested; Android
             pins the screen itself when kiosk mode starts. */}
-        {Platform.OS === 'ios' ? (
-          <Flashbar
-            type="info"
-            message="Tip: Turn on Guided Access (Settings › Accessibility) for a hardware-level lock. Triple-click the side button to lock the iPad to this app."
-          />
-        ) : (
-          <Flashbar
-            type="info"
-            message="Kiosk mode pins the screen to Attend. Confirm when Android asks; exiting kiosk mode unpins it."
-          />
-        )}
+        <Text style={[type.body, styles.center, { color: tokens.text2 }]}>
+          {Platform.OS === 'ios'
+            ? 'Tip: Turn on Guided Access (Settings › Accessibility) for a hardware-level lock. Triple-click the side button to lock the iPad to this app.'
+            : 'Kiosk mode pins the screen to Attend. Confirm when Android asks; exiting kiosk mode unpins it.'}
+        </Text>
 
         <Button
           title="Start kiosk mode"
