@@ -504,6 +504,8 @@ export type RootStackParamList = {
   OptionsSheet: undefined;
   MultiSelectSheet: undefined;
   LinkSheet: undefined;
+  /** The dev UI gallery (attend://ui-gallery), only in EXPO_PUBLIC_UI_GALLERY=1 builds. */
+  UiGallery: undefined;
 };
 
 /** The organizer tabs. Each holds its own stack, so the tab bar stays put. */

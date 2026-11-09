@@ -54,5 +54,7 @@ export const linkingConfig: LinkingOptions<RootStackParamList>['config'] = {
         InboxMessage: 'messages/:messageId',
       },
     }),
+    // The dev UI gallery, only in builds made with EXPO_PUBLIC_UI_GALLERY=1.
+    ...(process.env.EXPO_PUBLIC_UI_GALLERY === '1' ? { UiGallery: 'ui-gallery' } : {}),
   },
 };

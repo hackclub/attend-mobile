@@ -285,6 +285,14 @@ function MainTabs() {
   );
 }
 
+// The dev UI gallery (attend://ui-gallery). The condition is folded at build
+// time, so unless the build sets EXPO_PUBLIC_UI_GALLERY=1 this is null and the
+// gallery isn't bundled.
+const getUiGallery = process.env.EXPO_PUBLIC_UI_GALLERY === '1'
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- deferred on purpose
+  ? () => require('./src/screens/dev/UiGallery').UiGallery
+  : null;
+
 function RootNavigator() {
   const { state } = useApp();
   const { tokens } = useTheme();
@@ -311,6 +319,17 @@ function RootNavigator() {
   // organizer reaches the events they attend through it from the switcher
   // (the participant flag can lag a new registration, so it isn't gated).
   const isOrganizer = !!(user?.is_organizer ?? user?.global_admin);
+  const uiGallery = getUiGallery ? (
+    <Stack.Screen name="UiGallery" getComponent={getUiGallery} />
+  ) : null;
+  const sheetRoutes = sheetScreens.map((sheet) => (
+    <Stack.Screen
+      key={sheet.name}
+      name={sheet.name}
+      getComponent={sheet.getComponent}
+      options={sheet.options}
+    />
+  ));
 
   return (
     <Stack.Navigator id={ROOT_NAVIGATOR} screenOptions={{ headerShown: false }}>
@@ -347,17 +366,16 @@ function RootNavigator() {
             }}
           />
           {/* Form sheets: the account sheet and every picker (navigation/sheets). */}
-          {sheetScreens.map((sheet) => (
-            <Stack.Screen
-              key={sheet.name}
-              name={sheet.name}
-              getComponent={sheet.getComponent}
-              options={sheet.options}
-            />
-          ))}
+          {sheetRoutes}
+          {uiGallery}
         </>
       ) : (
-        <Stack.Screen name="Login" component={LoginScreen} />
+        <>
+          <Stack.Screen name="Login" component={LoginScreen} />
+          {/* The gallery works signed out, with its sheets. */}
+          {uiGallery}
+          {uiGallery ? sheetRoutes : null}
+        </>
       )}
     </Stack.Navigator>
   );

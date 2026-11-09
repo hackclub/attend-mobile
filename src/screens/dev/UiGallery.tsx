@@ -1,0 +1,299 @@
+import React, { useMemo, useState } from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActionMenu,
+  Button,
+  Container,
+  FilterChip,
+  SegmentedControl,
+  Spinner,
+  Screen,
+  Toggle,
+} from '../../components/ui';
+import { DateTimeField, MultiSelectField, SelectField } from '../../components/forms';
+import {
+  linkSheet,
+  multiSelectSheet,
+  optionsSheet,
+  scanContextSheet,
+  type SheetOption,
+} from '../../navigation/sheetData';
+import { useOpenSheet } from '../../navigation/sheetPresenter';
+import { useTheme, useThemePreference, type ThemePreference } from '../../theme';
+import type { ScanContext, SelectOption } from '../../types';
+
+// Sample data only: the gallery never touches the network or the session.
+const PEOPLE = [
+  'Ada Lovelace', 'Grace Hopper', 'Alan Turing', 'Katherine Johnson', 'Linus Torvalds',
+  'Margaret Hamilton', 'Dennis Ritchie', 'Barbara Liskov', 'Ken Thompson', 'Radia Perlman',
+  'Tim Berners-Lee', 'Frances Allen', 'Donald Knuth', 'Hedy Lamarr', 'Guido van Rossum',
+  'Annie Easley', 'John McCarthy', 'Shafi Goldwasser', 'Vint Cerf', 'Mary Kenneth Keller',
+  'Edsger Dijkstra', 'Adele Goldberg', 'Bjarne Stroustrup', 'Sophie Wilson', 'Leslie Lamport',
+].map((name, index) => ({
+  id: `person-${index}`,
+  title: name,
+  subtitle: `${name.split(' ')[0].toLowerCase()}@example.com`,
+}));
+
+const CONTEXTS: ScanContext[] = [
+  { id: 'ctx-door', name: 'Front door', checks_in: true, is_airport: false },
+  { id: 'ctx-lunch', name: 'Lunch', checks_in: false, is_airport: false },
+  { id: 'ctx-airport', name: 'Airport pickup', checks_in: false, is_airport: true },
+];
+
+const SHORT_OPTIONS: SelectOption[] = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+];
+
+const LONG_OPTIONS: SelectOption[] = [
+  'Australia', 'Canada', 'Germany', 'India', 'Japan', 'Kenya', 'Mexico', 'New Zealand', 'Singapore', 'United Kingdom',
+].map((label) => ({ value: label.toLowerCase(), label }));
+
+const UNDO_OPTIONS: SheetOption[] = [
+  { value: 'door', label: 'Front door', description: 'Today, 9:41' },
+  { value: 'lunch', label: 'Lunch', description: 'Today, 12:30' },
+  { value: 'undo-all', label: 'Undo every scan', destructive: true },
+  { value: 'locked', label: 'Airport pickup', description: 'Not yours to undo', disabled: true },
+];
+
+const APPEARANCE_OPTIONS = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+] as const;
+
+/**
+ * A dev screen showing every drawer and platform control with sample data,
+ * to check them on a device (attend://ui-gallery). Only registered in builds
+ * made with EXPO_PUBLIC_UI_GALLERY=1, and reachable while signed out.
+ */
+export function UiGallery() {
+  const { tokens, type, spacing } = useTheme();
+  const { preference, setPreference } = useThemePreference();
+  const openSheet = useOpenSheet();
+  const [lastAction, setLastAction] = useState('Nothing yet');
+
+  // Sheets
+  const [picked, setPicked] = useState<string[]>(PEOPLE.slice(0, 2).map((person) => person.id));
+  const [undo, setUndo] = useState<string | null>('door');
+  const [link, setLink] = useState('');
+  const [context, setContext] = useState<string | null>(CONTEXTS[0].id);
+  const claimMultiSelect = multiSelectSheet.useOpener({
+    title: 'Add participants',
+    items: PEOPLE,
+    selected: picked,
+    onChange: setPicked,
+    noun: ['participant', 'participants'],
+    searchPlaceholder: 'Search by name or email',
+  });
+  const claimOptions = optionsSheet.useOpener({
+    title: 'Undo a scan',
+    subtitle: 'Sample Person',
+    options: UNDO_OPTIONS,
+    selected: undo,
+    onSelect: setUndo,
+  });
+  const claimLink = linkSheet.useOpener({ onSubmit: setLink });
+  const claimContext = scanContextSheet.useOpener({
+    title: 'Scan context',
+    eventName: 'Sample Hackathon',
+    contexts: CONTEXTS,
+    selectedId: context,
+    onSelect: (next) => setContext(next.id),
+  });
+
+  // Controls
+  const [toggleOn, setToggleOn] = useState(true);
+  const [toggleOff, setToggleOff] = useState(false);
+  const [view, setView] = useState<'arrivals' | 'departures'>('arrivals');
+  const [conjunction, setConjunction] = useState<'and' | 'or'>('and');
+  const [chartShown, setChartShown] = useState(true);
+  const [short, setShort] = useState<string | null>('medium');
+  const [long, setLong] = useState<string | null>(null);
+  const [multi, setMulti] = useState<string[]>([]);
+  const [date, setDate] = useState<Date | null>(null);
+  const [laterDate, setLaterDate] = useState<Date | null>(() => new Date());
+  const [chip, setChip] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const minimumDate = useMemo(() => new Date(), []);
+
+  const label = (text: string) => (
+    <Text style={[type.small, { color: tokens.text2 }]}>{text}</Text>
+  );
+
+  return (
+    <Screen title="UI gallery" contentContainerStyle={{ gap: spacing.lg }}>
+      <Text style={[type.body, { color: tokens.text2 }]}>
+        Sample data only. Last action: {lastAction}
+      </Text>
+
+      <Container title="Appearance">
+        <SegmentedControl<ThemePreference>
+          options={APPEARANCE_OPTIONS}
+          value={preference}
+          onChange={setPreference}
+          accessibilityLabel="Theme"
+        />
+      </Container>
+
+      <Container title="Sheets">
+        <View style={styles.stack}>
+          <Button
+            title={`List with search (${picked.length} picked)`}
+            onPress={() => {
+              claimMultiSelect();
+              openSheet('MultiSelectSheet');
+            }}
+          />
+          <Button
+            title={`Options (${undo ?? 'none'})`}
+            onPress={() => {
+              claimOptions();
+              openSheet('OptionsSheet');
+            }}
+          />
+          <Button
+            title={`Single choice (${CONTEXTS.find((c) => c.id === context)?.name ?? 'none'})`}
+            onPress={() => {
+              claimContext();
+              openSheet('ScanContextSheet');
+            }}
+          />
+          <Button
+            title="Text field"
+            onPress={() => {
+              claimLink();
+              openSheet('LinkSheet');
+            }}
+          />
+          {link ? label(`Link: ${link}`) : null}
+        </View>
+      </Container>
+
+      <Container title="Switches">
+        <View style={styles.stack}>
+          <View style={styles.row}>
+            <Text style={[type.body, styles.fill, { color: tokens.text }]}>On</Text>
+            <Toggle value={toggleOn} onValueChange={setToggleOn} accessibilityLabel="On" />
+          </View>
+          <View style={styles.row}>
+            <Text style={[type.body, styles.fill, { color: tokens.text }]}>Off</Text>
+            <Toggle value={toggleOff} onValueChange={setToggleOff} accessibilityLabel="Off" />
+          </View>
+          <View style={styles.row}>
+            <Text style={[type.body, styles.fill, { color: tokens.text }]}>Disabled, on</Text>
+            <Toggle value onValueChange={() => {}} accessibilityLabel="Disabled, on" disabled />
+          </View>
+          <View style={styles.row}>
+            <Text style={[type.body, styles.fill, { color: tokens.text }]}>Disabled, off</Text>
+            <Toggle value={false} onValueChange={() => {}} accessibilityLabel="Disabled, off" disabled />
+          </View>
+        </View>
+      </Container>
+
+      <Container title="Segmented buttons">
+        <View style={styles.stack}>
+          <SegmentedControl
+            options={[
+              { value: 'arrivals', label: 'Arrivals', count: 14 },
+              { value: 'departures', label: 'Departures', count: 3 },
+            ]}
+            value={view}
+            onChange={setView}
+            accessibilityLabel="Travel"
+            role="tab"
+          />
+          <SegmentedControl
+            options={[
+              { value: 'and', label: 'All' },
+              { value: 'or', label: 'Any' },
+            ]}
+            value={conjunction}
+            onChange={setConjunction}
+            accessibilityLabel="Match"
+          />
+        </View>
+      </Container>
+
+      <Container title="Menus">
+        <View style={styles.stack}>
+          <View style={styles.row}>
+            <Text style={[type.body, styles.fill, { color: tokens.text }]}>Actions, a title and a tick</Text>
+            <ActionMenu
+              accessibilityLabel="More"
+              title="Sample menu"
+              actions={[
+                { key: 'edit', title: 'Edit', onSelect: () => setLastAction('Edit') },
+                {
+                  key: 'chart',
+                  title: 'Show chart',
+                  checked: chartShown,
+                  onSelect: () => setChartShown((shown) => !shown),
+                },
+                { key: 'disabled', title: 'Not available', disabled: true, onSelect: () => {} },
+                { key: 'delete', title: 'Delete', destructive: true, onSelect: () => setLastAction('Delete') },
+              ]}
+            />
+          </View>
+          {label('A short select (a menu)')}
+          <SelectField title="Priority" value={short} options={SHORT_OPTIONS} onChange={setShort} />
+          {label('A long select (the options sheet)')}
+          <SelectField title="Country" value={long} options={LONG_OPTIONS} onChange={setLong} />
+          {label('A multi-select (the list sheet)')}
+          <MultiSelectField
+            title="Staff"
+            items={PEOPLE}
+            selected={multi}
+            onChange={setMulti}
+            noun={['person', 'people']}
+          />
+        </View>
+      </Container>
+
+      <Container title="Date and time">
+        <View style={styles.stack}>
+          {label('Not set')}
+          <DateTimeField value={date} onChange={setDate} />
+          {label('Set, from today on')}
+          <DateTimeField value={laterDate} onChange={setLaterDate} minimumDate={minimumDate} />
+        </View>
+      </Container>
+
+      <Container title="Filter chips">
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+          <FilterChip label="All events" selected={chip === null} onPress={() => setChip(null)} />
+          {['Sample Hackathon', 'Spring Jam', 'Summer Camp'].map((name) => (
+            <FilterChip key={name} label={name} selected={chip === name} onPress={() => setChip(name)} />
+          ))}
+        </ScrollView>
+      </Container>
+
+      <Container title="Progress">
+        <View style={styles.stack}>
+          <View style={[styles.row, { gap: spacing.lg }]}>
+            <Spinner size="small" color={tokens.accent} />
+            <Spinner size="large" color={tokens.accent} />
+          </View>
+          <Button
+            title="Loading button"
+            variant="primary"
+            loading={loading}
+            onPress={() => {
+              setLoading(true);
+              setTimeout(() => setLoading(false), 2000);
+            }}
+          />
+        </View>
+      </Container>
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  stack: { gap: 12 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  fill: { flex: 1 },
+  chips: { gap: 8 },
+});
