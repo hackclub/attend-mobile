@@ -1,13 +1,14 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TextInput } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../theme';
 import {
-  BottomSheet,
   Button,
   Divider,
   Icon,
   ListRow,
   SegmentedControl,
+  Sheet,
   TextField,
   PressableSurface,
   type IconName,
@@ -24,27 +25,11 @@ import {
   newRuleId,
   type FilterRule,
   type FilterOperator,
-  type Conjunction,
-  type SortRule,
-  type SavedView,
-  type FilterContext,
   type FieldOption,
 } from '../services/participantFilters';
+import { filterSheet, type FilterSheetData } from '../navigation/sheetData';
+import { useSheetData } from '../screens/sheets/useSheetData';
 
-interface FilterSheetProps {
-  visible: boolean;
-  onClose: () => void;
-  rules: FilterRule[];
-  onRulesChange: (rules: FilterRule[]) => void;
-  conjunction: Conjunction;
-  onConjunctionChange: (c: Conjunction) => void;
-  sort: SortRule | null;
-  onSortChange: (sort: SortRule | null) => void;
-  savedViews: SavedView[];
-  onSaveView: (name: string) => void;
-  onDeleteView: (viewId: string) => void;
-  filterContext: FilterContext;
-}
 
 type PickerTarget =
   | { kind: 'field'; ruleId: string }
@@ -59,9 +44,13 @@ const PICKER_TITLES: Record<PickerTarget['kind'], string> = {
   'sort-field': 'Sort by',
 };
 
-export function FilterSheet({
-  visible,
-  onClose,
+/** People's filter & sort, a form-sheet route opened through `filterSheet`. */
+export function FilterSheet() {
+  const data = useSheetData(filterSheet);
+  return data ? <FilterSheetBody {...data} /> : null;
+}
+
+function FilterSheetBody({
   rules,
   onRulesChange,
   conjunction,
@@ -72,8 +61,9 @@ export function FilterSheet({
   onSaveView,
   onDeleteView,
   filterContext,
-}: FilterSheetProps) {
+}: FilterSheetData) {
   const { tokens, type, radii } = useTheme();
+  const navigation = useNavigation();
   const [picker, setPicker] = useState<PickerTarget | null>(null);
   const [viewName, setViewName] = useState('');
   const [isNamingView, setIsNamingView] = useState(false);
@@ -166,18 +156,17 @@ export function FilterSheet({
     }
   }, [viewName, onSaveView]);
 
-  const handleClose = useCallback(() => {
-    setPicker(null);
-    onClose();
-  }, [onClose]);
+  const handleClose = useCallback(() => navigation.goBack(), [navigation]);
 
   const sortField = sort ? getSortField(sort.field) : undefined;
   const canSaveView = rules.length > 0 || sort !== null;
 
-  // Choosing an option replaces the sheet's content rather than stacking a
-  // second modal on top of it; Back returns to the filters.
   const pickerContent = picker ? (
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.pickerList}>
+    <Sheet
+      title={PICKER_TITLES[picker.kind]}
+      action={<Button variant="link" title="Back" icon="chevron-left" onPress={() => setPicker(null)} />}
+      contentContainerStyle={styles.pickerList}
+    >
       {pickerOptions.length === 0 ? (
         <Text style={[type.body, styles.emptyText, { color: tokens.text2 }]}>No options available</Text>
       ) : (
@@ -191,16 +180,25 @@ export function FilterSheet({
               option.value === pickerSelected ? <Icon name="check" size={18} color={tokens.accent} /> : undefined
             }
             divider={index < pickerOptions.length - 1}
-            style={styles.pickerRow}
           />
         ))
       )}
-    </ScrollView>
+    </Sheet>
   ) : null;
 
   const mainContent = (
-    <>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+    <Sheet
+      title="Filter and sort"
+      contentContainerStyle={styles.content}
+      footer={(
+        <>
+          <Text style={[type.body, styles.matchCount, { color: tokens.text2 }]} accessibilityLiveRegion="polite">
+            {matchCount} of {filterContext.participants.length} participants match
+          </Text>
+          <Button variant="primary" title="Done" onPress={handleClose} />
+        </>
+      )}
+    >
         <Text style={[type.h3, styles.sectionTitle, { color: tokens.textH }]} accessibilityRole="header">
           Filters
         </Text>
@@ -398,32 +396,12 @@ export function FilterSheet({
             style={styles.linkButton}
           />
         )}
-      </ScrollView>
-
-      <View style={[styles.footer, { borderTopColor: tokens.div2 }]}>
-        <Text style={[type.body, { color: tokens.text2 }]} accessibilityLiveRegion="polite">
-          {matchCount} of {filterContext.participants.length} participants match
-        </Text>
-        <Button variant="primary" title="Done" onPress={handleClose} />
-      </View>
-    </>
+    </Sheet>
   );
 
-  return (
-    <BottomSheet
-      visible={visible}
-      onClose={picker ? () => setPicker(null) : handleClose}
-      title={picker ? PICKER_TITLES[picker.kind] : 'Filter & Sort'}
-      headerActions={
-        picker ? (
-          <Button variant="link" title="Back" icon="chevron-left" onPress={() => setPicker(null)} />
-        ) : undefined
-      }
-      contentStyle={styles.sheetContent}
-    >
-      {picker ? pickerContent : mainContent}
-    </BottomSheet>
-  );
+  // Choosing an option replaces the sheet's content rather than stacking a
+  // second sheet on top of it; Back returns to the filters.
+  return picker ? pickerContent : mainContent;
 }
 
 function SelectPill({
@@ -468,11 +446,8 @@ function SelectPill({
 }
 
 const styles = StyleSheet.create({
-  sheetContent: {
-    paddingHorizontal: 0,
-  },
   content: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingBottom: 16,
   },
   sectionTitle: {
@@ -550,19 +525,10 @@ const styles = StyleSheet.create({
   viewNameField: {
     flex: 1,
   },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    paddingTop: 12,
-    paddingHorizontal: 16,
-    borderTopWidth: 1,
+  matchCount: {
+    flex: 1,
   },
   pickerList: {
     paddingBottom: 8,
-  },
-  pickerRow: {
-    paddingHorizontal: 16,
   },
 });

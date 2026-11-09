@@ -3,7 +3,6 @@
 export { ActionMenu, type ActionMenuProps, type MenuAction } from './ActionMenu';
 export { Avatar, initialsFor, tintFor, type AvatarProps } from './Avatar';
 export { Badge, type BadgeColor, type BadgeProps } from './Badge';
-export { BottomSheet, type BottomSheetProps } from './BottomSheet';
 export { Button, type ButtonProps, type ButtonVariant } from './Button';
 export { Container, type ContainerProps } from './Container';
 export { Divider, type DividerProps } from './Divider';

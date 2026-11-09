@@ -19,13 +19,11 @@ import { EmergencyContactCard } from '../components/EmergencyContactCard';
 import {
   Avatar,
   Badge,
-  BottomSheet,
   Button,
   Container,
   Divider,
   Icon,
   KeyValue,
-  ListRow,
   StatusGlyph,
   TextField,
   type BadgeColor,
@@ -41,6 +39,7 @@ import { checkInDetail, participantDetailLine } from '../services/participantChe
 import { isWithdrawn } from '../services/participantStatus';
 import { useTheme } from '../theme';
 import { BiometricGate } from '../components/BiometricGate';
+import { optionsSheet } from '../navigation/sheetData';
 import type { AppStackParamList, Participant, ParticipantNote, Travel, Guardian, Consent, Accommodation, AccessibilityDetail, PersonalDetails, ScanByContext } from '../types';
 
 interface ParticipantDetailContentProps {
@@ -87,7 +86,6 @@ function ParticipantDetailBody({
   // document's chip — iPads and simulators have none.
   const canVerifyId = !!state.auth.user?.global_admin && Platform.OS === 'ios' && nfcSupported;
   const [isUndoing, setIsUndoing] = useState(false);
-  const [undoPickerOpen, setUndoPickerOpen] = useState(false);
   const [isWritingBadge, setIsWritingBadge] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentParticipant, setCurrentParticipant] = useState<Participant>(participant);
@@ -279,6 +277,26 @@ function ParticipantDetailBody({
     }
   };
 
+  // Android has no action sheet, and Alert keeps three buttons, so the
+  // contexts to undo go in the options sheet there.
+  const undoScans = currentParticipant.scans_by_context || [];
+  const claimUndoSheet = optionsSheet.useOpener({
+    title: 'Select Context to Undo',
+    subtitle: `${currentParticipant.display_name || currentParticipant.full_name} has been scanned at multiple locations. Which would you like to undo?`,
+    options: [
+      ...undoScans.map(scan => ({ value: scan.scan_context_id, label: undoContextLabel(scan) })),
+      { value: UNDO_ALL, label: 'Undo All Scans', destructive: true },
+    ],
+    onSelect: value => {
+      if (value === UNDO_ALL) {
+        void performUndo();
+        return;
+      }
+      const scan = undoScans.find(s => s.scan_context_id === value);
+      if (scan) void performUndo(scan.scan_context_id, scan.scan_context_name);
+    },
+  });
+
   const handleUndoCheckIn = () => {
     const scans = currentParticipant.scans_by_context || [];
 
@@ -342,7 +360,8 @@ function ParticipantDetailBody({
       return;
     }
 
-    setUndoPickerOpen(true);
+    claimUndoSheet();
+    navigation.navigate('OptionsSheet');
   };
 
   const handleVerifyId = () => {
@@ -709,41 +728,11 @@ function ParticipantDetailBody({
           </Container>
         )}
       </ScrollView>
-      {Platform.OS === 'android' ? (
-        <BottomSheet
-          visible={undoPickerOpen}
-          onClose={() => setUndoPickerOpen(false)}
-          title="Select Context to Undo"
-        >
-          <Text style={[type.body, styles.undoPickerMessage, { color: tokens.text2 }]}>
-            {`${currentParticipant.display_name || currentParticipant.full_name} has been scanned at multiple locations. Which would you like to undo?`}
-          </Text>
-          {(currentParticipant.scans_by_context || []).map(scan => (
-            <ListRow
-              key={scan.scan_context_id}
-              title={undoContextLabel(scan)}
-              chevron={false}
-              divider
-              onPress={() => {
-                setUndoPickerOpen(false);
-                performUndo(scan.scan_context_id, scan.scan_context_name);
-              }}
-            />
-          ))}
-          <ListRow
-            title="Undo All Scans"
-            destructive
-            chevron={false}
-            onPress={() => {
-              setUndoPickerOpen(false);
-              performUndo();
-            }}
-          />
-        </BottomSheet>
-      ) : null}
     </>
   );
 }
+
+const UNDO_ALL = '__all__';
 
 function undoContextLabel(scan: ScanByContext): string {
   return `${scan.is_airport ? '✈️ ' : ''}${scan.scan_context_name} (${scan.scan_count} scan${scan.scan_count === 1 ? '' : 's'})`;
@@ -1208,7 +1197,6 @@ function InfoRow({ label, value, onPress, highlight, valueColor, selectable, acc
 }
 
 const styles = StyleSheet.create({
-  undoPickerMessage: { paddingBottom: 8 },
   content: {
     paddingHorizontal: 16,
     gap: 16,

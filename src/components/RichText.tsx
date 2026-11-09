@@ -1,9 +1,13 @@
 import React, { useMemo, useState } from 'react';
-import { Linking, Modal, Platform, StyleSheet, Text, View, type TextStyle } from 'react-native';
+import { Linking, Platform, StyleSheet, Text, View, type TextStyle } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { PressableSurface } from './ui/PressableSurface';
 import { Ionicons } from '@expo/vector-icons';
 import { parseHtml, type Block, type Inline } from '../services/richText';
-import { Button, TextField } from './forms';
+import { TextField } from './forms';
+import { linkSheet } from '../navigation/sheetData';
+import type { AppStackParamList } from '../types';
 import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
 
 /** Renders a message body's HTML natively. */
@@ -108,8 +112,7 @@ export function MarkupEditor({
   const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const [selection, setSelection] = useState<Selection>({ start: value.length, end: value.length });
-  const [linkOpen, setLinkOpen] = useState(false);
-  const [linkUrl, setLinkUrl] = useState('https://');
+  const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
 
   const wrap = (marker: string, fallback: string) => {
     const { start, end } = selection;
@@ -127,21 +130,23 @@ export function MarkupEditor({
     onChangeText(`${value.slice(0, lineStart)}${lines.join('\n')}${value.slice(lineEnd)}`);
   };
 
-  const insertLink = () => {
-    const url = linkUrl.trim();
-    setLinkOpen(false);
+  const insertLink = (url: string) => {
     if (!/^(https?:|mailto:|tel:)/i.test(url)) return;
     const { start, end } = selection;
     const label = value.slice(start, end) || url;
     onChangeText(`${value.slice(0, start)}[${label}](${url})${value.slice(end)}`);
-    setLinkUrl('https://');
+  };
+  const claimLinkSheet = linkSheet.useOpener({ onSubmit: insertLink });
+  const openLinkSheet = () => {
+    claimLinkSheet();
+    navigation.navigate('LinkSheet');
   };
 
   const tools: { icon: keyof typeof Ionicons.glyphMap | null; label: string; text?: string; onPress: () => void }[] = [
     { icon: null, text: 'B', label: 'Bold', onPress: () => wrap('**', 'bold text') },
     { icon: null, text: 'I', label: 'Italic', onPress: () => wrap('_', 'italic text') },
     { icon: null, text: 'S', label: 'Strikethrough', onPress: () => wrap('~~', 'struck text') },
-    { icon: 'link', label: 'Link', onPress: () => setLinkOpen(true) },
+    { icon: 'link', label: 'Link', onPress: openLinkSheet },
     { icon: 'list', label: 'Bulleted list', onPress: () => prefixLines(() => '- ') },
     { icon: 'list-circle-outline', label: 'Numbered list', onPress: () => prefixLines(i => `${i + 1}. `) },
     { icon: 'chatbox-ellipses-outline', label: 'Quote', onPress: () => prefixLines(() => '> ') },
@@ -185,25 +190,6 @@ export function MarkupEditor({
         style={styles.editorInput}
         autoCapitalize="sentences"
       />
-      <Modal visible={linkOpen} transparent animationType="fade" onRequestClose={() => setLinkOpen(false)}>
-        <View style={styles.backdrop}>
-          <View style={styles.dialog}>
-            <Text style={styles.dialogTitle}>Add a link</Text>
-            <TextField
-              value={linkUrl}
-              onChangeText={setLinkUrl}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-              autoFocus
-            />
-            <View style={styles.dialogActions}>
-              <Button title="Cancel" variant="link" onPress={() => setLinkOpen(false)} />
-              <Button title="Add link" variant="primary" onPress={insertLink} />
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -236,8 +222,4 @@ const makeStyles = (_colors: ThemeColors, { tokens }: Theme) => StyleSheet.creat
   toolContent: { alignItems: 'center', justifyContent: 'center' },
   toolText: { fontSize: 16, fontWeight: '800', color: tokens.text2 },
   editorInput: { minHeight: 180 },
-  backdrop: { flex: 1, backgroundColor: tokens.overlay, justifyContent: 'center', padding: 24 },
-  dialog: { backgroundColor: tokens.bg, borderRadius: 16, padding: 18, gap: 12 },
-  dialogTitle: { fontSize: 18, lineHeight: 22, fontWeight: '700', color: tokens.textH },
-  dialogActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
 });

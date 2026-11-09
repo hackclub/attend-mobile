@@ -1,8 +1,6 @@
 import React, { ReactNode, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
-  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -13,10 +11,12 @@ import {
   type TextInputProps,
   type ViewStyle,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import {
+  ActionMenu,
   Badge as KitBadge,
   Button as KitButton,
   Container,
@@ -24,7 +24,6 @@ import {
   KeyValue as KitKeyValue,
   StatusGlyph,
   StatusIndicator,
-  TextField as KitTextField,
   Toggle,
   icons,
   pressedStyle,
@@ -37,7 +36,8 @@ import {
   type StatusType,
 } from './ui';
 import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
-import type { IncidentLevel, SelectOption } from '../types';
+import type { AppStackParamList, IncidentLevel, SelectOption } from '../types';
+import { multiSelectSheet, optionsSheet, type MultiSelectSheetItem } from '../navigation/sheetData';
 
 // Form and detail-page building blocks for the stack screens (incidents,
 // messages, inbox, the report form), drawn with the console tokens and the
@@ -135,7 +135,13 @@ export function TextField({ multiline, style, onFocus, onBlur, editable = true, 
   );
 }
 
-/** A tappable field that opens a native-feeling picker sheet. */
+/** Up to this many options show as a native menu; more open a sheet. */
+const MENU_MAX_OPTIONS = 6;
+
+/**
+ * A tappable field for one choice: a native menu for a short list, the
+ * options sheet for a longer one or one with custom rows.
+ */
 export function SelectField({
   value,
   options,
@@ -157,68 +163,62 @@ export function SelectField({
 }) {
   const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
-  const [open, setOpen] = useState(false);
+  const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
   const selected = options.find(o => o.value === value);
+  const label = selected?.label ?? placeholder;
+  const claimSheet = optionsSheet.useOpener({
+    title,
+    options: options.map(option => ({ ...option, disabled: isOptionDisabled?.(option) ?? false })),
+    selected: value,
+    onSelect: onChange,
+    renderOption,
+  });
+
+  const face = (
+    <>
+      <Text style={[styles.selectText, !selected && styles.placeholderText]} numberOfLines={1}>
+        {label}
+      </Text>
+      <Icon name="chevron-down" size={16} color={tokens.muted} />
+    </>
+  );
+
+  if (!renderOption && !disabled && options.length <= MENU_MAX_OPTIONS) {
+    return (
+      <ActionMenu
+        accessibilityLabel={`${title}: ${label}`}
+        actions={options.map(option => ({
+          key: option.value,
+          title: option.label,
+          checked: option.value === value,
+          disabled: isOptionDisabled?.(option) ?? false,
+          onSelect: () => onChange(option.value),
+        }))}
+      >
+        <View style={[styles.selectShape, styles.selectButton]}>{face}</View>
+      </ActionMenu>
+    );
+  }
 
   return (
-    <>
-      <PressableSurface
-        style={[styles.selectShape, disabled && styles.inputDisabled]}
-        contentStyle={styles.selectButton}
-        rippleColor={tokens.text}
-        onPress={() => setOpen(true)}
-        disabled={disabled}
-        accessibilityRole="button"
-        accessibilityLabel={`${title}: ${selected?.label ?? placeholder}`}
-      >
-        <Text style={[styles.selectText, !selected && styles.placeholderText]} numberOfLines={1}>
-          {selected?.label ?? placeholder}
-        </Text>
-        <Icon name="chevron-down" size={16} color={tokens.muted} />
-      </PressableSurface>
-      <PickerSheet visible={open} title={title} onClose={() => setOpen(false)}>
-        <FlatList
-          data={options}
-          keyExtractor={o => o.value}
-          renderItem={({ item }) => {
-            const optionDisabled = isOptionDisabled?.(item) ?? false;
-            const isSelected = item.value === value;
-            return (
-              <Pressable
-                style={({ pressed }) => [
-                  styles.optionRow,
-                  isSelected && styles.optionSelected,
-                  optionDisabled && styles.optionDisabled,
-                  pressedStyle(pressed),
-                ]}
-                android_ripple={ripple(tokens.text, { alpha: ROW_STATE_LAYER_ALPHA })}
-                disabled={optionDisabled}
-                onPress={() => {
-                  onChange(item.value);
-                  setOpen(false);
-                }}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: isSelected, disabled: optionDisabled }}
-              >
-                <View style={styles.flex}>
-                  {renderOption ? renderOption(item) : <Text style={styles.optionLabel}>{item.label}</Text>}
-                </View>
-                {isSelected ? <Icon name="check" size={20} color={tokens.accent} /> : null}
-              </Pressable>
-            );
-          }}
-        />
-      </PickerSheet>
-    </>
+    <PressableSurface
+      style={[styles.selectShape, disabled && styles.inputDisabled]}
+      contentStyle={styles.selectButton}
+      rippleColor={tokens.text}
+      onPress={() => {
+        claimSheet();
+        navigation.navigate('OptionsSheet');
+      }}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}: ${label}`}
+    >
+      {face}
+    </PressableSurface>
   );
 }
 
-export interface MultiSelectItem {
-  id: string;
-  title: string;
-  subtitle?: string | null;
-  trailing?: ReactNode;
-}
+export type MultiSelectItem = MultiSelectSheetItem;
 
 /**
  * A searchable checklist in a sheet, for picking participants or staff. The
@@ -241,131 +241,36 @@ export function MultiSelectField({
 }) {
   const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
+  const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
   const selectedSet = useMemo(() => new Set(selected), [selected]);
   const names = items.filter(i => selectedSet.has(i.id)).map(i => i.title);
-
-  const filtered = useMemo(() => {
-    const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    if (!terms.length) return items;
-    return items.filter(item => {
-      const haystack = `${item.title} ${item.subtitle ?? ''}`.toLowerCase();
-      return terms.every(t => haystack.includes(t));
-    });
-  }, [items, query]);
-
-  const toggle = (id: string) => {
-    onChange(selectedSet.has(id) ? selected.filter(s => s !== id) : [...selected, id]);
-  };
+  const claimSheet = multiSelectSheet.useOpener({ title, items, selected, onChange, noun, searchPlaceholder });
 
   return (
-    <>
-      <PressableSurface
-        style={styles.selectShape}
-        contentStyle={styles.selectButton}
-        rippleColor={tokens.text}
-        onPress={() => setOpen(true)}
-        accessibilityRole="button"
-        accessibilityLabel={`${title}: ${selected.length} ${selected.length === 1 ? noun[0] : noun[1]} selected`}
-      >
-        <View style={styles.flex}>
-          <Text style={[styles.selectText, !names.length && styles.placeholderText]} numberOfLines={2}>
-            {names.length ? names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3} more` : '') : `No ${noun[1]} selected`}
-          </Text>
-        </View>
-        {selected.length ? <KitBadge label={String(selected.length)} /> : null}
-        <Icon name="chevron-right" size={16} color={tokens.muted} />
-      </PressableSurface>
-      <PickerSheet
-        visible={open}
-        title={title}
-        onClose={() => setOpen(false)}
-        right={
-          <Pressable onPress={() => onChange([])} hitSlop={8} accessibilityRole="button">
-            {({ pressed }) => <Text style={[styles.sheetAction, pressedStyle(pressed)]}>Clear all</Text>}
-          </Pressable>
-        }
-      >
-        <View style={styles.sheetSearch}>
-          <KitTextField
-            icon="search"
-            value={query}
-            onChangeText={setQuery}
-            placeholder={searchPlaceholder}
-            clearable
-            autoCorrect={false}
-            autoCapitalize="none"
-            returnKeyType="search"
-          />
-          <Text style={styles.sheetCount}>
-            {selected.length} {selected.length === 1 ? noun[0] : noun[1]} selected
-          </Text>
-        </View>
-        <FlatList
-          data={filtered}
-          keyExtractor={item => item.id}
-          keyboardShouldPersistTaps="handled"
-          renderItem={({ item }) => {
-            const checked = selectedSet.has(item.id);
-            return (
-              <Pressable
-                style={({ pressed }) => [styles.optionRow, pressedStyle(pressed)]}
-                android_ripple={ripple(tokens.text, { alpha: ROW_STATE_LAYER_ALPHA })}
-                onPress={() => toggle(item.id)}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked }}
-              >
-                <Checkbox checked={checked} />
-                <View style={styles.flex}>
-                  <Text style={styles.optionLabel} numberOfLines={1}>{item.title}</Text>
-                  {item.subtitle ? <Text style={styles.optionSubtitle} numberOfLines={1}>{item.subtitle}</Text> : null}
-                </View>
-                {item.trailing}
-              </Pressable>
-            );
-          }}
-          ListEmptyComponent={<Text style={styles.emptySheet}>No matches</Text>}
-        />
-      </PickerSheet>
-    </>
-  );
-}
-
-export function PickerSheet({
-  visible,
-  title,
-  onClose,
-  right,
-  children,
-}: {
-  visible: boolean;
-  title: string;
-  onClose: () => void;
-  right?: ReactNode;
-  children: ReactNode;
-}) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <SafeAreaView style={styles.sheet} edges={['top', 'bottom']}>
-        <View style={styles.sheetHeader}>
-          <Pressable onPress={onClose} hitSlop={8} accessibilityRole="button" style={styles.sheetSide}>
-            {({ pressed }) => <Text style={[styles.sheetAction, pressedStyle(pressed)]}>Done</Text>}
-          </Pressable>
-          <Text style={styles.sheetTitle} numberOfLines={1} accessibilityRole="header">
-            {title}
-          </Text>
-          <View style={[styles.sheetSide, styles.sheetRight]}>{right}</View>
-        </View>
-        {children}
-      </SafeAreaView>
-    </Modal>
+    <PressableSurface
+      style={styles.selectShape}
+      contentStyle={styles.selectButton}
+      rippleColor={tokens.text}
+      onPress={() => {
+        claimSheet();
+        navigation.navigate('MultiSelectSheet');
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}: ${selected.length} ${selected.length === 1 ? noun[0] : noun[1]} selected`}
+    >
+      <View style={styles.flex}>
+        <Text style={[styles.selectText, !names.length && styles.placeholderText]} numberOfLines={2}>
+          {names.length ? names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3} more` : '') : `No ${noun[1]} selected`}
+        </Text>
+      </View>
+      {selected.length ? <KitBadge label={String(selected.length)} /> : null}
+      <Icon name="chevron-right" size={16} color={tokens.muted} />
+    </PressableSurface>
   );
 }
 
 /** Console checkbox: a 16pt square, accent-filled with a tick when checked. */
-function Checkbox({ checked, disabled }: { checked: boolean; disabled?: boolean }) {
+export function Checkbox({ checked, disabled }: { checked: boolean; disabled?: boolean }) {
   const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
   return (
@@ -827,17 +732,6 @@ function makeStyles(_colors: ThemeColors, theme: Theme) {
     },
     selectText: { ...type.body, flex: 1, color: t.text },
     placeholderText: { color: t.muted },
-    optionRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
-      paddingHorizontal: spacing.lg,
-      minHeight: hitTarget + 8,
-      paddingVertical: spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: t.div2,
-    },
-    optionSelected: { backgroundColor: t.selected },
     optionDisabled: { opacity: 0.45 },
     optionLabel: { ...type.body, fontSize: 16, lineHeight: 22, color: t.text },
     optionSubtitle: { ...type.body, color: t.text2 },
@@ -851,22 +745,6 @@ function makeStyles(_colors: ThemeColors, theme: Theme) {
     },
     checkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: hitTarget, paddingVertical: spacing.xs },
     dateRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-    sheet: { flex: 1, backgroundColor: t.bg },
-    sheetHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: spacing.lg,
-      minHeight: 56,
-      borderBottomWidth: 1,
-      borderBottomColor: t.div2,
-    },
-    sheetSide: { minWidth: 72, minHeight: hitTarget, justifyContent: 'center' },
-    sheetTitle: { ...type.h3, flex: 1, textAlign: 'center', color: t.textH },
-    sheetRight: { alignItems: 'flex-end' },
-    sheetAction: { ...type.label, fontSize: 16, color: t.accent },
-    sheetSearch: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.sm },
-    sheetCount: { ...type.body, color: t.text2, paddingBottom: spacing.sm },
-    emptySheet: { ...type.body, textAlign: 'center', color: t.muted, padding: spacing.xxl },
     badge: {
       alignSelf: 'flex-start',
       flexDirection: 'row',

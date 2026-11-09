@@ -17,7 +17,7 @@ import { useParticipantViews } from '../hooks/useParticipantViews';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { ParticipantRow } from '../components/ParticipantRow';
 import { SplitView } from '../components/SplitView';
-import { FilterSheet } from '../components/FilterSheet';
+import { filterSheet } from '../navigation/sheetData';
 import { ParticipantDetailContent } from './ParticipantDetailContent';
 import { api } from '../services/api';
 import { useTheme } from '../theme';
@@ -85,7 +85,6 @@ export function SearchScreen() {
   } = useParticipantViews(currentEvent?.id);
   const [inputValue, setInputValue] = useState('');
   const [scanContexts, setScanContexts] = useState<ScanContext[]>([]);
-  const [isFilterSheetVisible, setIsFilterSheetVisible] = useState(false);
   const [selectedParticipant, setSelectedParticipant] = useState<Participant | null>(null);
 
   useEffect(() => {
@@ -181,6 +180,23 @@ export function SearchScreen() {
     [allViews, applyView],
   );
 
+  const claimFilterSheet = filterSheet.useOpener({
+    rules,
+    onRulesChange: setRules,
+    conjunction,
+    onConjunctionChange: setConjunction,
+    sort,
+    onSortChange: setSort,
+    savedViews,
+    onSaveView: saveView,
+    onDeleteView: deleteView,
+    filterContext,
+  });
+  const openFilterSheet = useCallback(() => {
+    claimFilterSheet();
+    navigation.navigate('FilterSheet');
+  }, [claimFilterSheet, navigation]);
+
   const removeRule = useCallback(
     (ruleId: string) => {
       setRules(rules.filter(r => r.id !== ruleId));
@@ -255,7 +271,7 @@ export function SearchScreen() {
             icon="filter"
             label={customRules.length > 0 ? `Filter · ${customRules.length}` : 'Filter'}
             active={customRules.length > 0 || customSort !== null}
-            onPress={() => setIsFilterSheetVisible(true)}
+            onPress={openFilterSheet}
             accessibilityLabel="Filter and sort"
           />
         </View>
@@ -302,7 +318,7 @@ export function SearchScreen() {
             <ToolChip
               label={`${sortField?.label ?? 'Sort'} ${customSort.direction === 'asc' ? '↑' : '↓'}`}
               active
-              onPress={() => setIsFilterSheetVisible(true)}
+              onPress={openFilterSheet}
               accessibilityLabel={`Sorted by ${sortField?.label ?? 'field'}, ${customSort.direction === 'asc' ? 'ascending' : 'descending'}`}
             />
           )}
@@ -369,20 +385,6 @@ export function SearchScreen() {
         }
       />
 
-      <FilterSheet
-        visible={isFilterSheetVisible}
-        onClose={() => setIsFilterSheetVisible(false)}
-        rules={rules}
-        onRulesChange={setRules}
-        conjunction={conjunction}
-        onConjunctionChange={setConjunction}
-        sort={sort}
-        onSortChange={setSort}
-        savedViews={savedViews}
-        onSaveView={saveView}
-        onDeleteView={deleteView}
-        filterContext={filterContext}
-      />
     </View>
   );
 
