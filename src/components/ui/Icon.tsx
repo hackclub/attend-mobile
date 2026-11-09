@@ -1,50 +1,49 @@
 import React from 'react';
 import Svg, { Circle, Path, type SvgProps } from 'react-native-svg';
-import {
-  BanIcon,
-  BellIcon,
-  CalendarIcon,
-  CameraIcon,
-  ChatIcon,
-  CheckCircleIcon,
-  CheckIcon,
-  ChevronDownIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  ChevronUpIcon,
-  ClipboardListIcon,
-  ClockIcon,
-  CogIcon,
-  DeviceMobileIcon,
-  DotsHorizontalIcon,
-  ExclamationCircleIcon,
-  ExclamationIcon,
-  ExternalLinkIcon,
-  FilterIcon,
-  HomeIcon,
-  IdentificationIcon,
-  InboxIcon,
-  InformationCircleIcon,
-  LocationMarkerIcon,
-  LockClosedIcon,
-  LogoutIcon,
-  MailIcon,
-  PaperAirplaneIcon,
-  PencilIcon,
-  PlusIcon,
-  QrcodeIcon,
-  RefreshIcon,
-  SearchIcon,
-  ShieldExclamationIcon,
-  TicketIcon,
-  TrashIcon,
-  UserCircleIcon,
-  UserGroupIcon,
-  UsersIcon,
-  WifiIcon,
-  XCircleIcon,
-  XIcon,
-} from 'react-native-heroicons/outline';
+// One module per glyph: the package's barrel would pull in every icon.
+import BanIcon from 'react-native-heroicons/outline/BanIcon';
+import BellIcon from 'react-native-heroicons/outline/BellIcon';
+import CalendarIcon from 'react-native-heroicons/outline/CalendarIcon';
+import CameraIcon from 'react-native-heroicons/outline/CameraIcon';
+import ChatIcon from 'react-native-heroicons/outline/ChatIcon';
+import CheckCircleIcon from 'react-native-heroicons/outline/CheckCircleIcon';
+import CheckIcon from 'react-native-heroicons/outline/CheckIcon';
+import ChevronDownIcon from 'react-native-heroicons/outline/ChevronDownIcon';
+import ChevronLeftIcon from 'react-native-heroicons/outline/ChevronLeftIcon';
+import ChevronRightIcon from 'react-native-heroicons/outline/ChevronRightIcon';
+import ChevronUpIcon from 'react-native-heroicons/outline/ChevronUpIcon';
+import ClipboardListIcon from 'react-native-heroicons/outline/ClipboardListIcon';
+import ClockIcon from 'react-native-heroicons/outline/ClockIcon';
+import CogIcon from 'react-native-heroicons/outline/CogIcon';
+import DeviceMobileIcon from 'react-native-heroicons/outline/DeviceMobileIcon';
+import DotsHorizontalIcon from 'react-native-heroicons/outline/DotsHorizontalIcon';
+import ExclamationCircleIcon from 'react-native-heroicons/outline/ExclamationCircleIcon';
+import ExclamationIcon from 'react-native-heroicons/outline/ExclamationIcon';
+import ExternalLinkIcon from 'react-native-heroicons/outline/ExternalLinkIcon';
+import FilterIcon from 'react-native-heroicons/outline/FilterIcon';
+import HomeIcon from 'react-native-heroicons/outline/HomeIcon';
+import IdentificationIcon from 'react-native-heroicons/outline/IdentificationIcon';
+import InboxIcon from 'react-native-heroicons/outline/InboxIcon';
+import InformationCircleIcon from 'react-native-heroicons/outline/InformationCircleIcon';
+import LocationMarkerIcon from 'react-native-heroicons/outline/LocationMarkerIcon';
+import LockClosedIcon from 'react-native-heroicons/outline/LockClosedIcon';
+import LogoutIcon from 'react-native-heroicons/outline/LogoutIcon';
+import MailIcon from 'react-native-heroicons/outline/MailIcon';
+import PaperAirplaneIcon from 'react-native-heroicons/outline/PaperAirplaneIcon';
+import PencilIcon from 'react-native-heroicons/outline/PencilIcon';
+import PlusIcon from 'react-native-heroicons/outline/PlusIcon';
+import QrcodeIcon from 'react-native-heroicons/outline/QrcodeIcon';
+import RefreshIcon from 'react-native-heroicons/outline/RefreshIcon';
+import SearchIcon from 'react-native-heroicons/outline/SearchIcon';
+import ShieldExclamationIcon from 'react-native-heroicons/outline/ShieldExclamationIcon';
+import TicketIcon from 'react-native-heroicons/outline/TicketIcon';
+import TrashIcon from 'react-native-heroicons/outline/TrashIcon';
+import UserCircleIcon from 'react-native-heroicons/outline/UserCircleIcon';
+import UserGroupIcon from 'react-native-heroicons/outline/UserGroupIcon';
+import UsersIcon from 'react-native-heroicons/outline/UsersIcon';
+import WifiIcon from 'react-native-heroicons/outline/WifiIcon';
+import XCircleIcon from 'react-native-heroicons/outline/XCircleIcon';
+import XIcon from 'react-native-heroicons/outline/XIcon';
 import { useTheme } from '../../theme';
 
 // Heroicons v1 outline (what the Attend admin uses), all at stroke 2 on a

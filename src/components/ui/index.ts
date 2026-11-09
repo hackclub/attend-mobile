@@ -35,7 +35,3 @@ export {
   STATE_LAYER_ALPHA,
 } from './pressFeedback';
 export { PressableSurface, type PressableSurfaceProps } from './PressableSurface';
-
-// Pre-redesign primitives (ScreenHeader, SearchField, FilterChip, card
-// surface helpers), still used by existing screens.
-export * from './legacy';
