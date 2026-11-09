@@ -22,10 +22,12 @@ export function useSwitcherEvents() {
     lastTickets && lastTickets.userId === userId ? lastTickets.tickets : []
   );
   const [isLoading, setIsLoading] = useState(true);
+  // The last load (or part of it) failed, so an empty list may not be real.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const load = useCallback(async () => {
     const cacheGeneration = syncService.getCacheGeneration();
-    await Promise.allSettled([
+    const results = await Promise.allSettled([
       api.getEvents().then(async (fresh) => {
         setEvents(fresh);
         await syncService.cacheEvents(fresh, cacheGeneration);
@@ -37,11 +39,18 @@ export function useSwitcherEvents() {
           })
         : Promise.resolve(),
     ]);
+    setLoadFailed(results.some((result) => result.status === 'rejected'));
     setIsLoading(false);
   }, [isParticipant, setEvents, userId]);
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  // A manual refresh (pull, Retry) shows as loading again.
+  const refresh = useCallback(async () => {
+    setIsLoading(true);
+    await load();
   }, [load]);
 
   const groups = useMemo(
@@ -60,6 +69,7 @@ export function useSwitcherEvents() {
     groups,
     canSwitch,
     isLoading,
-    refresh: load,
+    loadFailed,
+    refresh,
   };
 }

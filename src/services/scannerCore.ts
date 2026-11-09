@@ -117,6 +117,19 @@ export function scannableContexts(contexts: ScanContext[]): ScanContext[] {
   return bySchedule(today.length > 0 ? today : contexts);
 }
 
+/**
+ * How kiosk mode starts outside the scanner, under the scanner's rules: an
+ * event without contexts needs none, an event with exactly one uses it, and
+ * otherwise staff choose one of the contexts open now.
+ */
+export function kioskContextChoice(
+  contexts: ScanContext[]
+): { kind: 'start'; context?: ScanContext } | { kind: 'choose'; contexts: ScanContext[] } {
+  if (contexts.length === 0) return { kind: 'start' };
+  if (contexts.length === 1) return { kind: 'start', context: contexts[0] };
+  return { kind: 'choose', contexts: scannableContexts(contexts) };
+}
+
 export class SameCodeGate {
   private lastCode: string | null = null;
   private lastSeenAt = 0;

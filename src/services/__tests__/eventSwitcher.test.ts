@@ -1,4 +1,4 @@
-import { canSwitchEvents, groupSwitcherEvents } from '../eventSwitcher';
+import { canSwitchEvents, filterSwitcherEvents, groupSwitcherEvents, switcherEventCount } from '../eventSwitcher';
 import type { Event, Ticket } from '../../types';
 
 const now = new Date('2026-11-09T00:00:00Z');
@@ -39,5 +39,27 @@ describe('canSwitchEvents', () => {
     expect(canSwitchEvents({ organising: [event('a')], attending: [] })).toBe(false);
     expect(canSwitchEvents({ organising: [], attending: [] })).toBe(false);
     expect(canSwitchEvents({ organising: [event('a')], attending: [ticket('t', event('b'))] })).toBe(true);
+  });
+});
+
+describe('filterSwitcherEvents', () => {
+  const groups = {
+    organising: [
+      { ...event('scrapyard-sf'), name: 'Scrapyard San Francisco', location_city: 'San Francisco' },
+      { ...event('haven-cbr'), name: 'Haven Canberra', location_city: 'Canberra' },
+    ],
+    attending: [ticket('t1', { ...event('campfire-cbr'), name: 'Campfire', location_city: 'Canberra' })],
+  };
+
+  it('keeps everything for an empty query', () => {
+    expect(filterSwitcherEvents(groups, '  ')).toBe(groups);
+  });
+
+  it('matches name, slug and city, case-insensitively, on every word', () => {
+    const byCity = filterSwitcherEvents(groups, 'canberra');
+    expect(byCity.organising.map((e) => e.id)).toEqual(['haven-cbr']);
+    expect(byCity.attending.map((t) => t.id)).toEqual(['t1']);
+    expect(filterSwitcherEvents(groups, 'SCRAP san').organising.map((e) => e.id)).toEqual(['scrapyard-sf']);
+    expect(switcherEventCount(filterSwitcherEvents(groups, 'nowhere'))).toBe(0);
   });
 });

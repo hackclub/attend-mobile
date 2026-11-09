@@ -1,14 +1,19 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StackActions, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AccountButton, AccountSheet } from '../components/AccountSheet';
 import { EventCard } from '../components/EventBanner';
-import { Button } from '../components/ui';
+import { Button, TextField } from '../components/ui';
 import { useApp } from '../context/AppContext';
 import { useSwitcherEvents } from '../hooks/useSwitcherEvents';
 import { eventPhaseLabel } from '../services/eventDates';
+import {
+  SWITCHER_SEARCH_THRESHOLD,
+  filterSwitcherEvents,
+  switcherEventCount,
+} from '../services/eventSwitcher';
 import { eventRoleLabel } from '../services/eventRoles';
 import { useTheme } from '../theme';
 import type { Event, RootStackParamList, Ticket } from '../types';
@@ -28,14 +33,37 @@ const joinMeta = (...parts: (string | null | undefined)[]) => parts.filter(Boole
  * list in place of the Overview while no event is chosen yet.
  */
 export function SwitchEventScreen({ embedded = false }: { embedded?: boolean }) {
+  const switcher = useSwitcherEvents();
+  return <SwitchEventList embedded={embedded} switcher={switcher} />;
+}
+
+/**
+ * The switcher's list, given the events to show. The Overview renders it
+ * embedded with the `useSwitcherEvents` it already holds, so the events load
+ * once rather than once per component.
+ */
+export function SwitchEventList({
+  embedded = false,
+  switcher,
+}: {
+  embedded?: boolean;
+  switcher: ReturnType<typeof useSwitcherEvents>;
+}) {
   const { tokens, type, spacing } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavigationProp>();
   const { state, selectEvent } = useApp();
-  const { groups, isLoading, refresh } = useSwitcherEvents();
+  const { groups: allGroups, isLoading, loadFailed, refresh } = switcher;
   const [accountOpen, setAccountOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [query, setQuery] = useState('');
   const currentId = state.currentEvent?.id;
+  // Global admins see every event; past a handful, offer a search.
+  const searchable = switcherEventCount(allGroups) > SWITCHER_SEARCH_THRESHOLD;
+  const groups = useMemo(
+    () => (searchable ? filterSwitcherEvents(allGroups, query) : allGroups),
+    [allGroups, query, searchable]
+  );
 
   const pickEvent = useCallback((event: Event) => {
     void selectEvent(event);
@@ -56,7 +84,8 @@ export function SwitchEventScreen({ embedded = false }: { embedded?: boolean }) 
     setIsRefreshing(false);
   }, [refresh]);
 
-  const empty = groups.organising.length === 0 && groups.attending.length === 0;
+  const empty = switcherEventCount(allGroups) === 0;
+  const noMatches = !empty && switcherEventCount(groups) === 0;
   // A modal sheet on iOS starts below the status bar; full screen elsewhere.
   const topPad = embedded ? insets.top + spacing.lg : spacing.xl;
 
@@ -80,6 +109,20 @@ export function SwitchEventScreen({ embedded = false }: { embedded?: boolean }) 
             <Button variant="icon" icon="x" title="Close" onPress={() => navigation.goBack()} />
           )}
         </View>
+
+        {searchable ? (
+          <TextField
+            icon="search"
+            placeholder="Search events"
+            value={query}
+            onChangeText={setQuery}
+            clearable
+            autoCorrect={false}
+            autoCapitalize="none"
+            returnKeyType="search"
+            accessibilityLabel="Search events"
+          />
+        ) : null}
 
         {groups.organising.length > 0 ? (
           <>
@@ -115,12 +158,26 @@ export function SwitchEventScreen({ embedded = false }: { embedded?: boolean }) 
           </>
         ) : null}
 
+        {noMatches ? (
+          <View style={styles.empty}>
+            <Text style={[type.body, { color: tokens.text2 }]}>No events match “{query.trim()}”</Text>
+          </View>
+        ) : null}
+
         {empty ? (
           <View style={styles.empty}>
             {isLoading ? <ActivityIndicator color={tokens.accent} /> : null}
-            <Text style={[type.body, { color: tokens.text2 }]}>
-              {isLoading ? 'Loading events...' : 'No events available'}
+            {/* A failed load is not an empty list: say so and offer a retry. */}
+            <Text style={[type.body, styles.center, { color: tokens.text2 }]}>
+              {isLoading
+                ? 'Loading events...'
+                : loadFailed
+                  ? 'Couldn’t load your events. Check your connection and try again.'
+                  : 'No events available'}
             </Text>
+            {!isLoading && loadFailed ? (
+              <Button title="Retry" variant="normal" onPress={() => void refresh()} />
+            ) : null}
           </View>
         ) : null}
       </ScrollView>
@@ -141,4 +198,5 @@ const styles = StyleSheet.create({
   title: { flex: 1 },
   groupLabel: { marginTop: 8 },
   empty: { alignItems: 'center', gap: 12, paddingVertical: 48 },
+  center: { textAlign: 'center' },
 });

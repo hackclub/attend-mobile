@@ -8,10 +8,12 @@ import { RoleRestricted, roleRestrictedMessage } from '../components/RoleRestric
 import {
   Avatar,
   Badge,
+  BottomSheet,
   Button,
   Container,
   Flashbar,
   Icon,
+  ListRow,
   QuickActionTile,
   Stat,
   Toggle,
@@ -25,11 +27,13 @@ import { useEventScanContexts } from '../hooks/useEventScanContexts';
 import { useSwitcherEvents } from '../hooks/useSwitcherEvents';
 import { useTabBarInset, useTopTabBarInset } from '../hooks/useTabBarInset';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
-import { api, ApiError } from '../services/api';
+import { useRemote, type Remote } from '../hooks/useRemote';
+import { api } from '../services/api';
 import { eventDays, eventPhaseLabel, formatEventDateRange } from '../services/eventDates';
 import { eventRoleLabel } from '../services/eventRoles';
 import { computeEventStats, formatPercent } from '../services/eventStats';
 import { liveActivityService } from '../services/liveActivity';
+import { kioskContextChoice } from '../services/scannerCore';
 import {
   inboundSummary,
   isCheckInLive,
@@ -42,44 +46,14 @@ import {
   type OverviewSection,
 } from '../services/overview';
 import { useTheme } from '../theme';
-import type { Event, MainTabParamList, RootStackParamList, TravelCalendarEntry } from '../types';
-import { SwitchEventScreen } from './SwitchEventScreen';
+import type { Event, MainTabParamList, RootStackParamList, ScanContext, TravelCalendarEntry } from '../types';
+import { SwitchEventList } from './SwitchEventScreen';
 
 type Navigation = NavigationProp<RootStackParamList & MainTabParamList>;
 
 const CONTENT_MAX_WIDTH = 620;
 const WIDE_MAX_WIDTH = 1040;
 const TWO_COLUMN_MIN_WIDTH = 720;
-
-/** A remote panel: loading, loaded, refused for this role, or unreachable. */
-type Remote<T> =
-  | { state: 'loading' }
-  | { state: 'ready'; data: T }
-  | { state: 'forbidden' }
-  | { state: 'error' };
-
-function useRemote<T>(load: (() => Promise<T>) | null, key: string) {
-  // Tagged with the key it was loaded for, so a new event reads as loading
-  // until its own answer arrives.
-  const [entry, setEntry] = useState<{ key: string; value: Remote<T> } | null>(null);
-  const run = useCallback(async () => {
-    if (!load) return;
-    try {
-      const data = await load();
-      setEntry({ key, value: { state: 'ready', data } });
-    } catch (error) {
-      setEntry({
-        key,
-        value: error instanceof ApiError && error.isForbidden ? { state: 'forbidden' } : { state: 'error' },
-      });
-    }
-  }, [key, load]);
-  useEffect(() => {
-    void run();
-  }, [run]);
-  const value: Remote<T> = entry && entry.key === key ? entry.value : { state: 'loading' };
-  return [value, run] as const;
-}
 
 function clock(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -110,7 +84,9 @@ const MODE_LABEL: Record<TravelCalendarEntry['mode'], string> = {
 /** The Overview tab: the current event at a glance. */
 export function EventHome() {
   const { state, selectEvent } = useApp();
-  const { groups, canSwitch, refresh: refreshSwitcher } = useSwitcherEvents();
+  // One load serves both the Overview and the embedded switcher below.
+  const switcher = useSwitcherEvents();
+  const { groups, canSwitch, refresh: refreshSwitcher } = switcher;
   const event = state.currentEvent;
 
   // Nothing to choose between: open the only event straight away.
@@ -121,7 +97,7 @@ export function EventHome() {
     if (onlyEvent) void selectEvent(onlyEvent);
   }, [onlyEvent, selectEvent]);
 
-  if (!event) return <SwitchEventScreen embedded />;
+  if (!event) return <SwitchEventList embedded switcher={switcher} />;
   return <Overview event={event} canSwitch={canSwitch} onRefreshEvents={refreshSwitcher} />;
 }
 
@@ -142,8 +118,9 @@ function Overview({
   const navigation = useNavigation<Navigation>();
   const { state, refreshParticipants, syncNow } = useApp();
   const access = useEventAccess();
-  const { contexts } = useEventScanContexts(event.id);
+  const { contexts, isLoading: contextsLoading } = useEventScanContexts(event.id);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [kioskContexts, setKioskContexts] = useState<ScanContext[] | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const participants = state.participants;
@@ -166,12 +143,14 @@ function Overview({
   const [incidents, reloadIncidents] = useRemote(loadIncidents, `${event.id}:${access.canViewIncidents}`);
   const [messages, reloadMessages] = useRemote(loadMessages, event.id);
 
-  // Counts on the tiles go stale while staff work elsewhere; refresh on return.
+  // The panels load when the tab gains focus (the first time included) and
+  // again on every return, since counts go stale while staff work elsewhere.
   useFocusEffect(
     useCallback(() => {
+      void reloadTravel();
       void reloadIncidents();
       void reloadMessages();
-    }, [reloadIncidents, reloadMessages])
+    }, [reloadIncidents, reloadMessages, reloadTravel])
   );
 
   const handleRefresh = useCallback(async () => {
@@ -187,6 +166,17 @@ function Overview({
   }, [onRefreshEvents, refreshParticipants, reloadIncidents, reloadMessages, reloadTravel]);
 
   const openPeople = () => navigation.navigate('Search');
+
+  // Kiosk setup opens the way the scanner's More sheet opens it, with the
+  // same context rule: when the event has several contexts, staff pick one.
+  const startKiosk = (context?: ScanContext) =>
+    navigation.navigate('KioskSetup', { scanContextId: context?.id, scanContextName: context?.name });
+  const openKiosk = () => {
+    const choice = kioskContextChoice(contexts);
+    if (choice.kind === 'start') startKiosk(choice.context);
+    else setKioskContexts(choice.contexts);
+  };
+  const kioskReady = !(contextsLoading && contexts.length === 0);
   const twoColumns = width >= TWO_COLUMN_MIN_WIDTH;
   const days = eventDays(event);
   const running = !!days && days.untilStart <= 0 && days.untilEnd >= 0;
@@ -303,6 +293,14 @@ function Overview({
           subLabel={messagesLabel(messages, access.roleLabel)}
           disabled={messages.state === 'forbidden'}
           onPress={() => navigation.navigate('MessageList')}
+        />
+        <QuickActionTile
+          icon="lock-closed"
+          tint="red"
+          label="Kiosk"
+          subLabel={kioskReady ? 'Self-serve check-in' : 'Loading contexts'}
+          disabled={!kioskReady}
+          onPress={openKiosk}
         />
       </View>
     ),
@@ -428,6 +426,28 @@ function Overview({
         </View>
       </ScrollView>
       <AccountSheet visible={accountOpen} onClose={() => setAccountOpen(false)} />
+      <BottomSheet
+        visible={kioskContexts !== null}
+        onClose={() => setKioskContexts(null)}
+        title="Kiosk context"
+        headerActions={<Button variant="icon" icon="x" title="Close" onPress={() => setKioskContexts(null)} />}
+      >
+        <ScrollView>
+          {(kioskContexts ?? []).map((context, index, list) => (
+            <ListRow
+              key={context.id}
+              title={context.name}
+              subtitle={context.is_airport ? 'Airport' : context.checks_in ? 'Checks in' : undefined}
+              icon={context.is_airport ? 'travel' : context.checks_in ? 'check-circle' : 'qrcode'}
+              divider={index < list.length - 1}
+              onPress={() => {
+                setKioskContexts(null);
+                startKiosk(context);
+              }}
+            />
+          ))}
+        </ScrollView>
+      </BottomSheet>
     </View>
   );
 }

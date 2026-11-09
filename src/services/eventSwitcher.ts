@@ -37,3 +37,28 @@ export function groupSwitcherEvents(
 export function canSwitchEvents(groups: SwitcherGroups): boolean {
   return groups.organising.length + groups.attending.length > 1;
 }
+
+/** Past this many events the switcher offers a search field. */
+export const SWITCHER_SEARCH_THRESHOLD = 6;
+
+export function switcherEventCount(groups: SwitcherGroups): number {
+  return groups.organising.length + groups.attending.length;
+}
+
+const matches = (event: Pick<Event, 'name' | 'slug' | 'location_city'>, terms: string[]) => {
+  const haystack = [event.name, event.slug, event.location_city]
+    .filter(Boolean)
+    .join(' ')
+    .toLocaleLowerCase();
+  return terms.every((term) => haystack.includes(term));
+};
+
+/** Both groups narrowed to events whose name, slug or city match every word. */
+export function filterSwitcherEvents(groups: SwitcherGroups, query: string): SwitcherGroups {
+  const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return groups;
+  return {
+    organising: groups.organising.filter((event) => matches(event, terms)),
+    attending: groups.attending.filter((ticket) => matches(ticket.event, terms)),
+  };
+}

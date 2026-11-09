@@ -4,6 +4,7 @@ import {
   cachedPriorScan,
   failedResult,
   isRetryableScanError,
+  kioskContextChoice,
   queuedResult,
   nfcScanTarget,
   parseQRCode,
@@ -270,5 +271,23 @@ describe('nfcScanTarget', () => {
   it('rejects any other NDEF content instead of treating it as a badge token', () => {
     expect(nfcScanTarget('https://example.com/menu', false)).toBeNull();
     expect(nfcScanTarget('hello world', false)).toBeNull();
+  });
+});
+
+describe('kioskContextChoice', () => {
+  const context = (id: string) => ({ id, name: id }) as ScanContext;
+
+  it('starts without a context when the event has none', () => {
+    expect(kioskContextChoice([])).toEqual({ kind: 'start' });
+  });
+
+  it('uses the only context', () => {
+    expect(kioskContextChoice([context('door')])).toEqual({ kind: 'start', context: context('door') });
+  });
+
+  it('asks staff to choose between several', () => {
+    const choice = kioskContextChoice([context('door'), context('lunch')]);
+    expect(choice.kind).toBe('choose');
+    expect(choice.kind === 'choose' && choice.contexts.map((c) => c.id).sort()).toEqual(['door', 'lunch']);
   });
 });
