@@ -34,7 +34,7 @@ import {
   type StatusType,
 } from './ui';
 import { CHROME_MAX_FONT_SCALE } from './ui/fontScale';
-import { useTheme, useThemedStyles, type Theme } from '../theme';
+import { hackClubColors, useTheme, useThemedStyles, type Theme } from '../theme';
 import type { AppStackParamList, IncidentLevel, SelectOption } from '../types';
 import { multiSelectSheet, optionsSheet, type MultiSelectSheetItem } from '../navigation/sheetData';
 
@@ -493,10 +493,10 @@ export function Badge({ label, color }: { label: string; color?: string | null }
 }
 
 const LEVEL_COLORS: Record<string, string> = {
-  red: '#EC3750',
-  amber: '#FF8C37',
-  green: '#33D6A6',
-  blue: '#338EDA',
+  red: hackClubColors.red,
+  amber: hackClubColors.orange,
+  green: hackClubColors.green,
+  blue: hackClubColors.blue,
 };
 
 export function levelColor(level?: IncidentLevel | null): string | undefined {
@@ -651,7 +651,7 @@ function makeStyles(theme: Theme) {
     sectionBody: { gap: spacing.lg },
     field: { gap: spacing.xs + 2 },
     fieldLabel: { ...type.label, color: t.text },
-    fieldOptional: { fontWeight: '400', color: t.muted },
+    fieldOptional: { fontWeight: type.body.fontWeight, color: t.muted },
     fieldDescription: { ...type.body, color: t.text2 },
     fieldError: { ...type.body, color: t.error },
     input: {
@@ -689,12 +689,12 @@ function makeStyles(theme: Theme) {
     selectText: { ...type.body, flex: 1, color: t.text },
     placeholderText: { color: t.muted },
     optionDisabled: { opacity: 0.45 },
-    optionLabel: { ...type.body, fontSize: 16, lineHeight: 22, color: t.text },
+    optionLabel: { ...type.body, fontSize: type.h3.fontSize, lineHeight: type.h2.lineHeight, color: t.text },
     optionSubtitle: { ...type.body, color: t.text2 },
     checkbox: {
       width: 20,
       height: 20,
-      borderRadius: 4,
+      borderRadius: radii.badge,
       borderWidth: 2,
       alignItems: 'center',
       justifyContent: 'center',
@@ -708,8 +708,8 @@ function makeStyles(theme: Theme) {
       gap: 6,
       paddingHorizontal: spacing.sm,
     },
-    badgeDot: { width: 8, height: 8, borderRadius: 4 },
-    badgeText: { fontSize: 12, lineHeight: 20 },
+    badgeDot: { width: 8, height: 8, borderRadius: radii.pill },
+    badgeText: { ...type.small, lineHeight: type.body.lineHeight },
     levelRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm - 2, flexWrap: 'wrap' },
     levelText: { ...type.body, color: t.text2 },
     chart: { gap: 0 },
