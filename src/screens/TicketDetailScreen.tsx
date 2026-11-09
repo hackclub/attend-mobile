@@ -13,7 +13,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BottomTabBarHeightContext } from 'react-native-bottom-tabs';
-import { setStatusBarStyle } from 'expo-status-bar';
 import { AccountButton } from '../components/AccountSheet';
 import { EventBanner, eventBannerText } from '../components/EventBanner';
 import { EventStatusCard } from '../components/EventStatusCard';
@@ -28,6 +27,7 @@ import {
 } from '../../modules/activity-controller/src';
 import { api } from '../services/api';
 import { eventStatus } from '../services/eventStatus';
+import { useBannerStatusBar } from '../hooks/useBannerStatusBar';
 import { resolveTabBarInset } from '../hooks/useTabBarInset';
 import { typography, useTheme } from '../theme';
 import {
@@ -65,7 +65,7 @@ function formatFlightWhen(iso?: string): string {
  * not assume there is a screen to go back to or a tab bar below it.
  */
 export function TicketDetailScreen() {
-  const { tokens, spacing, barStyle } = useTheme();
+  const { tokens, spacing } = useTheme();
   const route = useRoute<TicketDetailRoute>();
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
@@ -88,14 +88,7 @@ export function TicketDetailScreen() {
     };
   }, [route.params.ticket.id]);
 
-  // The header band is a dark fill in both schemes, so use light status bar
-  // content while this screen is in view.
-  useFocusEffect(
-    useCallback(() => {
-      setStatusBarStyle('light');
-      return () => setStatusBarStyle(barStyle);
-    }, [barStyle]),
-  );
+  const bannerStatusBar = useBannerStatusBar(tokens.shaded);
 
   // "Now" for the status card and banner, moved on whenever the pass comes
   // back into view. The unread count on the Messages tile refreshes then too
@@ -181,17 +174,23 @@ export function TicketDetailScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: tokens.shaded }]}>
-      <ScrollView contentContainerStyle={{ paddingBottom: bottomInset + spacing.xxl }}>
-        <EventBanner
-          event={event}
-          eyebrow={banner.eyebrow}
-          eyebrowIcon={banner.eyebrowIcon}
-          meta={banner.meta}
-          topInset={insets.top}
-          onBack={canGoBack ? () => navigation.goBack() : undefined}
-          onPress={canSwitch ? () => navigation.navigate('SwitchEvent', { currentTicketId: ticket.id }) : undefined}
-          accessory={canGoBack ? undefined : <AccountButton onBanner />}
-        />
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: bottomInset + spacing.xxl }}
+        onScroll={bannerStatusBar.onScroll}
+        scrollEventThrottle={32}
+      >
+        <View onLayout={bannerStatusBar.onBannerLayout}>
+          <EventBanner
+            event={event}
+            eyebrow={banner.eyebrow}
+            eyebrowIcon={banner.eyebrowIcon}
+            meta={banner.meta}
+            topInset={insets.top}
+            onBack={canGoBack ? () => navigation.goBack() : undefined}
+            onPress={canSwitch ? () => navigation.navigate('SwitchEvent', { currentTicketId: ticket.id }) : undefined}
+            accessory={canGoBack ? undefined : <AccountButton onBanner />}
+          />
+        </View>
 
         <View style={[{ padding: spacing.lg, gap: spacing.lg }]}>
           <TicketPass ticket={ticket} pageColor={tokens.shaded} />
@@ -252,6 +251,7 @@ export function TicketDetailScreen() {
           </Container>
         </View>
       </ScrollView>
+      {bannerStatusBar.scrim}
     </View>
   );
 }

@@ -5,10 +5,7 @@ import {
   StyleSheet,
   Text,
   View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
 } from 'react-native';
-import { setStatusBarStyle } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, type NavigationProp } from '@react-navigation/native';
 import { AccountButton } from '../components/AccountSheet';
@@ -28,6 +25,7 @@ import {
   type IconName,
 } from '../components/ui';
 import { useApp } from '../context/AppContext';
+import { useBannerStatusBar } from '../hooks/useBannerStatusBar';
 import { useEventAccess } from '../hooks/useEventAccess';
 import { useEventScanContexts } from '../hooks/useEventScanContexts';
 import { useSwitcherEvents } from '../hooks/useSwitcherEvents';
@@ -116,27 +114,10 @@ function Overview({
   canSwitch: boolean;
   onRefreshEvents: () => Promise<void>;
 }) {
-  const { tokens, type, spacing, barStyle } = useTheme();
+  const { tokens, type, spacing } = useTheme();
   const insets = useSafeAreaInsets();
   const topTabInset = useTopTabBarInset();
-  // The banner is a dark photo or fill in both schemes, so the status bar is
-  // light over it. Once it scrolls out from under the status bar, the page
-  // shows through, so switch to the scheme's style over a page-coloured scrim.
-  const [bannerHeight, setBannerHeight] = useState(0);
-  const [pastBanner, setPastBanner] = useState(false);
-  const handleScroll = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const past = bannerHeight > 0 && e.nativeEvent.contentOffset.y >= bannerHeight - insets.top;
-      setPastBanner(prev => (prev === past ? prev : past));
-    },
-    [bannerHeight, insets.top]
-  );
-  useFocusEffect(
-    useCallback(() => {
-      setStatusBarStyle(pastBanner ? barStyle : 'light');
-      return () => setStatusBarStyle(barStyle);
-    }, [barStyle, pastBanner])
-  );
+  const bannerStatusBar = useBannerStatusBar(tokens.bg);
   const tabBarInset = useTabBarInset();
   const { width } = useResponsiveLayout();
   const navigation = useNavigation<Navigation>();
@@ -382,7 +363,7 @@ function Overview({
     <View style={[styles.screen, { backgroundColor: tokens.bg }]}>
       <ScrollView
         contentContainerStyle={{ paddingBottom: tabBarInset + spacing.xxl }}
-        onScroll={handleScroll}
+        onScroll={bannerStatusBar.onScroll}
         scrollEventThrottle={32}
         refreshControl={
           <RefreshControl
@@ -397,7 +378,7 @@ function Overview({
           />
         }
       >
-        <View onLayout={e => setBannerHeight(e.nativeEvent.layout.height)}>
+        <View onLayout={bannerStatusBar.onBannerLayout}>
           <EventBanner
             event={event}
             eyebrow={banner.eyebrow}
@@ -435,12 +416,7 @@ function Overview({
           <LiveActivityRow key={event.id} />
         </View>
       </ScrollView>
-      {pastBanner ? (
-        <View
-          pointerEvents="none"
-          style={[styles.statusScrim, { height: insets.top, backgroundColor: tokens.bg }]}
-        />
-      ) : null}
+      {bannerStatusBar.scrim}
     </View>
   );
 }
@@ -635,7 +611,6 @@ function LiveActivityRow() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  statusScrim: { position: 'absolute', top: 0, left: 0, right: 0 },
   body: { width: '100%', alignSelf: 'center', padding: 16 },
   columns: { flexDirection: 'row', alignItems: 'flex-start' },
   column: { flex: 1, minWidth: 0 },
