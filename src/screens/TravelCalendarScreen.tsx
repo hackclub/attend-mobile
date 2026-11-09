@@ -14,6 +14,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ApiError, api } from '../services/api';
 import { useApp } from '../context/AppContext';
 import { useEventAccess } from '../hooks/useEventAccess';
+import { travelClock } from '../services/travelTimes';
 import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
 import {
   Badge,
@@ -68,19 +69,6 @@ function displayName(entry: TravelCalendarEntry): string {
   return entry.participantPreferredName?.trim() || entry.participantName;
 }
 
-function formatTimeInZone(iso: string, tz?: string | null): string {
-  try {
-    return new Intl.DateTimeFormat('en-GB', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-      timeZone: tz || undefined,
-    }).format(new Date(iso));
-  } catch {
-    return new Date(iso).toISOString().slice(11, 16);
-  }
-}
-
 // agendaDate is a plain YYYY-MM-DD in the event's timezone. Anchor it at noon
 // UTC and format in UTC so the label never drifts a day in other timezones.
 function formatAgendaDate(date: string): string {
@@ -117,7 +105,8 @@ const isPickedUp = (e: TravelCalendarEntry) => e.pickupState === 'collected' || 
 /** One journey at one time: everyone on the same flight, train or car. */
 interface Leg {
   key: string;
-  time: string | null;
+  /** "2:15" and "PM", in the event's timezone. */
+  time: { time: string; period: string } | null;
   title: string;
   route: string | null;
   routeRedacted: boolean;
@@ -131,8 +120,8 @@ function buildLegs(entries: TravelCalendarEntry[], timezone?: string | null): Le
   const sorted = [...entries].sort((a, b) => (a.primaryTimeAt ?? '').localeCompare(b.primaryTimeAt ?? ''));
   const legs = new Map<string, Leg>();
   for (const entry of sorted) {
-    const time = entry.primaryTimeAt ? formatTimeInZone(entry.primaryTimeAt, timezone) : null;
-    const key = [time, entry.mode, entry.reference ?? '', entry.route ?? '', entry.routeRedacted ? 'r' : ''].join('|');
+    const time = travelClock(entry.primaryTimeAt, timezone);
+    const key = [time ? `${time.time} ${time.period}` : '', entry.mode, entry.reference ?? '', entry.route ?? '', entry.routeRedacted ? 'r' : ''].join('|');
     let leg = legs.get(key);
     if (!leg) {
       leg = {
@@ -195,15 +184,22 @@ function LegRow({
   const done = leg.pickup?.type === 'success';
   return (
     <View style={[styles.legRow, done && styles.legDone]}>
-      <View style={styles.legTime}>
-        <Text style={leg.time ? styles.timeText : styles.timeMissing}>{leg.time ?? '—:—'}</Text>
+      <View style={styles.legTime} accessible accessibilityLabel={leg.time ? `${leg.time.time} ${leg.time.period}` : 'No time'}>
+        {leg.time ? (
+          <>
+            <Text style={styles.timeText}>{leg.time.time}</Text>
+            <Text style={styles.timePeriod}>{leg.time.period}</Text>
+          </>
+        ) : (
+          <Text style={styles.timeMissing}>—:—</Text>
+        )}
       </View>
       <View style={styles.legCard}>
         <Text style={styles.legTitle} numberOfLines={1}>
           {leg.title}
         </Text>
         {leg.route ? (
-          <Text style={styles.legRoute} numberOfLines={2}>
+          <Text style={styles.legRoute} numberOfLines={1}>
             {leg.route}
           </Text>
         ) : leg.routeRedacted ? (
@@ -390,35 +386,31 @@ export function TravelCalendarScreen() {
     );
   }
 
+  // The heading, then search, then the direction: the same order as People.
   const header = (
     <View style={styles.header}>
-      <View style={styles.titleRow}>
-        <View style={styles.titleText}>
-          <Text style={styles.title} accessibilityRole="header">Travel</Text>
-          <Text style={styles.subtitle} numberOfLines={1}>{state.currentEvent.name}</Text>
-        </View>
+      <View>
+        <Text style={styles.title} accessibilityRole="header">Travel</Text>
         {data?.eventTimezone ? (
-          <View style={styles.tz} accessible accessibilityLabel={`Times in ${data.eventTimezone}`}>
-            <Icon name="clock" size={14} color={tokens.muted} />
-            <Text style={styles.tzText}>{data.eventTimezone}</Text>
-          </View>
+          <Text style={styles.tzText} numberOfLines={1}>Times in {data.eventTimezone}</Text>
         ) : null}
       </View>
+      <TextField
+        icon="search"
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        placeholder="Search name, route, or flight"
+        accessibilityLabel="Search travel"
+        clearable
+        autoCorrect={false}
+        returnKeyType="search"
+      />
       <SegmentedControl
         options={directionOptions}
         value={direction}
         onChange={setDirection}
         accessibilityLabel="Direction"
         role="tab"
-      />
-      <TextField
-        icon="search"
-        value={searchQuery}
-        onChangeText={setSearchQuery}
-        placeholder="Search name, route, or flight"
-        clearable
-        autoCorrect={false}
-        returnKeyType="search"
       />
       {error ? (
         <Flashbar
@@ -499,11 +491,7 @@ const makeStyles = (_colors: ThemeColors, theme: Theme) => {
   return StyleSheet.create({
     container: { flex: 1, backgroundColor: t.bg },
     header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm, gap: spacing.md },
-    titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-    titleText: { flex: 1, minWidth: 0 },
     title: { ...type.h1, color: t.textH },
-    subtitle: { ...type.body, color: t.text2 },
-    tz: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
     tzText: { ...type.small, color: t.muted },
     listContent: { paddingHorizontal: spacing.lg, flexGrow: 1 },
     dayHeader: {
@@ -522,6 +510,7 @@ const makeStyles = (_colors: ThemeColors, theme: Theme) => {
     legDone: { opacity: 0.6 },
     legTime: { width: 52, alignItems: 'flex-end', paddingTop: spacing.md },
     timeText: { ...type.label, color: t.textH, fontVariant: ['tabular-nums'] },
+    timePeriod: { ...type.body, color: t.muted },
     timeMissing: { ...type.label, color: t.muted },
     legCard: {
       flex: 1,
