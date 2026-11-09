@@ -1,6 +1,5 @@
-import { Platform } from 'react-native';
 import {
-  areLiveActivitiesEnabled,
+  isLiveActivityAvailable,
   startLiveActivity,
   updateLiveActivity,
   stopLiveActivity,
@@ -25,7 +24,7 @@ class LiveActivityService {
   };
 
   isSupported(): boolean {
-    return Platform.OS === 'ios' && areLiveActivitiesEnabled();
+    return isLiveActivityAvailable();
   }
 
   async start(eventId: string, eventName: string, checkedInCount: number, totalCount: number): Promise<boolean> {

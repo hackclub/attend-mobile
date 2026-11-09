@@ -22,6 +22,7 @@ import {
   startTicketActivity,
   stopTicketActivity,
   isTicketActivityRunning,
+  openLiveUpdateSettings,
 } from '../../modules/activity-controller/src';
 import { api } from '../services/api';
 import { resolveTabBarInset } from '../hooks/useTabBarInset';
@@ -174,9 +175,11 @@ export function TicketDetailScreen() {
   const canGoBack = navigation.canGoBack();
 
   // Live Activity: let confirmed attendees pin their pass to the Lock Screen.
-  // Shown on any iOS device; whether the OS actually allows it is handled when
-  // the user taps (areLiveActivitiesSupported can read false on simulators).
-  const liveActivitySupported = Platform.OS === 'ios';
+  // iOS: a Live Activity. Android: an ongoing notification (a Live Update on
+  // Android 16+). Whether the OS allows it is handled when the user taps
+  // (areLiveActivitiesSupported can read false on simulators, and Android asks
+  // for the notification permission then).
+  const liveActivitySupported = Platform.OS === 'ios' || Platform.OS === 'android';
   const [liveActivityOn, setLiveActivityOn] = useState(() => isTicketActivityRunning());
 
   const toggleLiveActivity = async () => {
@@ -193,10 +196,21 @@ export function TicketDetailScreen() {
       ticket.checked_in,
     );
     if (!ok) {
-      Alert.alert(
-        'Live Activities are off',
-        'Turn on Live Activities for Attend in Settings → Attend to pin your pass to the Lock Screen.',
-      );
+      if (Platform.OS === 'android') {
+        Alert.alert(
+          'Notifications are off',
+          'Allow notifications for Attend to show your pass on the Lock Screen.',
+          [
+            { text: 'Not now', style: 'cancel' },
+            { text: 'Open settings', onPress: () => openLiveUpdateSettings() },
+          ],
+        );
+      } else {
+        Alert.alert(
+          'Live Activities are off',
+          'Turn on Live Activities for Attend in Settings → Attend to pin your pass to the Lock Screen.',
+        );
+      }
     }
     setLiveActivityOn(ok);
   };

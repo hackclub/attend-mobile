@@ -1,5 +1,7 @@
-import { Platform } from 'react-native';
+import { PermissionsAndroid, Platform } from 'react-native';
 
+// iOS: ActivityKit Live Activities. Android: an ongoing notification, promoted
+// to a Live Update on Android 16+ (see android/…/ActivityControllerModule.kt).
 interface ActivityControllerModule {
   areLiveActivitiesEnabled(): boolean;
   startLiveActivity(eventId: string, eventName: string, checkedInCount: number, totalCount: number): Promise<boolean>;
@@ -9,13 +11,16 @@ interface ActivityControllerModule {
   startTicketActivity(eventName: string, venue: string, shortCode: string, startsAtIso: string, checkedIn: boolean): Promise<boolean>;
   stopTicketActivity(): Promise<boolean>;
   isTicketActivityRunning(): boolean;
+  // Android only.
+  canPostLiveUpdates?(): boolean;
+  openLiveUpdateSettings?(): boolean;
 }
 
 const ActivityController: ActivityControllerModule | null = (() => {
-  if (Platform.OS !== 'ios') {
+  if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
     return null;
   }
-  
+
   try {
     const { requireNativeModule } = require('expo-modules-core');
     return requireNativeModule('ActivityController');
@@ -28,6 +33,39 @@ export function areLiveActivitiesEnabled(): boolean {
   return ActivityController?.areLiveActivitiesEnabled() ?? false;
 }
 
+/**
+ * Android 13+: notifications need the POST_NOTIFICATIONS runtime permission.
+ * Asked when the user turns a live update on, not at launch. Resolves true
+ * when notifications may be posted (always true on iOS / older Android).
+ */
+export async function ensureNotificationPermission(): Promise<boolean> {
+  if (Platform.OS !== 'android' || Number(Platform.Version) < 33) return true;
+  const permission = PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS;
+  try {
+    if (await PermissionsAndroid.check(permission)) return true;
+    const result = await PermissionsAndroid.request(permission);
+    return result === PermissionsAndroid.RESULTS.GRANTED;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Android 16+: whether the system will promote the notification to a Live
+ * Update (the user can turn that off per app). False when notifications are
+ * blocked. iOS: same as areLiveActivitiesEnabled.
+ */
+export function canPostLiveUpdates(): boolean {
+  if (!ActivityController) return false;
+  if (Platform.OS === 'android') return ActivityController.canPostLiveUpdates?.() ?? false;
+  return ActivityController.areLiveActivitiesEnabled();
+}
+
+/** Android: opens the Live Updates (16+) or notification settings for Attend. */
+export function openLiveUpdateSettings(): boolean {
+  return ActivityController?.openLiveUpdateSettings?.() ?? false;
+}
+
 export async function startLiveActivity(
   eventId: string,
   eventName: string,
@@ -35,6 +73,7 @@ export async function startLiveActivity(
   totalCount: number
 ): Promise<boolean> {
   if (!ActivityController) return false;
+  if (!(await ensureNotificationPermission())) return false;
   try {
     return await ActivityController.startLiveActivity(eventId, eventName, checkedInCount, totalCount);
   } catch (error) {
@@ -79,6 +118,7 @@ export async function startTicketActivity(
   checkedIn: boolean
 ): Promise<boolean> {
   if (!ActivityController) return false;
+  if (!(await ensureNotificationPermission())) return false;
   try {
     return await ActivityController.startTicketActivity(eventName, venue, shortCode, startsAtIso, checkedIn);
   } catch (error) {
@@ -103,4 +143,14 @@ export function isTicketActivityRunning(): boolean {
 
 export function areLiveActivitiesSupported(): boolean {
   return ActivityController?.areLiveActivitiesEnabled() ?? false;
+}
+
+/**
+ * Whether to offer the live activity toggle at all. Android: whenever the
+ * native module is present (the notification permission is asked on start).
+ * iOS: when Live Activities are enabled.
+ */
+export function isLiveActivityAvailable(): boolean {
+  if (!ActivityController) return false;
+  return Platform.OS === 'android' || ActivityController.areLiveActivitiesEnabled();
 }

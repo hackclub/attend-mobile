@@ -1,0 +1,2 @@
+int drawable attend_live_scan 0x0
+int drawable attend_live_ticket 0x0
