@@ -32,6 +32,7 @@ import {
   PressableSurface,
   type IconName,
 } from '../components/ui';
+import { CHROME_MAX_FONT_SCALE } from '../components/ui/fontScale';
 import { scanContextSheet, scannerSearchSheet } from '../navigation/sheetData';
 import { useIsUnderSheet } from '../navigation/useIsUnderSheet';
 import { api } from '../services/api';
@@ -324,6 +325,7 @@ export function ScannerScreen() {
             }}
           />
           <ActionMenu
+            feedbackColor={overlayTokens.on}
             accessibilityLabel="More: Power mode, Kiosk mode"
             actions={[
               {
@@ -350,14 +352,20 @@ export function ScannerScreen() {
               },
             ]}
           >
-            <OverlayIconButton
-              surface="camera"
-              icon="dots-horizontal"
-              accessibilityLabel="More"
-              active={isPowerModeEnabled}
-            />
+            <OverlayIconButton surface="camera" icon="overflow" accessibilityLabel="More" />
           </ActionMenu>
         </View>
+
+        {/* Power mode is a setting, not a control that's on, so it shows as
+            a quiet note under the header rather than lighting up the menu. */}
+        {isPowerModeEnabled ? (
+          <View style={scan.powerNote} accessible accessibilityLabel="Power mode on">
+            <Icon name="bolt" size={14} color={overlayTokens.active} />
+            <Text style={[type.small, scan.pillStrong]} maxFontSizeMultiplier={CHROME_MAX_FONT_SCALE}>
+              Power mode
+            </Text>
+          </View>
+        ) : null}
 
         <View style={styles.scanStage}>
           <View
@@ -473,6 +481,18 @@ const scan = StyleSheet.create({
   pillMuted: { color: overlayTokens.onMuted, flexShrink: 1 },
   pillStrong: { color: overlayTokens.on, flexShrink: 1 },
   pillWarning: { color: overlayTokens.active },
+  powerNote: {
+    alignSelf: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 8,
+    marginRight: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+    backgroundColor: overlayTokens.cameraControl,
+  },
   dock: { paddingHorizontal: 10 },
   flexSpacer: { flex: 1 },
   dockRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
