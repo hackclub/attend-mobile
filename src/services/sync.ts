@@ -4,6 +4,7 @@ import { api } from './api';
 import { forbiddenParticipants } from './eventAccess';
 import { mergeParticipant, mergeParticipants, type ParticipantUpdate } from './participantIndex';
 import { PARTICIPANT_CACHE_VERSION, slimParticipants } from './participantCache';
+import { scanQueue } from './scanQueue';
 import type { Event, Participant, RemoteScan, ScanContext } from '../types';
 
 // Upper bound on pages per sync pass; at 500 scans/page this covers 50k
@@ -24,6 +25,19 @@ class SyncService {
   private cacheGeneration = 0;
   private cacheWriteQueue: Promise<void> = Promise.resolve();
   private participantCacheMigration: Promise<void> | null = null;
+
+  constructor() {
+    // Queued scans feed pendingScans, and a scan confirmed by a later flush
+    // updates the cached roster just like a live one.
+    scanQueue.subscribe(event => {
+      if (event.type === 'changed') {
+        void this.notifyListeners().catch(() => undefined);
+      } else if (event.type === 'confirmed') {
+        void this.cacheConfirmedParticipant(event.eventId, event.response.participant)
+          .catch(error => console.warn('[Sync] Failed to cache flushed scan participant:', error));
+      }
+    });
+  }
 
   /**
    * Re-slims rosters written by builds that cached every participant field.
@@ -84,13 +98,16 @@ class SyncService {
   }
 
   async getStatus(): Promise<SyncStatus> {
-    const netInfo = await NetInfo.fetch();
-    const lastSyncAt = await asyncStorage.get<string>(STORAGE_KEYS.LAST_SYNC);
+    const [netInfo, lastSyncAt, pendingScans] = await Promise.all([
+      NetInfo.fetch(),
+      asyncStorage.get<string>(STORAGE_KEYS.LAST_SYNC),
+      scanQueue.getPendingCount(),
+    ]);
 
     return {
       isOnline: netInfo.isConnected ?? false,
       isSyncing: this.isSyncing,
-      pendingScans: 0,
+      pendingScans,
       lastSyncAt,
     };
   }
@@ -288,6 +305,14 @@ class SyncService {
     await this.notifyListeners();
 
     try {
+      // Push this device's offline scans before pulling, so the pulled
+      // roster and scan list already include them.
+      try {
+        await scanQueue.flush(eventId);
+      } catch (error) {
+        console.warn('[Sync] Scan queue flush failed:', error);
+      }
+
       const [events] = await Promise.all([
         api.getEvents(),
         this.refreshParticipants(eventId, generation),
@@ -348,6 +373,8 @@ class SyncService {
 
   async clear(): Promise<void> {
     this.cacheGeneration += 1;
+    // Logout path: queued scans belong to the signed-out session.
+    await scanQueue.clear().catch(error => console.warn('[Sync] Scan queue clear failed:', error));
     forbiddenParticipants.reset();
     await Promise.allSettled(this.participantCacheQueues.values());
     this.participantCacheQueues.clear();
