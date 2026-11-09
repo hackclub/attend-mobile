@@ -1,71 +1,45 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Image,
-  Linking,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
+import { eventPhaseLabel } from '../services/eventDates';
+import { groupTickets, ticketBadge } from '../services/eventSwitcher';
 import { VersionFooter } from '../components/VersionFooter';
 import { AccountButton, AccountSheet } from '../components/AccountSheet';
+import { EventCard } from '../components/EventBanner';
 import { useTheme } from '../theme';
-import {
-  Badge,
-  Button,
-  Icon,
-  QuickActionTile,
-  StatusIndicator,
-  PressableSurface,
-} from '../components/ui';
+import { Button, Icon, QuickActionTile, Screen } from '../components/ui';
 import type { AppStackParamList, Ticket } from '../types';
 
-type NavigationProp = NativeStackNavigationProp<AppStackParamList, 'ParticipantMain'>;
+type NavigationProp = NativeStackNavigationProp<AppStackParamList, 'MyTickets'>;
 
-// Dates are shown in the event's timezone, not the device's, so the day
-// doesn't shift for travellers.
-function formatDate(dateString?: string, timezone?: string) {
-  if (!dateString) return '';
-  const opts = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' } as const;
-  try {
-    return new Date(dateString).toLocaleDateString(undefined, {
-      ...opts,
-      timeZone: timezone || undefined,
-    });
-  } catch {
-    try {
-      return new Date(dateString).toLocaleDateString(undefined, opts);
-    } catch {
-      return '';
-    }
-  }
-}
+const joinMeta = (...parts: (string | null | undefined)[]) => parts.filter(Boolean).join(' · ');
 
+/**
+ * A participant's home: every ticket as an event card (even just one),
+ * upcoming first and ended ones collapsed under Past. A card pushes that
+ * event's pass.
+ */
 export function MyTicketsScreen() {
   const { tokens, type, spacing } = useTheme();
-  const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavigationProp>();
-  const { state } = useApp();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pastOpen, setPastOpen] = useState(false);
 
   const loadTickets = useCallback(async () => {
     try {
       const fresh = await api.getMyTickets();
       setTickets(fresh);
+      setLoadFailed(false);
     } catch (error) {
       // Keep whatever we already have on screen; a transient error shouldn't
       // wipe the list.
       console.error('Failed to load tickets:', error);
+      setLoadFailed(true);
     } finally {
       setIsLoading(false);
     }
@@ -75,7 +49,7 @@ export function MyTicketsScreen() {
     loadTickets();
   }, [loadTickets]);
 
-  // The unread count on the Messages button, refreshed whenever the list is
+  // The unread count on the Messages tile, refreshed whenever the list is
   // back in view (reading a message clears it).
   const [unread, setUnread] = useState(0);
   useFocusEffect(
@@ -93,85 +67,88 @@ export function MyTicketsScreen() {
   // Sign out, appearance and notifications live in the shared Account sheet.
   const [accountOpen, setAccountOpen] = useState(false);
 
-  // Confirmed → open the native ticket. Unconfirmed → send them to the
-  // onboarding website to complete their registration.
-  const openTicket = (item: Ticket) => {
-    if (item.confirmed) {
-      navigation.navigate('TicketDetail', { ticket: item });
-    } else {
-      Linking.openURL(item.onboarding_url).catch(() => {
-        Alert.alert('Something went wrong', 'Could not open registration. Please try again.');
-      });
-    }
-  };
+  const { upcoming, past } = useMemo(() => groupTickets(tickets), [tickets]);
 
-  const header = (
-    <View style={{ gap: spacing.lg, paddingBottom: spacing.lg }}>
-      <View style={styles.quickActions}>
-        <QuickActionTile
-          icon="mail"
-          tint="sky"
-          label="Messages"
-          subLabel={unread > 0 ? `${unread} unread` : undefined}
-          onPress={() => navigation.navigate('Inbox')}
-        />
-        <QuickActionTile
-          icon="shield-exclamation"
-          tint="red"
-          label="Report an incident"
-          onPress={() => navigation.navigate('IncidentReport')}
-        />
-      </View>
-      {tickets.length > 0 ? <Text style={[type.h2, { color: tokens.textH }]}>Tickets</Text> : null}
-    </View>
+  // Every ticket opens its pass; an unfinished registration's pass says so
+  // and links to the onboarding site.
+  const card = (ticket: Ticket) => (
+    <EventCard
+      key={ticket.id}
+      event={ticket.event}
+      meta={joinMeta(eventPhaseLabel(ticket.event, undefined, 'in'), ticket.event.location_city)}
+      badge={ticketBadge(ticket)}
+      onPress={() => navigation.navigate('TicketDetail', { ticket })}
+      accessibilityHint="Opens your pass"
+    />
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: tokens.shaded }]} edges={['top', 'left', 'right']}>
-      <View style={[styles.header, { paddingHorizontal: spacing.lg }]}>
-        {/* Staff reach this screen by pushing onto the stack, so offer a way
-            back to the scanner app. Participant-only users land here as the
-            root and have nothing to go back to. */}
-        {navigation.canGoBack() ? (
-          <Button
-            title="Back"
-            variant="icon"
-            icon="chevron-left"
-            onPress={() => navigation.goBack()}
-            style={styles.back}
+    <>
+      <Screen
+        title="My tickets"
+        action={<AccountButton onPress={() => setAccountOpen(true)} />}
+        refreshing={isRefreshing}
+        onRefresh={handleRefresh}
+      >
+        <View style={styles.quickActions}>
+          <QuickActionTile
+            icon="mail"
+            tint="sky"
+            label="Messages"
+            subLabel={unread > 0 ? `${unread} unread` : undefined}
+            onPress={() => navigation.navigate('Inbox')}
           />
-        ) : null}
-        <View style={styles.headerText}>
-          <Text style={[type.h1, { color: tokens.textH }]} accessibilityRole="header">
-            Hack Club Attend
-          </Text>
-          <Text style={[type.body, { color: tokens.text2 }]} numberOfLines={1}>
-            {state.auth.user?.name || state.auth.user?.email}
-          </Text>
+          <QuickActionTile
+            icon="shield-exclamation"
+            tint="red"
+            label="Report an incident"
+            onPress={() => navigation.navigate('IncidentReport')}
+          />
         </View>
-        <AccountButton onPress={() => setAccountOpen(true)} />
-      </View>
-      <AccountSheet visible={accountOpen} onClose={() => setAccountOpen(false)} />
 
-      <FlatList
-        data={tickets}
-        renderItem={({ item }) => <TicketCard ticket={item} onPress={() => openTicket(item)} />}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ padding: spacing.lg, paddingBottom: insets.bottom + spacing.xxl, gap: spacing.md }}
-        ListHeaderComponent={header}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            tintColor={tokens.accent}
-            colors={[tokens.accent]}
-          />
-        }
-        ListFooterComponent={<VersionFooter />}
-        ListEmptyComponent={
+        {upcoming.length > 0 ? (
+          <View style={{ gap: spacing.md }}>
+            <Text style={[type.label, { color: tokens.text2 }]} accessibilityRole="header">
+              Upcoming
+            </Text>
+            {upcoming.map(card)}
+          </View>
+        ) : null}
+
+        {past.length > 0 ? (
+          pastOpen ? (
+            <View style={{ gap: spacing.md }}>
+              <View style={styles.groupHeader}>
+                <Text style={[type.label, styles.fill, { color: tokens.text2 }]} accessibilityRole="header">
+                  Past
+                </Text>
+                <Button title="Hide" variant="link" onPress={() => setPastOpen(false)} />
+              </View>
+              {past.map(card)}
+            </View>
+          ) : (
+            <Button
+              title={`Past (${past.length})`}
+              variant="link"
+              icon="chevron-down"
+              iconPosition="end"
+              onPress={() => setPastOpen(true)}
+              style={styles.pastToggle}
+            />
+          )
+        ) : null}
+
+        {tickets.length === 0 ? (
           <View style={styles.empty}>
             {isLoading ? (
               <ActivityIndicator color={tokens.accent} />
+            ) : loadFailed ? (
+              <>
+                <Text style={[type.body, styles.center, { color: tokens.text2 }]}>
+                  Couldn’t load your tickets. Check your connection and try again.
+                </Text>
+                <Button title="Retry" variant="normal" onPress={() => void handleRefresh()} />
+              </>
             ) : (
               <>
                 <Icon name="ticket" size={32} color={tokens.muted} />
@@ -182,83 +159,20 @@ export function MyTicketsScreen() {
               </>
             )}
           </View>
-        }
-      />
-    </SafeAreaView>
-  );
-}
+        ) : null}
 
-function TicketCard({ ticket, onPress }: { ticket: Ticket; onPress: () => void }) {
-  const { tokens, type, radii } = useTheme();
-  const event = ticket.event;
-  const meta = [formatDate(event.starts_at, event.timezone), event.location_city].filter(Boolean).join(' · ');
-
-  return (
-    <PressableSurface
-      onPress={onPress}
-      accessibilityRole={ticket.confirmed ? 'button' : 'link'}
-      accessibilityLabel={[event.name, meta, ticket.checked_in ? 'Checked in' : ticket.display_status]
-        .filter(Boolean)
-        .join(', ')}
-      accessibilityHint={ticket.confirmed ? 'Opens your pass' : 'Opens registration in the browser'}
-      rippleColor={tokens.text}
-      pressedOpacity={0.7}
-      style={[
-        styles.card,
-        { backgroundColor: tokens.bg, borderColor: tokens.box, borderRadius: radii.container },
-      ]}
-    >
-      {event.banner_url ? (
-        <View style={[styles.banner, { backgroundColor: tokens.div2 }]}>
-          <Image source={{ uri: event.banner_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-        </View>
-      ) : null}
-      <View style={styles.cardBody}>
-        <View style={styles.cardTitleRow}>
-          {event.logo_url ? (
-            <Image
-              source={{ uri: event.logo_url }}
-              style={[styles.logo, { borderColor: tokens.div2 }]}
-              resizeMode="cover"
-            />
-          ) : null}
-          <View style={styles.cardTitleText}>
-            <Text style={[type.h2, { color: tokens.textH }]} numberOfLines={2}>
-              {event.name}
-            </Text>
-            {meta ? <Text style={[type.body, { color: tokens.text2 }]}>{meta}</Text> : null}
-          </View>
-          <Icon name={ticket.confirmed ? 'chevron-right' : 'external-link'} size={16} color={tokens.muted} />
-        </View>
-        <View style={styles.badgeRow}>
-          {ticket.checked_in ? (
-            <StatusIndicator type="success" label="Checked in" />
-          ) : (
-            <Badge label={ticket.display_status} color={ticket.confirmed ? 'blue' : 'grey'} />
-          )}
-          {/* Unconfirmed tickets prompt the attendee to finish registration. */}
-          {!ticket.confirmed ? (
-            <Text style={[type.body, { color: tokens.accent }]}>Tap to finish registration</Text>
-          ) : null}
-        </View>
-      </View>
-    </PressableSurface>
+        <VersionFooter />
+      </Screen>
+      <AccountSheet visible={accountOpen} onClose={() => setAccountOpen(false)} />
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 12, paddingBottom: 4 },
-  back: { marginLeft: -10 },
-  headerText: { flex: 1, minWidth: 0 },
   quickActions: { flexDirection: 'row', gap: 12 },
-  card: { borderWidth: 1 },
-  banner: { height: 96 },
-  cardBody: { paddingHorizontal: 20, paddingVertical: 16, gap: 12 },
-  cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  cardTitleText: { flex: 1, minWidth: 0, gap: 2 },
-  logo: { width: 40, height: 40, borderRadius: 8, borderWidth: 1, backgroundColor: '#ffffff' },
-  badgeRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12 },
+  groupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  fill: { flex: 1 },
+  pastToggle: { alignSelf: 'flex-start' },
   empty: { alignItems: 'center', gap: 8, paddingVertical: 64, paddingHorizontal: 32 },
   center: { textAlign: 'center' },
 });

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
-import { useNavigation, useRoute } from '@react-navigation/native';
 import { useApp } from '../context/AppContext';
 import { biometricService } from '../services/biometric';
 import { notificationService } from '../services/notifications';
@@ -98,8 +97,6 @@ function useBiometricRemaining(active: boolean) {
 export function AccountSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { tokens, type, spacing } = useTheme();
   const { state, logout, flushBeforeSignOut } = useApp();
-  const navigation = useNavigation<{ navigate: (route: 'ParticipantMain') => void }>();
-  const route = useRoute();
   const [signingOut, setSigningOut] = useState(false);
   const { preference, setPreference } = useThemePreference();
   const user = state.auth.user;
@@ -172,14 +169,6 @@ export function AccountSheet({ visible, onClose }: { visible: boolean; onClose: 
     ]);
   }, [flushBeforeSignOut, logout, onClose, signingOut, state.sync.pendingScans]);
 
-  // Someone who is both organiser and attendee lands on the event tabs; this
-  // is their way to their own tickets (and from there, the Inbox).
-  const showMyTickets = !!user?.is_participant && route.name !== 'ParticipantMain';
-  const openMyTickets = useCallback(() => {
-    onClose();
-    navigation.navigate('ParticipantMain');
-  }, [navigation, onClose]);
-
   const roles = [
     user?.global_admin ? 'Global Admin' : null,
     user?.is_organizer || user?.global_admin ? 'Organizer' : null,
@@ -224,18 +213,6 @@ export function AccountSheet({ visible, onClose }: { visible: boolean; onClose: 
             accessibilityHint="Opens in your browser"
           />
         </Container>
-
-        {showMyTickets ? (
-          <Container flush>
-            <ListRow
-              title="My tickets"
-              subtitle="Your tickets and messages as an attendee"
-              icon="ticket"
-              onPress={openMyTickets}
-              divider={false}
-            />
-          </Container>
-        ) : null}
 
         <Container title="Appearance">
           <SegmentedControl<ThemePreference>

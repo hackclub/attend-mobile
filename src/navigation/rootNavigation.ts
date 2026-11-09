@@ -3,7 +3,7 @@ import { ROOT_NAVIGATOR, keepRootKeys, type PartialState } from './routes';
 
 interface NavigationLike {
   getParent: (id?: string) => unknown;
-  getState: () => { routes: readonly { name: string; key: string }[] } | undefined;
+  getState: () => { routes: readonly { name: string; key: string }[]; routeNames?: readonly string[] } | undefined;
   dispatch: (action: never) => void;
 }
 

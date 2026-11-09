@@ -1,7 +1,9 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { eventHomeState, passHomeState } from '../navigation/routes';
+import { resetRoot } from '../navigation/rootNavigation';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AccountButton, AccountSheet } from '../components/AccountSheet';
 import { EventCard } from '../components/EventBanner';
@@ -52,13 +54,16 @@ export function SwitchEventList({
   const { tokens, type, spacing } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavigationProp>();
+  const route = useRoute();
   const { state, selectEvent } = useApp();
   const { groups: allGroups, isLoading, loadFailed, refresh } = switcher;
   const [accountOpen, setAccountOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [query, setQuery] = useState('');
   const [pastOpen, setPastOpen] = useState(false);
-  const currentId = state.currentEvent?.id;
+  // Opened from a pass, that ticket is the current entry, not the event.
+  const currentTicketId = (route.params as { currentTicketId?: string } | undefined)?.currentTicketId;
+  const currentId = currentTicketId ? undefined : state.currentEvent?.id;
   // Global admins see every event; past a handful, offer a search.
   const searchable = switcherEventCount(allGroups) > SWITCHER_SEARCH_THRESHOLD;
   const groups = useMemo(
@@ -66,15 +71,17 @@ export function SwitchEventList({
     [allGroups, query, searchable]
   );
 
+  // An organized event opens on its Overview, every tab back at its root so
+  // nothing from the last event stays pushed. An attended event opens its
+  // pass as the home, with no Overview under it.
   const pickEvent = useCallback((event: Event) => {
     void selectEvent(event);
-    if (!embedded) navigation.goBack();
-  }, [embedded, navigation, selectEvent]);
+    if (!embedded || currentTicketId) resetRoot(navigation, eventHomeState());
+  }, [currentTicketId, embedded, navigation, selectEvent]);
 
   const pickTicket = useCallback((ticket: Ticket) => {
-    if (!embedded) navigation.goBack();
-    navigation.navigate('ParticipantMain', { screen: 'TicketDetail', params: { ticket }, initial: false });
-  }, [embedded, navigation]);
+    resetRoot(navigation, passHomeState(ticket));
+  }, [navigation]);
 
   const onRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -151,6 +158,7 @@ export function SwitchEventList({
                 key={ticket.id}
                 event={ticket.event}
                 meta={joinMeta(eventPhaseLabel(ticket.event, undefined, 'in'), 'Attendee')}
+                selected={ticket.id === currentTicketId}
                 onPress={() => pickTicket(ticket)}
                 accessibilityHint="Opens your ticket"
               />
@@ -183,6 +191,7 @@ export function SwitchEventList({
                     key={`ticket-${entry.ticket.id}`}
                     event={entry.ticket.event}
                     meta={joinMeta(eventPhaseLabel(entry.ticket.event, undefined, 'in'), 'Attendee')}
+                    selected={entry.ticket.id === currentTicketId}
                     onPress={() => pickTicket(entry.ticket)}
                     accessibilityHint="Opens your ticket"
                   />

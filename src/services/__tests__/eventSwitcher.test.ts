@@ -2,8 +2,10 @@ import {
   canSwitchEvents,
   filterSwitcherEvents,
   groupSwitcherEvents,
+  groupTickets,
   pastEntryEvent,
   switcherEventCount,
+  ticketBadge,
 } from '../eventSwitcher';
 import type { Event, Ticket } from '../../types';
 
@@ -88,5 +90,31 @@ describe('filterSwitcherEvents', () => {
     expect(filterSwitcherEvents(groups, 'haven').past.map((entry) => pastEntryEvent(entry).id)).toEqual(['haven-syd']);
     expect(filterSwitcherEvents(groups, 'SCRAP san').organising.map((e) => e.id)).toEqual(['scrapyard-sf']);
     expect(switcherEventCount(filterSwitcherEvents(groups, 'nowhere'))).toBe(0);
+  });
+});
+
+describe('groupTickets', () => {
+  it('lists upcoming tickets soonest first and past ones most recent first', () => {
+    const later = ticket('later', event('later', '2026-12-01T00:00:00Z'));
+    const soon = ticket('soon', event('soon', '2026-11-10T00:00:00Z'));
+    const old = ticket('old', event('old', '2026-01-01T00:00:00Z'));
+    const recent = ticket('recent', event('recent', '2026-10-01T00:00:00Z'));
+    const groups = groupTickets([later, old, soon, recent], now);
+    expect(groups.upcoming.map((t) => t.id)).toEqual(['soon', 'later']);
+    expect(groups.past.map((t) => t.id)).toEqual(['recent', 'old']);
+  });
+});
+
+describe('ticketBadge', () => {
+  it('marks a checked-in ticket and an unfinished registration', () => {
+    expect(ticketBadge({ confirmed: true, checked_in: true })).toEqual({ label: 'Checked in', color: 'green' });
+    expect(ticketBadge({ confirmed: false, checked_in: false })).toEqual({
+      label: 'Registration incomplete',
+      color: 'grey',
+    });
+  });
+
+  it('has nothing to say about a confirmed ticket not yet used', () => {
+    expect(ticketBadge({ confirmed: true, checked_in: false })).toBeNull();
   });
 });

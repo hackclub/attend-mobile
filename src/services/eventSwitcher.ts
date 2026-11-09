@@ -79,3 +79,24 @@ export function filterSwitcherEvents(groups: SwitcherGroups, query: string): Swi
     past: groups.past.filter((entry) => matches(pastEntryEvent(entry), terms)),
   };
 }
+
+/**
+ * A participant's ticket list: upcoming and running events soonest first,
+ * then ended ones most recent first (shown collapsed).
+ */
+export function groupTickets(tickets: Ticket[], now = new Date()): { upcoming: Ticket[]; past: Ticket[] } {
+  const groups = groupSwitcherEvents([], tickets, now);
+  return {
+    upcoming: groups.attending,
+    past: groups.past.flatMap((entry) => (entry.kind === 'attending' ? [entry.ticket] : [])),
+  };
+}
+
+/** The badge on a ticket's card, or null for a confirmed ticket not yet used. */
+export function ticketBadge(
+  ticket: Pick<Ticket, 'confirmed' | 'checked_in'>
+): { label: string; color: 'green' | 'grey' } | null {
+  if (ticket.checked_in) return { label: 'Checked in', color: 'green' };
+  if (!ticket.confirmed) return { label: 'Registration incomplete', color: 'grey' };
+  return null;
+}

@@ -3,12 +3,12 @@ import { Pressable, StyleSheet, Text, View, useWindowDimensions, type StyleProp,
 import { Image } from 'expo-image';
 import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
 import { useEventPassColor } from '../hooks/useEventPassColor';
-import { Icon, PressableSurface, pressedStyle, ripple, type IconName } from './ui';
+import { Badge, Icon, PressableSurface, pressedStyle, ripple, type BadgeColor, type IconName } from './ui';
 import { useTheme } from '../theme';
-
-export { eventBannerText } from '../services/eventBanner';
 import { bannerHeight } from '../services/eventBanner';
 import type { Event } from '../types';
+
+export { eventBannerText } from '../services/eventBanner';
 
 const ON_BANNER = '#ffffff';
 
@@ -157,12 +157,14 @@ interface EventCardProps {
   /** "Day 1 of 2 · Event Admin". */
   meta?: string | null;
   selected?: boolean;
+  /** A status under the meta line, e.g. "Checked in". */
+  badge?: { label: string; color: BadgeColor } | null;
   onPress: () => void;
   accessibilityHint?: string;
 }
 
 /** One event in the switcher. */
-export function EventCard({ event, meta, selected, onPress, accessibilityHint }: EventCardProps) {
+export function EventCard({ event, meta, selected, badge, onPress, accessibilityHint }: EventCardProps) {
   const { type, radii } = useTheme();
   return (
     <PressableSurface
@@ -176,7 +178,7 @@ export function EventCard({ event, meta, selected, onPress, accessibilityHint }:
       contentStyle={styles.cardContent}
       accessibilityRole="button"
       accessibilityState={{ selected: !!selected }}
-      accessibilityLabel={[event.name, meta].filter(Boolean).join('. ')}
+      accessibilityLabel={[event.name, meta, badge?.label].filter(Boolean).join('. ')}
       accessibilityHint={accessibilityHint}
     >
       <EventCover event={event} />
@@ -188,6 +190,7 @@ export function EventCard({ event, meta, selected, onPress, accessibilityHint }:
       <View style={styles.cardText}>
         <Text style={[styles.cardName, styles.onBanner]} numberOfLines={2}>{event.name}</Text>
         {meta ? <Text style={[type.body, styles.onBanner]} numberOfLines={1}>{meta}</Text> : null}
+        {badge ? <Badge label={badge.label} color={badge.color} style={styles.cardBadge} /> : null}
       </View>
     </PressableSurface>
   );
@@ -236,5 +239,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cardText: { paddingHorizontal: 16, paddingBottom: 14, paddingTop: 8 },
+  cardBadge: { alignSelf: 'flex-start', marginTop: 6 },
   cardName: { fontSize: 22, lineHeight: 28, fontWeight: '700' },
 });

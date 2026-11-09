@@ -18,6 +18,7 @@ import QRCode from 'react-native-qrcode-svg';
 import { AccountButton, AccountSheet } from '../components/AccountSheet';
 import { EventBanner, eventBannerText } from '../components/EventBanner';
 import { WalletButtons } from '../components/WalletButtons';
+import { rootNavigation } from '../navigation/rootNavigation';
 import {
   startTicketActivity,
   stopTicketActivity,
@@ -146,6 +147,9 @@ export function TicketDetailScreen() {
   // event the user only attends) it has the account avatar instead.
   const canGoBack = navigation.canGoBack();
   const [accountOpen, setAccountOpen] = useState(false);
+  // As an organizer's home for an event they attend, the banner switches
+  // events like the Overview's does. (Only organizers have the switcher.)
+  const canSwitch = !canGoBack && !!rootNavigation(navigation).getState()?.routeNames?.includes('SwitchEvent');
 
   // Live Activity: let confirmed attendees pin their pass to the Lock Screen.
   // iOS: a Live Activity. Android: an ongoing notification (a Live Update on
@@ -216,6 +220,7 @@ export function TicketDetailScreen() {
           meta={banner.meta}
           topInset={insets.top}
           onBack={canGoBack ? () => navigation.goBack() : undefined}
+          onPress={canSwitch ? () => navigation.navigate('SwitchEvent', { currentTicketId: ticket.id }) : undefined}
           accessory={canGoBack ? undefined : <AccountButton onBanner onPress={() => setAccountOpen(true)} />}
         />
 
