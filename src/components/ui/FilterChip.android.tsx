@@ -7,7 +7,6 @@ import {
 import type { FilterChipProps } from './FilterChip';
 import { MaterialHost } from './MaterialHost';
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports -- a Material Symbols vector for Compose
 const CHECK_ICON = require('../../../assets/material/check.xml');
 
 /**

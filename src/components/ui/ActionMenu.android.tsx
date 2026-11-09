@@ -14,7 +14,6 @@ import { Icon } from './Icon';
 import { MaterialHost } from './MaterialHost';
 import { STATE_LAYER_ALPHA } from './pressFeedback';
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports -- a Material Symbols vector for Compose
 const CHECK_ICON = require('../../../assets/material/check.xml');
 
 /**
