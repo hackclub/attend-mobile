@@ -1,5 +1,5 @@
-import React, { useEffect, useState, type ReactNode } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Pressable, Platform } from 'react-native';
+import React, { useEffect, useRef, useState, type ReactNode } from 'react';
+import { AppState, View, Text, StyleSheet, ActivityIndicator, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ScreenCapture from 'expo-screen-capture';
 import { useBiometricGate, DEFAULT_GATE_REASON } from '../hooks/useBiometricGate';
@@ -17,7 +17,9 @@ let nextGateId = 0;
  *
  * While unlocked on Android it also sets FLAG_SECURE: the recents thumbnail
  * is captured before JS can draw the privacy cover, and the flag is the only
- * thing that reliably blanks it (it blocks screenshots too).
+ * thing that reliably blanks it (it blocks screenshots too). The flag stays
+ * until the app is in the foreground again, since the lock that hid the
+ * details is what backgrounding the app triggers.
  */
 export function BiometricGate({
   children,
@@ -72,14 +74,34 @@ export function BiometricGate({
   );
 }
 
-function useSecureWindowWhile(active: boolean) {
+export function useSecureWindowWhile(active: boolean) {
   const [key] = useState(() => `biometric-gate-${nextGateId++}`);
+  // A release waiting for the app to come back to the foreground.
+  const pendingRelease = useRef<{ remove: () => void } | null>(null);
 
   useEffect(() => {
     if (Platform.OS !== 'android' || !active) return;
+    pendingRelease.current?.remove();
+    pendingRelease.current = null;
     ScreenCapture.preventScreenCaptureAsync(key).catch(() => {});
     return () => {
-      ScreenCapture.allowScreenCaptureAsync(key).catch(() => {});
+      const release = () => {
+        ScreenCapture.allowScreenCaptureAsync(key).catch(() => {});
+      };
+      // Locked by going to the background: the recents thumbnail is taken
+      // now, so keep the flag until the app is active again.
+      if (AppState.currentState === 'active') {
+        release();
+        return;
+      }
+      pendingRelease.current?.remove();
+      const subscription = AppState.addEventListener('change', (next) => {
+        if (next !== 'active') return;
+        subscription.remove();
+        if (pendingRelease.current === subscription) pendingRelease.current = null;
+        release();
+      });
+      pendingRelease.current = subscription;
     };
   }, [active, key]);
 }

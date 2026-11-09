@@ -98,6 +98,34 @@ describe('biometricService session locking', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  it('ignores a prompt that succeeds after sign-out cleared the session', async () => {
+    let finish!: (value: { success: boolean }) => void;
+    jest.mocked(LocalAuthentication.authenticateAsync).mockReturnValue(
+      new Promise((resolve) => { finish = resolve; }) as never
+    );
+
+    const result = biometricService.authenticate('Unlock');
+    biometricService.clearSession();
+    finish({ success: true });
+
+    expect(await result).toBe(false);
+    expect(biometricService.isSessionValid()).toBe(false);
+  });
+
+  it("lets a prompt that backgrounded the app (Android passcode) still unlock", async () => {
+    let finish!: (value: { success: boolean }) => void;
+    jest.mocked(LocalAuthentication.authenticateAsync).mockReturnValue(
+      new Promise((resolve) => { finish = resolve; }) as never
+    );
+
+    const result = biometricService.authenticate('Unlock');
+    biometricService.handleAppStateChange('background');
+    finish({ success: true });
+
+    expect(await result).toBe(true);
+    expect(biometricService.isSessionValid()).toBe(true);
+  });
+
   it('keeps the session while merely inactive (the Face ID prompt itself)', async () => {
     await unlock();
     const listener = jest.fn();

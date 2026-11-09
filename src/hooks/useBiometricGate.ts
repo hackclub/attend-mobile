@@ -15,6 +15,8 @@ export const DEFAULT_GATE_REASON = 'Authenticate to view participant details';
  * - Locks again whenever the session ends (app backgrounded, sign-out). A
  *   lock that arrives while a prompt is still open is left to that prompt's
  *   result: on Android the passcode screen briefly backgrounds the app.
+ * - Locks when the five-minute unlock runs out, even with nothing else
+ *   happening.
  * - Never re-prompts by itself after a lock; the user taps Unlock.
  */
 export function useBiometricGate(reason: string = DEFAULT_GATE_REASON) {
@@ -67,6 +69,25 @@ export function useBiometricGate(reason: string = DEFAULT_GATE_REASON) {
       unsubscribe();
     };
   }, [unlock]);
+
+  // Re-armed on every unlock; checks again on expiry in case another gate's
+  // prompt extended the shared session meanwhile.
+  useEffect(() => {
+    if (status !== 'unlocked') return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const arm = () => {
+      const remaining = biometricService.sessionRemainingMs();
+      if (remaining <= 0) {
+        if (!inFlight.current) setStatus('locked');
+        return;
+      }
+      timer = setTimeout(arm, remaining);
+    };
+    arm();
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [status]);
 
   return { status, unlock, isUnlocked: status === 'unlocked' };
 }

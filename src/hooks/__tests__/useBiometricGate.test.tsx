@@ -9,6 +9,7 @@ jest.mock('../../services/biometric', () => {
   return {
     biometricService: {
       isSessionValid: jest.fn(() => false),
+      sessionRemainingMs: jest.fn(() => 5 * 60 * 1000),
       authenticate: jest.fn(),
       onLock: jest.fn((listener: () => void) => {
         listeners.add(listener);
@@ -47,6 +48,7 @@ function deferred<T>() {
 beforeEach(() => {
   jest.clearAllMocks();
   jest.mocked(biometricService.isSessionValid).mockReturnValue(false);
+  jest.mocked(biometricService.sessionRemainingMs).mockReturnValue(5 * 60 * 1000);
 });
 
 afterEach(() => {
@@ -121,6 +123,70 @@ describe('useBiometricGate', () => {
       pending.resolve(true);
     });
     expect(latest.status).toBe('unlocked');
+  });
+
+  it('locks by itself when the five-minute unlock runs out', async () => {
+    jest.useFakeTimers();
+    try {
+      jest.mocked(biometricService.authenticate).mockResolvedValue(true);
+      jest.mocked(biometricService.sessionRemainingMs).mockReturnValue(60_000);
+      await mount();
+      expect(latest.status).toBe('unlocked');
+
+      await act(async () => {
+        jest.advanceTimersByTime(59_000);
+      });
+      expect(latest.status).toBe('unlocked');
+
+      jest.mocked(biometricService.sessionRemainingMs).mockReturnValue(0);
+      await act(async () => {
+        jest.advanceTimersByTime(1_000);
+      });
+      expect(latest.status).toBe('locked');
+      expect(biometricService.authenticate).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('re-arms instead of locking when the session was extended meanwhile', async () => {
+    jest.useFakeTimers();
+    try {
+      jest.mocked(biometricService.authenticate).mockResolvedValue(true);
+      jest.mocked(biometricService.sessionRemainingMs).mockReturnValue(1_000);
+      await mount();
+
+      jest.mocked(biometricService.sessionRemainingMs).mockReturnValue(2_000);
+      await act(async () => {
+        jest.advanceTimersByTime(1_000);
+      });
+      expect(latest.status).toBe('unlocked');
+
+      jest.mocked(biometricService.sessionRemainingMs).mockReturnValue(0);
+      await act(async () => {
+        jest.advanceTimersByTime(2_000);
+      });
+      expect(latest.status).toBe('locked');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('clears the expiry timer on unmount', async () => {
+    jest.useFakeTimers();
+    try {
+      jest.mocked(biometricService.authenticate).mockResolvedValue(true);
+      jest.mocked(biometricService.sessionRemainingMs).mockReturnValue(1_000);
+      await mount();
+      act(() => root?.unmount());
+      root = undefined;
+      jest.mocked(biometricService.sessionRemainingMs).mockClear();
+
+      jest.advanceTimersByTime(5_000);
+      expect(biometricService.sessionRemainingMs).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('runs only one prompt at a time', async () => {

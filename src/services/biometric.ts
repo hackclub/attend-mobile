@@ -17,6 +17,9 @@ type LockListener = () => void;
 class BiometricService {
   private lastAuthTime: number | null = null;
   private lockListeners = new Set<LockListener>();
+  // Bumped by clearSession (sign-out, Lock now). A prompt that succeeds after
+  // a bump doesn't unlock: the person who opened it may have signed out.
+  private lockGeneration = 0;
 
   async isAvailable(): Promise<boolean> {
     const compatible = await LocalAuthentication.hasHardwareAsync();
@@ -37,7 +40,6 @@ class BiometricService {
     return elapsed >= 0 && elapsed < SESSION_TIMEOUT_MS;
   }
 
-  // Ends the unlock and tells every mounted gate to lock.
   /** Milliseconds left on the current unlock; 0 when locked. */
   sessionRemainingMs(now: number = Date.now()): number {
     if (!this.lastAuthTime) return 0;
@@ -46,7 +48,16 @@ class BiometricService {
     return SESSION_TIMEOUT_MS - elapsed;
   }
 
+  /**
+   * Ends the unlock and tells every mounted gate to lock. A prompt still open
+   * now can't unlock when it succeeds.
+   */
   clearSession(): void {
+    this.lockGeneration += 1;
+    this.endSession();
+  }
+
+  private endSession(): void {
     this.lastAuthTime = null;
     this.lockListeners.forEach((listener) => {
       try {
@@ -66,14 +77,17 @@ class BiometricService {
 
   // Fed from AppState. Only a real background ends the session: iOS makes
   // the app 'inactive' while the Face ID or passcode prompt itself is up.
+  // An open prompt still decides for itself, since Android's passcode screen
+  // briefly backgrounds the app.
   handleAppStateChange(next: string): void {
     if (next === 'background') {
-      this.clearSession();
+      this.endSession();
     }
   }
 
   // Always prompts, even when a recent unlock is still valid.
   async confirmIdentity(reason: string): Promise<boolean> {
+    const generation = this.lockGeneration;
     try {
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: reason,
@@ -82,7 +96,8 @@ class BiometricService {
         disableDeviceFallback: false,
       });
 
-      if (result.success) {
+      // Signed out (or locked) while the prompt was open: stay locked.
+      if (result.success && generation === this.lockGeneration) {
         this.lastAuthTime = Date.now();
         return true;
       }
