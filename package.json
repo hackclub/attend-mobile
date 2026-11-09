@@ -18,7 +18,7 @@
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "9.2.1",
     "@react-native-community/netinfo": "12.0.1",
-    "@react-native-menu/menu": "1.2.2",
+    "@react-native-menu/menu": "2.0.0",
     "@react-native-segmented-control/segmented-control": "2.5.7",
     "@react-navigation/bottom-tabs": "^7.9.0",
     "@react-navigation/native": "^7.1.26",
@@ -95,6 +95,9 @@
   },
   "private": true,
   "overrides": {
-    "zod": "^4.6.6"
+    "zod": "^4.6.6",
+    "zeego": {
+      "@react-native-menu/menu": "$@react-native-menu/menu"
+    }
   }
 }
