@@ -17,6 +17,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
 import { VersionFooter } from '../components/VersionFooter';
+import { AccountButton, AccountSheet } from '../components/AccountSheet';
 import { useTheme } from '../theme';
 import {
   Badge,
@@ -53,7 +54,7 @@ function formatDate(dateString?: string, timezone?: string) {
 export function MyTicketsScreen() {
   const { tokens, type, spacing } = useTheme();
   const navigation = useNavigation<NavigationProp>();
-  const { state, logout } = useApp();
+  const { state } = useApp();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -90,12 +91,8 @@ export function MyTicketsScreen() {
     setIsRefreshing(false);
   }, [loadTickets]);
 
-  const handleLogout = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: logout },
-    ]);
-  };
+  // Sign out, appearance and notifications live in the shared Account sheet.
+  const [accountOpen, setAccountOpen] = useState(false);
 
   // Confirmed → open the native ticket. Unconfirmed → send them to the
   // onboarding website to complete their registration.
@@ -153,8 +150,9 @@ export function MyTicketsScreen() {
             {state.auth.user?.name || state.auth.user?.email}
           </Text>
         </View>
-        <Button title="Sign Out" variant="link" onPress={handleLogout} />
+        <AccountButton onPress={() => setAccountOpen(true)} />
       </View>
+      <AccountSheet visible={accountOpen} onClose={() => setAccountOpen(false)} />
 
       <FlatList
         data={tickets}

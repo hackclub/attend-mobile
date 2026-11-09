@@ -385,7 +385,7 @@ export function TravelCalendarScreen() {
         <View style={styles.centered}>
           <Icon name="travel" size={40} color={tokens.muted} />
           <Text style={styles.emptyTitle}>No event selected</Text>
-          <Text style={styles.emptyText}>Pick an event from the Events tab to see its travel calendar.</Text>
+          <Text style={styles.emptyText}>Pick an event from the Overview tab to see its travel calendar.</Text>
         </View>
       </SafeAreaView>
     );

@@ -42,7 +42,7 @@ export function MessagePreviewScreen() {
     navigation.setOptions({ headerTitle: 'Preview & send' });
   }, [navigation]);
 
-  if (!event) return <ErrorView message="Pick an event on the Events tab first." />;
+  if (!event) return <ErrorView message="Pick an event on the Overview tab first." />;
   if (error && !preview) return <ErrorView message={error} onRetry={load} />;
   if (!preview) return <LoadingView />;
 

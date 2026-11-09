@@ -167,7 +167,7 @@ export function IncidentListScreen() {
 
   const newIncident = () => navigation.navigate('IncidentForm', {});
 
-  if (!event) return <EmptyState title="No event selected" message="Pick an event on the Events tab first." />;
+  if (!event) return <EmptyState title="No event selected" message="Pick an event on the Overview tab first." />;
   if (error && !incidents) return <ErrorView message={error} onRetry={load} />;
   if (!incidents) return <LoadingView />;
 

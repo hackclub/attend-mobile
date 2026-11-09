@@ -194,7 +194,7 @@ export function SearchScreen() {
         <View style={styles.centered}>
           <Text style={[type.h2, { color: tokens.textH }]}>No Event Selected</Text>
           <Text style={[type.body, styles.centeredText, { color: tokens.text2 }]}>
-            Please select an event from the Events tab.
+            Please select an event from the Overview tab.
           </Text>
         </View>
       </SafeAreaView>

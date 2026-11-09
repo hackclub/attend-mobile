@@ -61,7 +61,7 @@ export function MessageListScreen() {
     [messages, filter]
   );
 
-  if (!event) return <EmptyState title="No event selected" message="Pick an event on the Events tab first." />;
+  if (!event) return <EmptyState title="No event selected" message="Pick an event on the Overview tab first." />;
   if (error && !messages) return <ErrorView message={error} onRetry={load} />;
   if (!messages) return <LoadingView />;
 

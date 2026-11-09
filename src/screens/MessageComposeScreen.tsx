@@ -89,7 +89,7 @@ export function MessageComposeScreen() {
 
   const bodyHtml = useMemo(() => markupToHtml(body), [body]);
 
-  if (!event) return <ErrorView message="Pick an event on the Events tab first." />;
+  if (!event) return <ErrorView message="Pick an event on the Overview tab first." />;
   if (loadError) return <ErrorView message={loadError} onRetry={load} />;
   if (!options) return <LoadingView />;
 

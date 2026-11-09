@@ -109,7 +109,7 @@ export function IncidentDetailScreen() {
     [options, incident]
   );
 
-  if (!event) return <ErrorView message="Pick an event on the Events tab first." />;
+  if (!event) return <ErrorView message="Pick an event on the Overview tab first." />;
   if (error && !incident) return <ErrorView message={error} onRetry={load} />;
   if (!incident) return <LoadingView />;
 
