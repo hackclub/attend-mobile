@@ -1,23 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  TextInput,
-  Switch,
-  ScrollView,
-  Platform,
-  Alert,
-} from 'react-native';
+import { View, Text, StyleSheet, Pressable, TextInput, ScrollView, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RouteProp } from '@react-navigation/native';
 import { haptics } from '../services/haptics';
 import { useBiometricLabel } from '../services/biometricLabel';
-import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
+import { useTheme } from '../theme';
+import { Button, Container, Flashbar, Icon, ListRow, Toggle } from '../components/ui';
 import { useApp } from '../context/AppContext';
 import { useBiometric } from '../hooks/useBiometric';
 import type { RootStackParamList } from '../types';
@@ -28,8 +18,7 @@ type KioskSetupRoute = RouteProp<RootStackParamList, 'KioskSetup'>;
 const PIN_LENGTH = 4;
 
 export function KioskSetupScreen() {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
+  const { tokens, type, spacing, radii } = useTheme();
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<KioskSetupRoute>();
   const { state } = useApp();
@@ -105,61 +94,63 @@ export function KioskSetupScreen() {
     validateAndContinue(pin, confirmPin);
   };
 
+  const ready = pin.length === PIN_LENGTH && confirmPin.length === PIN_LENGTH;
+
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom', 'left', 'right']}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: tokens.shaded }]}
+      edges={['top', 'bottom', 'left', 'right']}
+    >
+      <View style={[styles.header, { paddingHorizontal: spacing.sm }]}>
+        <Button title="Close" variant="icon" icon="x" onPress={() => navigation.goBack()} />
+        <Text style={[type.h3, { color: tokens.textH }]} accessibilityRole="header">
+          Kiosk Mode
+        </Text>
+        <View style={styles.headerSpacer} />
+      </View>
       <ScrollView
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, { padding: spacing.xxl, gap: spacing.xxl }]}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.closeBtn}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <Ionicons name="close" size={28} color={colors.text.primary} />
-          </TouchableOpacity>
-          <Text style={styles.title}>Kiosk Mode</Text>
-          <View style={{ width: 28 }} />
-        </View>
-
         <View style={styles.hero}>
-          <View style={styles.iconWrap}>
-            <Ionicons name="lock-closed" size={36} color={colors.text.accent} />
+          <View style={[styles.iconWrap, { backgroundColor: tokens.tint.red.bg }]}>
+            <Icon name="lock-closed" size={32} color={tokens.tint.red.fg} />
           </View>
-          <Text style={styles.heroTitle}>Set a {PIN_LENGTH}-digit PIN</Text>
-          <Text style={styles.heroSubtitle}>
+          <Text style={[type.h1, { color: tokens.textH }]}>Set a {PIN_LENGTH}-digit PIN</Text>
+          <Text style={[type.body, styles.center, { color: tokens.text2 }]}>
             Attendees can scan themselves. Staff will need this PIN
             {biometricAvailable ? ` or ${biometricLabel}` : ''} to exit kiosk mode.
           </Text>
-          <View style={styles.contextPill}>
-            <Ionicons name="scan" size={16} color={colors.text.secondary} />
-            <Text style={styles.contextPillText}>
+          <View style={[styles.contextPill, { backgroundColor: tokens.bg, borderColor: tokens.div2, borderRadius: radii.pill }]}>
+            <Icon name="qrcode" size={16} color={tokens.text2} />
+            <Text style={[type.label, { color: tokens.text2 }]}>
               {route.params?.scanContextName || 'No scan context'}
             </Text>
           </View>
         </View>
 
         <View style={styles.pinSection}>
-          <Text style={styles.stepLabel}>
-            {step === 'enter' ? 'Enter PIN' : 'Confirm PIN'}
-          </Text>
-          <TouchableOpacity
-            activeOpacity={1}
+          <Text style={[type.label, { color: tokens.text }]}>{step === 'enter' ? 'Enter PIN' : 'Confirm PIN'}</Text>
+          <Pressable
             onPress={() => inputRef.current?.focus()}
             style={styles.dotsRow}
+            accessibilityRole="button"
+            accessibilityLabel={`${step === 'enter' ? 'Enter PIN' : 'Confirm PIN'}, ${currentValue.length} of ${PIN_LENGTH} digits`}
           >
-            {Array.from({ length: PIN_LENGTH }).map((_, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.dot,
-                  i < currentValue.length && styles.dotFilled,
-                  error && styles.dotError,
-                ]}
-              />
-            ))}
-          </TouchableOpacity>
+            {Array.from({ length: PIN_LENGTH }).map((_, i) => {
+              const filled = i < currentValue.length;
+              return (
+                <View
+                  key={i}
+                  style={[
+                    styles.dot,
+                    { borderColor: error ? tokens.error : filled ? tokens.accent : tokens.input },
+                    filled && { backgroundColor: tokens.accent },
+                  ]}
+                />
+              );
+            })}
+          </Pressable>
           <TextInput
             ref={inputRef}
             value={currentValue}
@@ -171,151 +162,77 @@ export function KioskSetupScreen() {
             caretHidden
             autoFocus
           />
-          {error && <Text style={styles.errorText}>{error}</Text>}
+          {error ? (
+            <Text style={[type.body, { color: tokens.error }]} accessibilityLiveRegion="polite">
+              {error}
+            </Text>
+          ) : null}
         </View>
 
         {biometricAvailable && (
-          <View style={styles.row}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.rowLabel}>Allow {biometricLabel} to exit</Text>
-              <Text style={styles.rowSubtitle}>
-                Faster for staff. PIN still works as a fallback.
-              </Text>
-            </View>
-            <Switch
-              value={useBiometricUnlock}
-              onValueChange={setUseBiometricUnlock}
-              trackColor={{ false: colors.gray[300], true: colors.red }}
+          <Container flush>
+            <ListRow
+              title={`Allow ${biometricLabel} to exit`}
+              subtitle="Faster for staff. PIN still works as a fallback."
+              divider={false}
+              trailing={
+                <Toggle
+                  value={useBiometricUnlock}
+                  onValueChange={setUseBiometricUnlock}
+                  accessibilityLabel={`Allow ${biometricLabel} to exit`}
+                />
+              }
             />
-          </View>
+          </Container>
         )}
 
-        <View style={styles.tipBox}>
-          <Ionicons name="information-circle" size={18} color={colors.status.info} />
-          <Text style={styles.tipText}>
-            Tip: Turn on Guided Access (Settings › Accessibility) for a hardware-level lock.
-            Triple-click the side button to lock the iPad to this app.
-          </Text>
-        </View>
+        {/* Guided Access is an iOS feature. */}
+        {Platform.OS === 'ios' ? (
+          <Flashbar
+            type="info"
+            message="Tip: Turn on Guided Access (Settings › Accessibility) for a hardware-level lock. Triple-click the side button to lock the iPad to this app."
+          />
+        ) : null}
 
-        <TouchableOpacity
-          style={[
-            styles.startBtn,
-            (pin.length !== PIN_LENGTH || confirmPin.length !== PIN_LENGTH) &&
-              styles.startBtnDisabled,
-          ]}
+        <Button
+          title="Start Kiosk Mode"
+          variant="primary"
+          icon="lock-closed"
+          fullWidth
           onPress={handleStartPress}
-          disabled={pin.length !== PIN_LENGTH || confirmPin.length !== PIN_LENGTH}
-        >
-          <Ionicons name="lock-closed" size={20} color={colors.white} />
-          <Text style={styles.startBtnText}>Start Kiosk Mode</Text>
-        </TouchableOpacity>
+          disabled={!ready}
+        />
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const makeStyles = (colors: ThemeColors, theme: Theme) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  scroll: { padding: 24, paddingBottom: 48 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  closeBtn: { padding: 4 },
-  title: { fontSize: 17, fontWeight: '600', color: colors.text.primary },
-  hero: { alignItems: 'center', marginTop: 12, marginBottom: 32 },
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 },
+  headerSpacer: { width: 44 },
+  scroll: { paddingBottom: 48 },
+  hero: { alignItems: 'center', gap: 8 },
   iconWrap: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: theme.isDark ? 'rgba(236,55,80,0.22)' : 'rgba(236,55,80,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
-  },
-  heroTitle: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: colors.text.primary,
     marginBottom: 8,
   },
-  heroSubtitle: {
-    fontSize: 15,
-    color: colors.text.secondary,
-    textAlign: 'center',
-    lineHeight: 22,
-    paddingHorizontal: 16,
-  },
+  center: { textAlign: 'center' },
   contextPill: {
-    minHeight: 40,
-    marginTop: 16,
+    minHeight: 36,
+    marginTop: 8,
     paddingHorizontal: 14,
-    borderRadius: 20,
+    borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
-    backgroundColor: colors.gray[100],
+    gap: 6,
   },
-  contextPillText: { color: colors.text.secondary, fontSize: 14, fontWeight: '700' },
-  pinSection: { alignItems: 'center', marginBottom: 32 },
-  stepLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.text.muted,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 16,
-  },
-  dotsRow: { flexDirection: 'row', gap: 16, marginBottom: 12 },
-  dot: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 2,
-    borderColor: colors.gray[300],
-    backgroundColor: 'transparent',
-  },
-  dotFilled: { backgroundColor: colors.red, borderColor: colors.red },
-  dotError: { borderColor: colors.red },
-  hiddenInput: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-    opacity: 0,
-  },
-  errorText: { color: colors.text.accent, fontSize: 14, marginTop: 8 },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-    gap: 12,
-  },
-  rowLabel: { fontSize: 15, fontWeight: '600', color: colors.text.primary },
-  rowSubtitle: { fontSize: 13, color: colors.text.secondary, marginTop: 2 },
-  tipBox: {
-    flexDirection: 'row',
-    backgroundColor: theme.isDark ? 'rgba(51,142,218,0.20)' : 'rgba(51,142,218,0.08)',
-    padding: 14,
-    borderRadius: 10,
-    gap: 10,
-    marginBottom: 24,
-  },
-  tipText: { flex: 1, fontSize: 13, color: colors.text.secondary, lineHeight: 19 },
-  startBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.red,
-    padding: 18,
-    borderRadius: 14,
-    gap: 10,
-  },
-  startBtnDisabled: { opacity: 0.4 },
-  startBtnText: { color: colors.white, fontSize: 17, fontWeight: '700' },
+  pinSection: { alignItems: 'center', gap: 16 },
+  dotsRow: { flexDirection: 'row', gap: 16, padding: 8 },
+  dot: { width: 18, height: 18, borderRadius: 9, borderWidth: 2 },
+  hiddenInput: { position: 'absolute', width: 1, height: 1, opacity: 0 },
 });

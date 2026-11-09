@@ -1,18 +1,11 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  ImageBackground,
-} from 'react-native';
+import { Alert, ImageBackground, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useAuth } from '../hooks/useAuth';
 import { HackClubFlag } from '../components/HackClubFlag';
-import { colors } from '../theme/colors';
+import { useTheme } from '../theme';
+import { Button } from '../components/ui';
 
 const HERO = require('../../assets/login-hero.jpg');
 
@@ -25,6 +18,7 @@ const DEV_PARTICIPANT_EMAIL = 'participant-demo@hackclub.com';
 const DEV_ORGANIZER_EMAIL = 'admin@hackclub.com';
 
 export function LoginScreen() {
+  const { tokens, type, spacing } = useTheme();
   const { login, devLogin } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const handleDevLogin = async (email: string) => {
@@ -70,60 +64,52 @@ export function LoginScreen() {
       </View>
 
       <SafeAreaView style={styles.safe}>
-        <View style={styles.top}>
+        <View style={[styles.top, { paddingHorizontal: spacing.xxl }]}>
           <HackClubFlag width={132} />
         </View>
 
-        <View style={styles.content}>
-          <Text style={styles.eyebrow}>HACK CLUB</Text>
-          <Text style={styles.title}>Sign in to Attend</Text>
-          <Text style={styles.subtitle}>
-            Your tickets, passes, and event check-in — all in one place.
+        <View style={{ paddingHorizontal: spacing.xxl, paddingBottom: spacing.xxl }}>
+          <Text style={[type.label, styles.eyebrow]}>HACK CLUB</Text>
+          <Text style={[styles.title, { color: tokens.brand }]} accessibilityRole="header">
+            Sign in to Attend
           </Text>
+          <Text style={styles.subtitle}>Your tickets, passes, and event check-in — all in one place.</Text>
 
-          <TouchableOpacity
-            style={[styles.button, isLoading && styles.buttonDisabled]}
+          <Button
+            title="Sign in with Hack Club"
+            variant="primary"
+            fullWidth
+            loading={isLoading}
             onPress={handleLogin}
-            disabled={isLoading}
-            activeOpacity={0.85}
-          >
-            {isLoading ? (
-              <ActivityIndicator color={colors.red} />
-            ) : (
-              <Text style={styles.buttonText}>Sign in with Hack Club</Text>
-            )}
-          </TouchableOpacity>
+          />
 
           {__DEV__ && (
-            <View style={styles.devRow}>
-              <TouchableOpacity
-                style={[styles.devButton, styles.devButtonHalf]}
+            <View style={[styles.devRow, { marginTop: spacing.md, gap: spacing.md }]}>
+              <Button
+                title="Dev: participant"
                 onPress={() => handleDevLogin(DEV_PARTICIPANT_EMAIL)}
                 disabled={isLoading}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.devButtonText}>Dev: participant</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.devButton, styles.devButtonHalf]}
+                style={styles.devButton}
+              />
+              <Button
+                title="Dev: organizer"
                 onPress={() => handleDevLogin(DEV_ORGANIZER_EMAIL)}
                 disabled={isLoading}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.devButtonText}>Dev: organizer</Text>
-              </TouchableOpacity>
+                style={styles.devButton}
+              />
             </View>
           )}
 
-          <Text style={styles.footer}>For attendees and event staff.</Text>
+          <Text style={[type.body, styles.footer, { marginTop: spacing.xl }]}>For attendees and event staff.</Text>
         </View>
       </SafeAreaView>
     </ImageBackground>
   );
 }
 
+// The photo is dark in both appearances, so text on it is fixed white.
 const styles = StyleSheet.create({
-  bg: { flex: 1, backgroundColor: colors.gray[900] },
+  bg: { flex: 1, backgroundColor: '#0f141a' },
   scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(10,12,20,0.32)' },
   // Smooth bottom-up fade (stacked bands) so the sign-in content stays legible.
   gradient: {
@@ -135,60 +121,11 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
   },
   safe: { flex: 1, justifyContent: 'space-between' },
-  top: { paddingHorizontal: 28, paddingTop: 16 },
-  content: { paddingHorizontal: 28, paddingBottom: 24 },
-  eyebrow: {
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 2.5,
-    color: 'rgba(255,255,255,0.75)',
-    marginBottom: 8,
-  },
-  title: {
-    fontSize: 36,
-    fontWeight: '800',
-    color: colors.red,
-    marginBottom: 12,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: 'rgba(255,255,255,0.9)',
-    lineHeight: 23,
-    marginBottom: 28,
-  },
-  button: {
-    backgroundColor: colors.white,
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 14,
-    width: '100%',
-    alignItems: 'center',
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  buttonDisabled: { opacity: 0.7 },
-  buttonText: { fontSize: 17, fontWeight: '700', color: colors.red },
-  devRow: {
-    marginTop: 14,
-    flexDirection: 'row',
-    gap: 10,
-  },
-  devButton: {
-    paddingVertical: 13,
-    borderRadius: 14,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
-  },
-  devButtonHalf: { flex: 1 },
-  devButtonText: { color: colors.white, fontSize: 14, fontWeight: '600' },
-  footer: {
-    marginTop: 20,
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.6)',
-    textAlign: 'center',
-  },
+  top: { paddingTop: 16 },
+  eyebrow: { letterSpacing: 2.5, color: 'rgba(255,255,255,0.75)', marginBottom: 8 },
+  title: { fontSize: 34, lineHeight: 40, fontWeight: '700', marginBottom: 12 },
+  subtitle: { fontSize: 16, lineHeight: 23, color: 'rgba(255,255,255,0.9)', marginBottom: 28 },
+  devRow: { flexDirection: 'row' },
+  devButton: { flex: 1 },
+  footer: { color: 'rgba(255,255,255,0.6)', textAlign: 'center' },
 });
