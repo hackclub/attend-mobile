@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -388,7 +387,11 @@ function Overview({
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={handleRefresh}
-            tintColor={Platform.OS === 'ios' ? '#ffffff' : tokens.accent}
+            // The spinner shows on the page above the banner, not on the
+            // banner, so white vanished in light mode.
+            tintColor={tokens.accent}
+            colors={[tokens.accent]}
+            progressBackgroundColor={tokens.bg}
             progressViewOffset={insets.top + topTabInset}
           />
         }
