@@ -29,6 +29,10 @@ import kotlin.math.roundToInt
  * bar chip, top of the shade, lock screen); the check-in one uses
  * Notification.ProgressStyle. Older versions get a plain ongoing notification
  * with the same content.
+ *
+ * Both are VISIBILITY_PRIVATE: on a secure lock screen they show a public
+ * version that leaves out the ticket's short code (and anything else that
+ * identifies the attendee).
  */
 class ActivityControllerModule : Module() {
   private val context: Context
@@ -79,8 +83,11 @@ class ActivityControllerModule : Module() {
       postEvent(eventName, checkedInCount, totalCount)
     }
 
-    AsyncFunction("updateLiveActivity") { checkedInCount: Int, totalCount: Int ->
+    // Same as iOS: only the running activity's own event is updated. Counts
+    // for any other event are ignored, never shown under this event's name.
+    AsyncFunction("updateLiveActivity") { eventId: String, checkedInCount: Int, totalCount: Int ->
       if (!isShowing(EVENT_NOTIFICATION_ID)) return@AsyncFunction false
+      if (prefs.getString(KEY_EVENT_ID, null) != eventId) return@AsyncFunction false
       val eventName = prefs.getString(KEY_EVENT_NAME, null) ?: return@AsyncFunction false
       postEvent(eventName, checkedInCount, totalCount)
     }
@@ -122,6 +129,12 @@ class ActivityControllerModule : Module() {
 
   private fun ensureChannel() {
     if (notificationManager.getNotificationChannel(CHANNEL_ID) != null) return
+    // The first channel was created with lockscreenVisibility PUBLIC, which
+    // overrides each notification's own visibility and can't be changed once
+    // created. Replace it.
+    if (notificationManager.getNotificationChannel(LEGACY_CHANNEL_ID) != null) {
+      notificationManager.deleteNotificationChannel(LEGACY_CHANNEL_ID)
+    }
     // Live Updates must not use an IMPORTANCE_MIN channel. Default importance
     // keeps the status bar icon/chip; sound and vibration are off because
     // these notifications update constantly.
@@ -130,7 +143,7 @@ class ActivityControllerModule : Module() {
       setSound(null, null)
       enableVibration(false)
       setShowBadge(false)
-      lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+      lockscreenVisibility = Notification.VISIBILITY_PRIVATE
     }
     notificationManager.createNotificationChannel(channel)
   }
@@ -177,7 +190,16 @@ class ActivityControllerModule : Module() {
         .setOnlyAlertOnce(true)
         .setShowWhen(false)
         .setCategory(Notification.CATEGORY_PROGRESS)
-        .setVisibility(Notification.VISIBILITY_PUBLIC)
+        .setVisibility(Notification.VISIBILITY_PRIVATE)
+        .setPublicVersion(
+          Notification.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.attend_live_scan)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setColor(ACCENT)
+            .setShowWhen(false)
+            .build()
+        )
         .setContentIntent(tap)
         .setRequestPromotedOngoing(true)
         .build()
@@ -193,7 +215,16 @@ class ActivityControllerModule : Module() {
         .setOnlyAlertOnce(true)
         .setShowWhen(false)
         .setCategory(NotificationCompat.CATEGORY_PROGRESS)
-        .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+        .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+        .setPublicVersion(
+          NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.attend_live_scan)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setColor(ACCENT)
+            .setShowWhen(false)
+            .build()
+        )
         .setContentIntent(tap)
         .build()
     }
@@ -206,6 +237,7 @@ class ActivityControllerModule : Module() {
     val countdown = !checkedIn && startsAt != null && startsAt > now
     val text = if (checkedIn) "Checked in · $venue" else venue
     val bigText = "$text\nAttendee pass $shortCode"
+    val publicText = if (checkedIn) "Checked in" else "Your ticket"
     val tap = openIntent(TICKETS_URL, TICKET_NOTIFICATION_ID)
 
     val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA) {
@@ -219,7 +251,17 @@ class ActivityControllerModule : Module() {
         .setOngoing(true)
         .setOnlyAlertOnce(true)
         .setCategory(Notification.CATEGORY_EVENT)
-        .setVisibility(Notification.VISIBILITY_PUBLIC)
+        .setVisibility(Notification.VISIBILITY_PRIVATE)
+        .setPublicVersion(
+          // No short code: the lock screen shows only the event and status.
+          Notification.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.attend_live_ticket)
+            .setContentTitle(eventName)
+            .setContentText(publicText)
+            .setColor(ACCENT)
+            .setShowWhen(false)
+            .build()
+        )
         .setContentIntent(tap)
         .apply {
           if (countdown) {
@@ -242,7 +284,16 @@ class ActivityControllerModule : Module() {
         .setOngoing(true)
         .setOnlyAlertOnce(true)
         .setCategory(NotificationCompat.CATEGORY_EVENT)
-        .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+        .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+        .setPublicVersion(
+          NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.attend_live_ticket)
+            .setContentTitle(eventName)
+            .setContentText(publicText)
+            .setColor(ACCENT)
+            .setShowWhen(false)
+            .build()
+        )
         .setContentIntent(tap)
         .apply {
           if (countdown) {
@@ -269,7 +320,8 @@ class ActivityControllerModule : Module() {
       ?: runCatching { Instant.parse(value).toEpochMilli() }.getOrNull()
 
   companion object {
-    private const val CHANNEL_ID = "attend_live_updates"
+    private const val CHANNEL_ID = "attend_live_updates_private"
+    private const val LEGACY_CHANNEL_ID = "attend_live_updates"
     private const val PREFS = "attend_live_updates"
     private const val KEY_EVENT_ID = "eventId"
     private const val KEY_EVENT_NAME = "eventName"

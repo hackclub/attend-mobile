@@ -5,7 +5,8 @@ import { PermissionsAndroid, Platform } from 'react-native';
 interface ActivityControllerModule {
   areLiveActivitiesEnabled(): boolean;
   startLiveActivity(eventId: string, eventName: string, checkedInCount: number, totalCount: number): Promise<boolean>;
-  updateLiveActivity(checkedInCount: number, totalCount: number): Promise<boolean>;
+  // Ignored (resolves false) unless the running activity is for eventId.
+  updateLiveActivity(eventId: string, checkedInCount: number, totalCount: number): Promise<boolean>;
   stopLiveActivity(): Promise<boolean>;
   isLiveActivityRunning(): boolean;
   startTicketActivity(eventName: string, venue: string, shortCode: string, startsAtIso: string, checkedIn: boolean): Promise<boolean>;
@@ -82,13 +83,15 @@ export async function startLiveActivity(
   }
 }
 
+/** Updates the counts; ignored unless the running activity is for `eventId`. */
 export async function updateLiveActivity(
+  eventId: string,
   checkedInCount: number,
   totalCount: number
 ): Promise<boolean> {
   if (!ActivityController) return false;
   try {
-    return await ActivityController.updateLiveActivity(checkedInCount, totalCount);
+    return await ActivityController.updateLiveActivity(eventId, checkedInCount, totalCount);
   } catch (error) {
     console.error('Failed to update Live Activity:', error);
     return false;
