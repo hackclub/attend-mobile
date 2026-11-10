@@ -11,7 +11,6 @@ import {
 } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
-import type { AppleIcon } from 'react-native-bottom-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { StatusBar } from 'expo-status-bar';
@@ -142,11 +141,11 @@ function useNavigationTheme() {
   }, [tokens, isDark]);
 }
 
-// iOS renders SF Symbols in the native (liquid glass) tab bar; Android's
-// Material bottom bar can't use SF Symbols, so it gets bundled SVG sources,
-// tinted by the bar's active/inactive colors.
-const tabIcon = (sfSymbol: AppleIcon['sfSymbol'], androidSource: number) => () =>
-  Platform.OS === 'ios' ? ({ sfSymbol } satisfies AppleIcon) : androidSource;
+// Both native bars draw the app's heroicons (assets/tabs, made by bin/tab-icons):
+// the outline icon at rest and the solid one when selected. The bars tint
+// them with their active and inactive colours.
+const tabIcon = (icon: number, selectedIcon: number) => ({ focused }: { focused: boolean }) =>
+  focused ? selectedIcon : icon;
 
 // Android-only bar styling. The Material 3 app theme (plugins/
 // withAndroidBrandTheme.js) already gives the bar our surface, indicator and
@@ -251,7 +250,7 @@ function MainTabs() {
         component={OverviewTab}
         options={{
           tabBarLabel: 'Overview',
-          tabBarIcon: tabIcon('house', require('./assets/tabs/home.svg')),
+          tabBarIcon: tabIcon(require('./assets/tabs/home.svg'), require('./assets/tabs/home-selected.svg')),
         }}
       />
       <Tab.Screen
@@ -259,7 +258,7 @@ function MainTabs() {
         component={ScannerTab}
         options={{
           tabBarLabel: 'Scan',
-          tabBarIcon: tabIcon('qrcode.viewfinder', require('./assets/tabs/scan.svg')),
+          tabBarIcon: tabIcon(require('./assets/tabs/scan.svg'), require('./assets/tabs/scan-selected.svg')),
         }}
       />
       <Tab.Screen
@@ -267,7 +266,7 @@ function MainTabs() {
         component={PeopleTab}
         options={{
           tabBarLabel: 'People',
-          tabBarIcon: tabIcon('person.2', require('./assets/tabs/people.svg')),
+          tabBarIcon: tabIcon(require('./assets/tabs/people.svg'), require('./assets/tabs/people-selected.svg')),
         }}
       />
       {showTravel ? (
@@ -276,7 +275,7 @@ function MainTabs() {
           component={TravelTab}
           options={{
             tabBarLabel: 'Travel',
-            tabBarIcon: tabIcon('airplane', require('./assets/tabs/travel.svg')),
+            tabBarIcon: tabIcon(require('./assets/tabs/travel.svg'), require('./assets/tabs/travel-selected.svg')),
           }}
         />
       ) : null}
