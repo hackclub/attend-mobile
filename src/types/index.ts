@@ -489,6 +489,8 @@ export type RootStackParamList = {
   Kiosk: {
     pin: string;
     biometricUnlock: boolean;
+    /** The camera attendees scan at, chosen in kiosk setup. Front by default. */
+    facing?: 'front' | 'back';
     scanContextId?: string;
     scanContextName?: string;
   };

@@ -46,6 +46,7 @@ export function KioskScreen() {
     pin: kioskPin,
     biometricUnlock,
     scanContextId,
+    facing = 'front',
   } = route.params;
   const { state } = useApp();
   const { tokens, type } = useTheme();
@@ -71,7 +72,6 @@ export function KioskScreen() {
 
   const [permission, requestPermission] = useCameraPermissions();
   const { recordScannerActivity } = useScannerPowerMode(!!permission?.granted);
-  const [facing, setFacing] = useState<'front' | 'back'>('front');
   const [escapeOpen, setEscapeOpen] = useState(false);
   const lastFeedbackAttemptRef = useRef<string | null>(null);
 
@@ -164,6 +164,7 @@ export function KioskScreen() {
           icon="lock-closed"
           title="Exit kiosk mode"
           onPress={() => setEscapeOpen(true)}
+          style={kiosk.centred}
         />
         <EscapeModal
           visible={escapeOpen}
@@ -229,12 +230,6 @@ export function KioskScreen() {
             <View style={[kiosk.corner, kiosk.br]} />
           </View>
         </View>
-        <Button
-          icon="camera-flip"
-          title={facing === 'front' ? 'Front camera' : 'Rear camera'}
-          accessibilityHint="Switches between the front and rear camera"
-          onPress={() => setFacing(f => (f === 'front' ? 'back' : 'front'))}
-        />
       </View>
 
       {lastScan ? <KioskResult result={lastScan} /> : null}
@@ -258,7 +253,8 @@ const kiosk = StyleSheet.create({
   screen: { flex: 1 },
   centered: { alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 32 },
   stateIcon: { width: 56, height: 56, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  stateAction: { marginTop: 16 },
+  // Buttons sit at the start of their row by default; these are centred.
+  stateAction: { marginTop: 16, alignSelf: 'center' },
   // Name and context pinned to the bottom, so the photo shows above them.
   banner: { paddingHorizontal: 16, paddingBottom: 16, overflow: 'hidden', justifyContent: 'flex-end' },
   // Display type, a step up from h1, as on the event banner.
@@ -273,6 +269,7 @@ const kiosk = StyleSheet.create({
   lock: { position: 'absolute', right: 16 },
   body: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 24, paddingHorizontal: 24, paddingTop: 24 },
   center: { textAlign: 'center' },
+  centred: { alignSelf: 'center' },
   camera: { overflow: 'hidden', borderRadius: CAMERA_RADIUS, backgroundColor: overlayTokens.cameraStage },
   frame: { position: 'absolute', top: FRAME.inset, left: FRAME.inset, right: FRAME.inset, bottom: FRAME.inset },
   corner: { position: 'absolute', width: FRAME.size, height: FRAME.size, borderColor: overlayTokens.kioskFrame },

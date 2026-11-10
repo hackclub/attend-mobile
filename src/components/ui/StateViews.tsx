@@ -28,13 +28,16 @@ export interface ErrorViewProps {
   onRetry?: () => void;
 }
 
+// Buttons sit at the start of their row by default; these views centre them.
+const centredButton = { alignSelf: 'center' } as const;
+
 export function ErrorView({ title = 'Couldn’t load this', message, onRetry }: ErrorViewProps) {
   const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.center}>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.text}>{message}</Text>
-      {onRetry ? <Button title={RETRY_LABEL} onPress={onRetry} /> : null}
+      {onRetry ? <Button title={RETRY_LABEL} onPress={onRetry} style={centredButton} /> : null}
     </View>
   );
 }

@@ -5,7 +5,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { haptics } from '../../services/haptics';
 import { useBiometricLabel } from '../../services/biometricLabel';
 import { radii, useTheme } from '../../theme';
-import { Button, Container, Icon, ListRow, Sheet, SHEET_INSET } from '../../components/ui';
+import { Button, Container, Icon, ListRow, SegmentedControl, Sheet, SHEET_INSET } from '../../components/ui';
 import { useApp } from '../../context/AppContext';
 import { useBiometric } from '../../hooks/useBiometric';
 import { kioskSetupSheet, type KioskSetupSheetData } from '../../navigation/sheetData';
@@ -25,6 +25,11 @@ export function KioskSetupSheet() {
   return data ? <KioskSetup {...data} /> : null;
 }
 
+const CAMERA_OPTIONS = [
+  { value: 'front', label: 'Front' },
+  { value: 'back', label: 'Rear' },
+] as const;
+
 function KioskSetup({ scanContextId, scanContextName, preview }: KioskSetupSheetData) {
   const { tokens, type, spacing, radii, isDark } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -38,6 +43,9 @@ function KioskSetup({ scanContextId, scanContextName, preview }: KioskSetupSheet
   const [confirmPin, setConfirmPin] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [useBiometricUnlock, setUseBiometricUnlock] = useState(false);
+  // Front for attendees scanning their own phone at the device; rear for a
+  // device mounted to face a counter or wall.
+  const [facing, setFacing] = useState<'front' | 'back'>('front');
   const inputRef = useRef<React.ComponentRef<typeof TextInput>>(null);
 
   useEffect(() => {
@@ -81,6 +89,7 @@ function KioskSetup({ scanContextId, scanContextName, preview }: KioskSetupSheet
     const params = {
       pin: entered,
       biometricUnlock: biometricAvailable && useBiometricUnlock,
+      facing,
       scanContextId,
       scanContextName,
     };
@@ -166,6 +175,16 @@ function KioskSetup({ scanContextId, scanContextName, preview }: KioskSetupSheet
               {error}
             </Text>
           ) : null}
+        </View>
+
+        <View style={{ gap: spacing.xs }}>
+          <Text style={[type.label, { color: tokens.text }]}>Camera</Text>
+          <SegmentedControl
+            options={CAMERA_OPTIONS}
+            value={facing}
+            onChange={setFacing}
+            accessibilityLabel="Camera"
+          />
         </View>
 
         {biometricAvailable && (
