@@ -1,9 +1,13 @@
-import React, { useState, type ReactNode } from 'react';
+import React, { type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { MenuView } from '@react-native-menu/menu';
-import { useTheme } from '../../theme';
+import { Button, Host, Menu, Rectangle, Section, Text, Toggle } from '@expo/ui/swift-ui';
+import {
+  accessibilityLabel as accessibilityLabel_,
+  disabled,
+  foregroundStyle,
+} from '@expo/ui/swift-ui/modifiers';
+import { useTheme, withAlpha } from '../../theme';
 import { Icon } from './Icon';
-import { IOS_PRESSED_OPACITY } from './pressFeedback';
 
 export interface MenuAction {
   key: string;
@@ -46,42 +50,79 @@ export interface ActionMenuProps {
 }
 
 /**
- * A native drop-down menu for a screen's ⋯ actions or a short picker: UIMenu
- * on iOS via @react-native-menu/menu (a Material 3 Compose menu on Android:
- * ActionMenu.android.tsx).
+ * A native drop-down menu for a screen's ⋯ actions or a short picker: a
+ * SwiftUI Menu (UIMenu) on iOS, via @expo/ui (a Material 3 Compose menu on
+ * Android: ActionMenu.android.tsx).
  */
-export function ActionMenu({ actions, accessibilityLabel, children, title }: ActionMenuProps) {
-  const { scheme } = useTheme();
-  // The native menu takes the touch itself, so a Pressable inside never sees
-  // a press. The trigger dims while its menu is open instead.
-  const [open, setOpen] = useState(false);
-  const byKey = new Map(actions.map((action) => [action.key, action]));
+export function ActionMenu({
+  actions,
+  accessibilityLabel,
+  children,
+  title,
+}: ActionMenuProps) {
+  const { tokens } = useTheme();
+  const items = actions.map(menuItem);
   return (
-    <MenuView
-      title={title}
-      themeVariant={scheme}
-      actions={actions.map((action) => ({
-        id: action.key,
-        title: action.title,
-        subtitle: action.subtitle,
-        image: action.iosIcon,
-        state: action.checked === undefined ? undefined : action.checked ? 'on' : 'off',
-        attributes: { destructive: action.destructive, disabled: action.disabled },
-      }))}
-      onPressAction={({ nativeEvent }) => byKey.get(nativeEvent.event)?.onSelect()}
-      onOpenMenu={() => setOpen(true)}
-      onCloseMenu={() => setOpen(false)}
-    >
-      <View
-        accessible
-        accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel}
-        accessibilityState={{ expanded: open }}
-        style={open ? styles.highlighted : undefined}
-      >
+    <View>
+      {/* React Native draws the trigger; VoiceOver reads the menu button instead. */}
+      <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
         {children ?? <MoreGlyph />}
       </View>
-    </MenuView>
+      {/*
+        The menu button lies over the trigger, the same size, and takes the
+        tap. A trigger hosted inside the SwiftUI label would get the touch
+        itself, and the menu would never open.
+      */}
+      <Host style={StyleSheet.absoluteFill}>
+        <Menu
+          label={<Rectangle modifiers={[foregroundStyle(withAlpha(tokens.text, HIT_AREA_ALPHA))]} />}
+          modifiers={[accessibilityLabel_(accessibilityLabel)]}
+        >
+          {title ? <Section title={title}>{items}</Section> : items}
+        </Menu>
+      </Host>
+    </View>
+  );
+}
+
+/**
+ * The menu button's fill. SwiftUI only hit-tests what it draws, so the area
+ * can't be fully clear; this is invisible over any trigger.
+ */
+const HIT_AREA_ALPHA = 0.011;
+
+function menuItem(action: MenuAction) {
+  const modifiers = action.disabled ? [disabled(true)] : undefined;
+  // Two Texts make a title with a subtitle under it in a UIMenu.
+  const label = action.subtitle ? undefined : action.title;
+  const lines = action.subtitle
+    ? [<Text key="title">{action.title}</Text>, <Text key="subtitle">{action.subtitle}</Text>]
+    : undefined;
+  if (action.checked !== undefined) {
+    return (
+      <Toggle
+        key={action.key}
+        isOn={action.checked}
+        onIsOnChange={() => action.onSelect()}
+        label={label}
+        modifiers={modifiers}
+      >
+        {lines}
+      </Toggle>
+    );
+  }
+  return (
+    <Button
+      key={action.key}
+      onPress={action.onSelect}
+      role={action.destructive ? 'destructive' : undefined}
+      label={label}
+      // The kit's icon names aren't typed as SF Symbols, so the type is loosened here.
+      systemImage={label && action.iosIcon ? (action.iosIcon as never) : undefined}
+      modifiers={modifiers}
+    >
+      {lines}
+    </Button>
   );
 }
 
@@ -97,5 +138,4 @@ function MoreGlyph() {
 
 const styles = StyleSheet.create({
   more: { alignItems: 'center', justifyContent: 'center' },
-  highlighted: { opacity: IOS_PRESSED_OPACITY },
 });
