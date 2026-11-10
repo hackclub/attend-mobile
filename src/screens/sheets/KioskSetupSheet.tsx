@@ -46,6 +46,7 @@ function KioskSetup({ scanContextId, scanContextName, preview }: KioskSetupSheet
   // Front for attendees scanning their own phone at the device; rear for a
   // device mounted to face a counter or wall.
   const [facing, setFacing] = useState<'front' | 'back'>('front');
+  const [pinScreen, setPinScreen] = useState(true);
   const inputRef = useRef<React.ComponentRef<typeof TextInput>>(null);
 
   useEffect(() => {
@@ -90,6 +91,7 @@ function KioskSetup({ scanContextId, scanContextName, preview }: KioskSetupSheet
       pin: entered,
       biometricUnlock: biometricAvailable && useBiometricUnlock,
       facing,
+      pinScreen,
       scanContextId,
       scanContextName,
     };
@@ -187,24 +189,35 @@ function KioskSetup({ scanContextId, scanContextName, preview }: KioskSetupSheet
           />
         </View>
 
-        {biometricAvailable && (
+        {biometricAvailable || Platform.OS === 'android' ? (
           <Container flush>
-            <ListRow
-              title={`Allow ${biometricLabel} to exit`}
-              subtitle="Faster for staff. PIN still works as a fallback."
-              divider={false}
-              toggle={{ value: useBiometricUnlock, onValueChange: setUseBiometricUnlock }}
-            />
+            {/* Android pins the screen itself when kiosk mode starts. */}
+            {Platform.OS === 'android' ? (
+              <ListRow
+                title="Pin the screen"
+                subtitle="Keeps attendees in Attend. Confirm when Android asks; exiting kiosk mode unpins it."
+                divider={biometricAvailable}
+                toggle={{ value: pinScreen, onValueChange: setPinScreen }}
+              />
+            ) : null}
+            {biometricAvailable ? (
+              <ListRow
+                title={`Allow ${biometricLabel} to exit`}
+                subtitle="Faster for staff. PIN still works as a fallback."
+                divider={false}
+                toggle={{ value: useBiometricUnlock, onValueChange: setUseBiometricUnlock }}
+              />
+            ) : null}
           </Container>
-        )}
+        ) : null}
 
-        {/* iOS has no app-side lock, so Guided Access is suggested; Android
-            pins the screen itself when kiosk mode starts. */}
-        <Text style={[type.body, styles.center, { color: tokens.text2 }]}>
-          {Platform.OS === 'ios'
-            ? 'Tip: To keep attendees in Attend, turn on Guided Access in Settings › Accessibility, then triple-click the side or Home button to start it.'
-            : 'Kiosk mode pins the screen to Attend. Confirm when Android asks; exiting kiosk mode unpins it.'}
-        </Text>
+        {/* iOS has no app-side lock, so Guided Access is suggested. */}
+        {Platform.OS === 'ios' ? (
+          <Text style={[type.body, styles.center, { color: tokens.text2 }]}>
+            Tip: To keep attendees in Attend, turn on Guided Access in Settings › Accessibility, then triple-click
+            the side or Home button to start it.
+          </Text>
+        ) : null}
 
         <Button
           title="Start kiosk mode"

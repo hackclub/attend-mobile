@@ -148,6 +148,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     minHeight: 48,
   },
-  text: { flex: 1, minWidth: 0 },
+  text: { flex: 1, flexShrink: 1, minWidth: 0 },
   disabled: { opacity: 0.5 },
 });

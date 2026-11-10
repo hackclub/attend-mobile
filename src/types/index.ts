@@ -491,6 +491,8 @@ export type RootStackParamList = {
     biometricUnlock: boolean;
     /** The camera attendees scan at, chosen in kiosk setup. Front by default. */
     facing?: 'front' | 'back';
+    /** Android: pin the screen to Attend while kiosk mode runs. On by default. */
+    pinScreen?: boolean;
     scanContextId?: string;
     scanContextName?: string;
   };
