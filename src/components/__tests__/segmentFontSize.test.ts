@@ -1,4 +1,4 @@
-import { iosSegmentFontSize } from '../ui/segmentFontSize';
+import { androidSegmentWraps, iosSegmentFontSize } from '../ui/segmentFontSize';
 
 describe('iosSegmentFontSize', () => {
   it('keeps the system size when every label fits its share', () => {
@@ -24,5 +24,22 @@ describe('iosSegmentFontSize', () => {
   it('steps down from the scaled size', () => {
     // "Scheduled · 12" needs ~171pt at 18pt and ~163pt at 17pt.
     expect(iosSegmentFontSize(['All', 'Drafts · 3', 'Scheduled · 12', 'Sent'], 680, 1.4)).toBe(17);
+  });
+});
+
+describe('androidSegmentWraps', () => {
+  // The People filter on a 416dp-wide row: each segment has ~88dp for text.
+  it('is true when the longest label needs a second line', () => {
+    expect(androidSegmentWraps(['Everyone · 33', 'Checked in · 0', 'Not checked in · 33'], 416)).toBe(true);
+  });
+
+  it('is false when every label fits beside the tick', () => {
+    expect(androidSegmentWraps(['Front', 'Rear'], 416)).toBe(false);
+    expect(androidSegmentWraps(['System', 'Light', 'Dark'], 416)).toBe(false);
+  });
+
+  it('counts the text size and is false before the row is measured', () => {
+    expect(androidSegmentWraps(['System', 'Light', 'Dark'], 416, 2.5)).toBe(true);
+    expect(androidSegmentWraps(['Everyone · 33'], 0)).toBe(false);
   });
 });
