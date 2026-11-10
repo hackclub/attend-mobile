@@ -446,6 +446,7 @@ function ScannerPreview({ onClose }: { onClose: () => void }) {
   const { width, height } = useWindowDimensions();
   const { isRegular } = useResponsiveLayout();
   const [torchOn, setTorchOn] = useState(false);
+  const [facing, setFacing] = useState<'front' | 'back'>('back');
   const [powerMode, setPowerMode] = useState(true);
   const size = scanFrameSize(width, height, isRegular);
   return (
@@ -474,6 +475,11 @@ function ScannerPreview({ onClose }: { onClose: () => void }) {
         <ScannerDock
           torchOn={torchOn}
           onTorch={() => setTorchOn((on) => !on)}
+          facing={facing}
+          onFlipCamera={() => {
+            setTorchOn(false);
+            setFacing((f) => (f === 'back' ? 'front' : 'back'));
+          }}
           menuActions={[
             { key: 'power-mode', title: 'Power mode', checked: powerMode, onSelect: () => setPowerMode((on) => !on) },
             { key: 'kiosk', title: 'Kiosk mode', onSelect: () => {} },

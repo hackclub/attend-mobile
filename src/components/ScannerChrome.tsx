@@ -39,12 +39,15 @@ export function ScanFrame({
 }
 
 /**
- * The scanner's bottom row, centred: the torch, the ⋯ menu (power mode,
- * kiosk mode) and Search, `[torch][⋯][  Search  ]`, all in thumb reach.
+ * The scanner's bottom row, centred: the torch, the camera switch, the ⋯
+ * menu (power mode, kiosk mode) and Search, `[torch][flip][⋯][  Search  ]`,
+ * all in thumb reach.
  */
 export function ScannerDock({
   torchOn,
   onTorch,
+  facing,
+  onFlipCamera,
   menuActions,
   searchTitle,
   searchDisabled,
@@ -53,6 +56,9 @@ export function ScannerDock({
 }: {
   torchOn: boolean;
   onTorch: () => void;
+  /** Which camera is live; the front one has no torch. */
+  facing: 'front' | 'back';
+  onFlipCamera: () => void;
   menuActions: MenuAction[];
   searchTitle: string;
   searchDisabled?: boolean;
@@ -67,7 +73,14 @@ export function ScannerDock({
         icon="torch"
         accessibilityLabel={torchOn ? 'Turn torch off' : 'Turn torch on'}
         active={torchOn}
+        disabled={facing === 'front'}
         onPress={onTorch}
+      />
+      <OverlayIconButton
+        surface="camera"
+        icon="camera-flip"
+        accessibilityLabel={facing === 'back' ? 'Switch to front camera' : 'Switch to rear camera'}
+        onPress={onFlipCamera}
       />
       <ActionMenu
         // The camera is dark whatever the theme.

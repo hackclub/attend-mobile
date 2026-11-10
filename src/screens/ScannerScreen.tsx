@@ -86,6 +86,7 @@ export function ScannerScreen() {
     recordScannerActivity,
   } = useScannerPowerMode(hasEvent && !!permission?.granted);
   const [torchOn, setTorchOn] = useState(false);
+  const [facing, setFacing] = useState<'front' | 'back'>('back');
   const [undoing, setUndoing] = useState(false);
   const [isFocused, setIsFocused] = useState(true);
   const lastFeedbackAttemptRef = useRef<string | null>(null);
@@ -322,8 +323,8 @@ export function ScannerScreen() {
       {cameraMounted ? (
         <CameraView
           style={StyleSheet.absoluteFill}
-          facing="back"
-          enableTorch={torchOn}
+          facing={facing}
+          enableTorch={torchOn && facing === 'back'}
           barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
           onBarcodeScanned={onBarcodeScanned}
         />
@@ -424,6 +425,13 @@ export function ScannerScreen() {
             onTorch={() => {
               recordScannerActivity();
               setTorchOn(on => !on);
+            }}
+            facing={facing}
+            onFlipCamera={() => {
+              recordScannerActivity();
+              // The front camera has no torch; it's off when you come back.
+              setTorchOn(false);
+              setFacing(f => (f === 'back' ? 'front' : 'back'));
             }}
             menuActions={menuActions}
             searchTitle={canViewParticipantRecords ? 'Search' : 'Enter ID'}
