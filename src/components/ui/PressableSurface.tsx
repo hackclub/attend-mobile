@@ -1,14 +1,19 @@
-import React, { type ReactNode } from 'react';
+import React, { useState, type ReactNode } from 'react';
 import {
+  Animated,
   experimental_LayoutConformance as LayoutConformance,
   Pressable,
+  type GestureResponderEvent,
   StyleSheet,
   View,
   type PressableProps,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { useReduceMotion } from '../../hooks/useReduceMotion';
 import { isAndroid, pressedStyle, ripple, STATE_LAYER_ALPHA } from './pressFeedback';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export interface PressableSurfaceProps extends Omit<PressableProps, 'style' | 'android_ripple' | 'children'> {
   /**
@@ -28,6 +33,11 @@ export interface PressableSurfaceProps extends Omit<PressableProps, 'style' | 'a
   rippleForeground?: boolean;
   /** iOS pressed opacity, or null to leave the pressed look to `style`. */
   pressedOpacity?: number | null;
+  /**
+   * Shrink to this scale while held (e.g. 0.98), for cards and tiles, on top
+   * of the ripple or dimming. Off with Reduce Motion.
+   */
+  pressScale?: number;
   children?: ReactNode;
 }
 
@@ -63,10 +73,35 @@ export function PressableSurface({
   rippleAlpha = STATE_LAYER_ALPHA,
   rippleForeground = false,
   pressedOpacity,
+  pressScale,
   children,
   hitSlop,
+  onPressIn,
+  onPressOut,
   ...pressableProps
 }: PressableSurfaceProps) {
+  const reduceMotion = useReduceMotion();
+  const [scale] = useState(() => new Animated.Value(1));
+  const [pressed, setPressed] = useState(false);
+  const dips = pressScale != null && !reduceMotion;
+  const press = (down: boolean) => {
+    setPressed(down);
+    if (!dips) return;
+    Animated.timing(scale, {
+      toValue: down ? pressScale : 1,
+      duration: down ? 90 : 160,
+      useNativeDriver: true,
+    }).start();
+  };
+  const handlePressIn = (e: GestureResponderEvent) => {
+    press(true);
+    onPressIn?.(e);
+  };
+  const handlePressOut = (e: GestureResponderEvent) => {
+    press(false);
+    onPressOut?.(e);
+  };
+  const dip = dips ? { transform: [{ scale }] } : null;
   const shape = (pressed: boolean) => (typeof style === 'function' ? style(pressed) : style);
   // The caller's content keeps React Native's default layout.
   const content = <LayoutConformance mode="compatibility">{children}</LayoutConformance>;
@@ -74,9 +109,11 @@ export function PressableSurface({
   if (isAndroid) {
     return (
       <LayoutConformance mode="strict">
-        <View style={[shape(false), styles.clip]} hitSlop={hitSlop}>
+        <Animated.View style={[shape(false), styles.clip, dip]} hitSlop={hitSlop}>
           <Pressable
             {...pressableProps}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
             hitSlop={hitSlop}
             android_ripple={ripple(rippleColor, { alpha: rippleAlpha, foreground: rippleForeground })}
             pointerEvents="box-only"
@@ -84,23 +121,23 @@ export function PressableSurface({
           >
             {content}
           </Pressable>
-        </View>
+        </Animated.View>
       </LayoutConformance>
     );
   }
 
   return (
     <LayoutConformance mode="strict">
-      <Pressable
+      {/* Pressed is tracked here, not read from a style function, so the style can carry the animated scale. */}
+      <AnimatedPressable
         {...pressableProps}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
         hitSlop={hitSlop}
-        style={({ pressed }) => [
-          shape(pressed),
-          pressedOpacity === null ? null : pressedStyle(pressed, pressedOpacity),
-        ]}
+        style={[shape(pressed), pressedOpacity === null ? null : pressedStyle(pressed, pressedOpacity), dip]}
       >
         <View style={[styles.fill, contentStyle]}>{content}</View>
-      </Pressable>
+      </AnimatedPressable>
     </LayoutConformance>
   );
 }

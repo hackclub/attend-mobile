@@ -29,8 +29,9 @@ const LIVE_ORDER: OverviewSection[] = [
   'arrivingNow',
 ];
 
-// Before check-in the registration picture leads, and check-in and the
-// arrivals feed drop to the end as one-line placeholders.
+// Before check-in the registration picture leads and check-in drops to the
+// end as a one-line card; the arrivals feed has nothing to show yet, so
+// EventHome leaves it out and the check-in card says arrivals will show there.
 const PREP_ORDER: OverviewSection[] = [
   'registration',
   'attention',
@@ -40,7 +41,7 @@ const PREP_ORDER: OverviewSection[] = [
   'arrivingNow',
 ];
 
-/** Every section, in the order for the phase: nothing is hidden, only moved. */
+/** Every section, in the order for the phase. */
 export function overviewSectionOrder(live: boolean): OverviewSection[] {
   return live ? LIVE_ORDER : PREP_ORDER;
 }

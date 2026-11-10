@@ -1,4 +1,5 @@
 export { withAlpha } from './alpha';
+export { easedFade, linearGradient, type FadeOptions } from './gradient';
 export {
   lightTokens,
   darkTokens,

@@ -33,6 +33,12 @@ export interface ThemeTokens {
   div2: string;
   /** Container border. */
   box: string;
+  /** Card surface: containers and tiles. A step above the page in dark mode. */
+  card: string;
+  /** Card border: fainter than `box` where the surface already sets the card apart. */
+  cardBorder: string;
+  /** The one card a screen leads with: a stronger surface and no border. */
+  raised: string;
   /** Input and segmented-control border. */
   input: string;
   /** Disabled input / primary button fill. */
@@ -91,6 +97,9 @@ export const lightTokens: ThemeTokens = {
   div: '#c6c6cd',
   div2: '#ebebf0',
   box: '#c6c6cd',
+  card: '#ffffff',
+  cardBorder: '#c6c6cd',
+  raised: '#f3f4f8',
   input: '#8c8c94',
   inputDisabled: '#ebebf0',
   accent: '#c8283f',
@@ -146,6 +155,9 @@ export const darkTokens: ThemeTokens = {
   div: '#3a4159',
   div2: '#2a3043',
   box: '#2a3043',
+  card: '#151820',
+  cardBorder: '#222736',
+  raised: '#1c2029',
   input: '#5b6377',
   inputDisabled: '#242938',
   accent: '#ec3750',

@@ -12,7 +12,7 @@ export { Icon, icons, type IconName, type IconProps } from './Icon';
 export { KeyValue, type KeyValueProps } from './KeyValue';
 export { ListRow, type ListRowProps } from './ListRow';
 export { OverlayIconButton, type OverlayIconButtonProps } from './OverlayIconButton';
-export { QuickActionTile, type QuickActionTileProps } from './QuickActionTile';
+export { QuickActionTile, QUICK_ACTION_LOADING, type QuickActionTileProps } from './QuickActionTile';
 export {
   SegmentedControl,
   type SegmentOption,
@@ -46,6 +46,7 @@ export {
 export { TextField, type TextFieldProps } from './TextField';
 export { Toggle, type ToggleProps } from './Toggle';
 export { Spinner, type SpinnerProps } from './Spinner';
+export { FadeIn, SkeletonLine } from './Loading';
 export { FilterChip, type FilterChipProps } from './FilterChip';
 export {
   isAndroid,

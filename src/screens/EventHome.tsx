@@ -16,13 +16,17 @@ import {
   Badge,
   Button,
   Container,
+  FadeIn,
   Flashbar,
   Icon,
   ListRow,
   QuickActionTile,
+  QUICK_ACTION_LOADING,
+  SkeletonLine,
   Stat,
   PressableSurface,
   type IconName,
+  type QuickActionTileProps,
 } from '../components/ui';
 import { useApp } from '../context/AppContext';
 import { useBannerStatusBar } from '../hooks/useBannerStatusBar';
@@ -189,7 +193,7 @@ function Overview({
 
   const sections: Record<OverviewSection, ReactNode> = {
     checkIn: live || restricted ? (
-      <Container title="Check-in">
+      <Container title="Check-in" prominent>
         {restricted ? <RoleRestricted /> : (
           <View style={{ gap: spacing.lg }}>
             <View style={styles.statRow}>
@@ -220,10 +224,17 @@ function Overview({
         )}
       </Container>
     ) : (
+      // Until check-in starts this card also stands in for "Arriving now".
+      // It's only dashed (a prompt to set something up) with no scan contexts.
       <Placeholder
         icon="qrcode"
         title="Check-in hasn't started"
-        detail={`${contexts.length} scan context${contexts.length === 1 ? '' : 's'} set up`}
+        detail={
+          contexts.length === 0
+            ? 'Set up a scan context to start.'
+            : `${contexts.length} scan context${contexts.length === 1 ? '' : 's'} set up. Arrivals show here once people check in.`
+        }
+        dashed={contexts.length === 0}
         onPress={() => navigation.navigate('Scanner')}
       />
     ),
@@ -302,14 +313,17 @@ function Overview({
     ),
 
     registration: (
-      <Container title="Registration">
+      // The lead card until check-in starts, when that card takes over.
+      <Container title="Registration" prominent={!live}>
         {restricted ? <RoleRestricted /> : (
           <View style={{ gap: spacing.md }}>
-            <Stat
-              label="Total participants"
-              value={registration.total}
-              sub={`${registration.complete} complete · ${registration.inProgress} in progress`}
-            />
+            <View>
+              <Stat label="Total participants" value={registration.total} />
+              <View style={[styles.legend, { gap: spacing.md }]}>
+                <LegendItem color={tokens.success} label={`${registration.complete} complete`} />
+                <LegendItem color={tokens.warningFill} label={`${registration.inProgress} in progress`} />
+              </View>
+            </View>
             <View style={[styles.segmented, { backgroundColor: tokens.div2 }]}>
               <View style={{ flex: registration.complete, backgroundColor: tokens.success }} />
               <View style={{ flex: registration.inProgress, backgroundColor: tokens.warningFill }} />
@@ -353,12 +367,7 @@ function Overview({
           ))}
         </View>
       </Container>
-    ) : (
-      <Placeholder
-        title="Arriving now"
-        detail={restricted ? roleRestrictedMessage(access.roleLabel) : 'Check-ins will show here as people arrive.'}
-      />
-    ),
+    ) : null,
   };
 
   const ordered = overviewSectionOrder(live)
@@ -395,6 +404,7 @@ function Overview({
           eyebrowIcon={banner.eyebrowIcon}
           meta={banner.meta}
           topInset={insets.top + topTabInset}
+          blendInto={tokens.bg}
           onPress={canSwitch ? openSwitcher : undefined}
           accessory={<AccountButton onBanner />}
         />
@@ -435,7 +445,10 @@ function namesPreview(names: string[], max = 3): string {
   return names.length > max ? `${shown} and ${names.length - max} more` : shown;
 }
 
-function incidentsLabel(incidents: Remote<{ status: string }[]>): string | undefined {
+type QuickActionSubLabel = QuickActionTileProps['subLabel'];
+
+function incidentsLabel(incidents: Remote<{ status: string }[]>): QuickActionSubLabel {
+  if (incidents.state === 'loading') return QUICK_ACTION_LOADING;
   if (incidents.state !== 'ready') return undefined;
   const open = incidents.data.filter((incident) => incident.status !== 'closed').length;
   return open === 0 ? 'None open' : `${open} open`;
@@ -444,8 +457,9 @@ function incidentsLabel(incidents: Remote<{ status: string }[]>): string | undef
 function messagesLabel(
   messages: Remote<{ sent_at?: string | null }[]>,
   roleLabel: string | null
-): string | undefined {
+): QuickActionSubLabel {
   if (messages.state === 'forbidden') return roleRestrictedMessage(roleLabel);
+  if (messages.state === 'loading') return QUICK_ACTION_LOADING;
   if (messages.state !== 'ready') return undefined;
   const last = messages.data
     .map((message) => message.sent_at)
@@ -479,7 +493,31 @@ function AttentionRow({ icon, color, title, detail }: { icon: IconName; color: s
 }
 
 /** A section that has nothing to show yet: one dashed line. */
-function Placeholder({ icon, title, detail, onPress }: { icon?: IconName; title: string; detail: string; onPress?: () => void }) {
+/** A coloured dot and its count, keying a segment of a bar. */
+function LegendItem({ color, label }: { color: string; label: string }) {
+  const { tokens, type } = useTheme();
+  return (
+    <View style={styles.legendItem}>
+      <View style={[styles.legendDot, { backgroundColor: color }]} />
+      <Text style={[type.body, { color: tokens.text2 }]}>{label}</Text>
+    </View>
+  );
+}
+
+function Placeholder({
+  icon,
+  title,
+  detail,
+  dashed = false,
+  onPress,
+}: {
+  icon?: IconName;
+  title: string;
+  detail: string;
+  /** For a prompt to set something up; otherwise it's a plain card. */
+  dashed?: boolean;
+  onPress?: () => void;
+}) {
   const { tokens, type, radii } = useTheme();
   const body = (
     <>
@@ -495,12 +533,19 @@ function Placeholder({ icon, title, detail, onPress }: { icon?: IconName; title:
       {onPress ? <Icon name="chevron-right" size={20} color={tokens.muted} /> : null}
     </>
   );
-  const frame = [styles.placeholder, { borderColor: tokens.box, borderRadius: radii.container }];
+  const frame = [
+    styles.placeholder,
+    dashed
+      ? { borderColor: tokens.box, borderStyle: 'dashed' as const }
+      : { borderColor: tokens.cardBorder, backgroundColor: tokens.card },
+    { borderRadius: radii.container },
+  ];
   if (!onPress) return <View style={[frame, styles.placeholderContent]} accessible>{body}</View>;
   return (
     <PressableSurface
       onPress={onPress}
       rippleColor={tokens.text}
+      pressScale={0.98}
       style={frame}
       contentStyle={styles.placeholderContent}
       accessibilityRole="button"
@@ -531,13 +576,20 @@ function Arrivals({
   );
 
   if (travel.state === 'forbidden') return <RoleRestricted />;
-  if (travel.state === 'loading') return <Text style={[type.body, { color: tokens.text2 }]}>Loading travel…</Text>;
+  if (travel.state === 'loading') {
+    return (
+      <View accessible accessibilityLabel="Loading travel">
+        <SkeletonLine width="70%" />
+        <SkeletonLine width="45%" />
+      </View>
+    );
+  }
   if (travel.state === 'error') {
     return <Text style={[type.body, { color: tokens.text2 }]}>Travel is unavailable offline.</Text>;
   }
 
   return (
-    <View style={{ gap: 12 }}>
+    <FadeIn style={{ gap: 12 }}>
       {!live && summary && summary.travelling > 0 ? (
         <Text style={[type.body, { color: tokens.text2 }]}>
           {[
@@ -556,7 +608,7 @@ function Arrivals({
           timeZone={(travel.state === 'ready' ? travel.data.eventTimezone : null) ?? timeZone}
         />
       ))}
-    </View>
+    </FadeIn>
   );
 }
 
@@ -634,7 +686,10 @@ const styles = StyleSheet.create({
   feedRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, paddingHorizontal: 20 },
   attentionRow: { flexDirection: 'row', gap: 8 },
   attentionIcon: { marginTop: 2 },
-  placeholder: { borderWidth: 1, borderStyle: 'dashed' },
+  placeholder: { borderWidth: 1 },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 4 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
   placeholderContent: {
     flexDirection: 'row',
     alignItems: 'center',

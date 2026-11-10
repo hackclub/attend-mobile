@@ -4,7 +4,7 @@ import { Image } from 'expo-image';
 import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
 import { useEventPassColor } from '../hooks/useEventPassColor';
 import { Badge, Icon, OverlayIconButton, PressableSurface, pressedStyle, ripple, type BadgeColor, type IconName } from './ui';
-import { hackClubColors, overlayTokens, radii, typography, useTheme, withAlpha } from '../theme';
+import { easedFade, hackClubColors, linearGradient, overlayTokens, radii, typography, useTheme, withAlpha } from '../theme';
 import { CHROME_MAX_FONT_SCALE } from './ui/fontScale';
 import { bannerHeight } from '../services/eventBanner';
 import type { Event } from '../types';
@@ -12,6 +12,8 @@ import type { Event } from '../types';
 export { eventBannerText } from '../services/eventBanner';
 
 const ON_BANNER = overlayTokens.on;
+/** How tall the band is where a banner fades into a dark page, behind its text. */
+const BLEND_HEIGHT = 120;
 
 /**
  * The fill behind an event's name: its banner image when it has one, else its
@@ -53,6 +55,8 @@ export function EventCover({ event, children }: { event: Event; children?: React
           <Rect width="100%" height="100%" fill={`url(#${patternId})`} />
         </Svg>
       )}
+      {/* Darkens towards the bottom, where the name and dates sit. */}
+      <View style={[StyleSheet.absoluteFill, styles.bottomShade]} />
       {children}
     </View>
   );
@@ -73,6 +77,11 @@ interface EventBannerProps {
   accessory?: ReactNode;
   /** Shows a back button top left, for a banner on a pushed screen. */
   onBack?: () => void;
+  /**
+   * The page colour under the banner. On a dark page the bottom edge then
+   * fades into it, behind the text, instead of ending in a hard line.
+   */
+  blendInto?: string;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -90,10 +99,15 @@ export function EventBanner({
   topInset = 0,
   accessory,
   onBack,
+  blendInto,
   style,
 }: EventBannerProps) {
-  const { type } = useTheme();
+  const { type, scheme } = useTheme();
   const { width } = useWindowDimensions();
+  // Only into a dark page: fading to white would wash out the white text, so
+  // in light mode the banner keeps a clean edge. Its height is the same
+  // either way, so switching theme doesn't move the page.
+  const blend = scheme === 'dark' ? blendInto : undefined;
   const height = bannerHeight(width, topInset);
   const label = [event.name, eyebrow, meta].filter(Boolean).join('. ');
 
@@ -128,6 +142,15 @@ export function EventBanner({
   return (
     <View style={[styles.hero, style]}>
       <EventCover event={event} />
+      {blend ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.blend,
+            { height: BLEND_HEIGHT, backgroundImage: linearGradient(easedFade(blend, { from: 0, to: 1, start: 0, end: 100, unit: '%', steps: 32 })) },
+          ]}
+        />
+      ) : null}
       {onPress ? (
         <Pressable
           onPress={onPress}
@@ -178,6 +201,7 @@ export function EventCard({ event, meta, selected, badge, onPress, accessibility
       rippleAlpha={0.18}
       rippleForeground
       pressedOpacity={0.8}
+      pressScale={0.98}
       style={[styles.card, { borderRadius: radii.container }]}
       contentStyle={styles.cardContent}
       accessibilityRole="button"
@@ -204,7 +228,11 @@ const styles = StyleSheet.create({
   hero: { overflow: 'hidden' },
   // Text pinned to the bottom, so the photo shows above it.
   heroContent: { paddingHorizontal: 16, paddingBottom: 16, justifyContent: 'flex-end' },
-  photoScrim: { backgroundColor: withAlpha(overlayTokens.ink, 0.45) },
+  photoScrim: { backgroundColor: withAlpha(overlayTokens.ink, 0.3) },
+  bottomShade: {
+    backgroundImage: linearGradient(easedFade(overlayTokens.ink, { from: 0, to: 0.6, start: 35, end: 100, unit: '%' })),
+  },
+  blend: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   onBanner: { color: ON_BANNER },
   eyebrow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },

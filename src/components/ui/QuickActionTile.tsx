@@ -3,11 +3,16 @@ import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-na
 import { useTheme, type TintName } from '../../theme';
 import { Icon, type IconName } from './Icon';
 import { PressableSurface } from './PressableSurface';
+import { FadeIn, SkeletonLine } from './Loading';
+
+/** A tile sub-label that hasn't loaded yet: shows a placeholder bar. */
+export const QUICK_ACTION_LOADING: unique symbol = Symbol('loading');
 
 export interface QuickActionTileProps {
   icon: IconName;
   label: string;
-  subLabel?: string;
+  /** A line under the label, or `QUICK_ACTION_LOADING` for a placeholder while it loads. */
+  subLabel?: string | typeof QUICK_ACTION_LOADING;
   tint?: TintName;
   onPress?: () => void;
   disabled?: boolean;
@@ -35,13 +40,16 @@ export function QuickActionTile({
       onPress={onPress}
       disabled={disabled || !onPress}
       accessibilityRole="button"
-      accessibilityLabel={subLabel ? `${label}, ${subLabel}` : label}
+      accessibilityLabel={
+        subLabel === QUICK_ACTION_LOADING ? `${label}, loading` : subLabel ? `${label}, ${subLabel}` : label
+      }
       accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled }}
       rippleColor={tokens.text}
+      pressScale={0.97}
       style={[
         styles.tile,
-        { borderColor: tokens.div2, borderRadius: radii.container, backgroundColor: tokens.bg },
+        { borderColor: tokens.cardBorder, borderRadius: radii.container, backgroundColor: tokens.card },
         disabled && styles.disabled,
         style,
       ]}
@@ -54,11 +62,15 @@ export function QuickActionTile({
       <Text style={[type.label, styles.center, { color: tokens.text }]} numberOfLines={2}>
         {label}
       </Text>
-      {subLabel ? (
-        <Text style={[type.body, styles.center, { color: tokens.text2 }]} numberOfLines={1}>
-          {subLabel}
-        </Text>
-      ) : null}
+      {subLabel === undefined ? null : subLabel === QUICK_ACTION_LOADING ? (
+        <SkeletonLine width="60%" />
+      ) : (
+        <FadeIn>
+          <Text style={[type.body, styles.center, { color: tokens.text2 }]} numberOfLines={1}>
+            {subLabel}
+          </Text>
+        </FadeIn>
+      )}
     </PressableSurface>
   );
 }

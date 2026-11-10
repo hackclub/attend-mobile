@@ -12,13 +12,18 @@ export interface ContainerProps {
   flush?: boolean;
   /** Rule under the header (console .cs-container-header-divided). */
   headerDivided?: boolean;
+  /**
+   * The card a screen leads with: a stronger surface, no border and a larger
+   * title. One per screen, so the rest read as secondary.
+   */
+  prominent?: boolean;
   children?: ReactNode;
   style?: StyleProp<ViewStyle>;
   bodyStyle?: StyleProp<ViewStyle>;
   testID?: string;
 }
 
-/** Console container (.cs-container): bordered card, radius 16. */
+/** Console container (.cs-container): a card, radius 16. */
 export function Container({
   title,
   description,
@@ -26,6 +31,7 @@ export function Container({
   footer,
   flush = false,
   headerDivided = false,
+  prominent = false,
   children,
   style,
   bodyStyle,
@@ -38,7 +44,12 @@ export function Container({
     <View
       style={[
         styles.container,
-        { backgroundColor: tokens.bg, borderColor: tokens.box, borderRadius: radii.container },
+        {
+          backgroundColor: prominent ? tokens.raised : tokens.card,
+          // The border stays (as the surface colour) so a prominent card is the same size.
+          borderColor: prominent ? tokens.raised : tokens.cardBorder,
+          borderRadius: radii.container,
+        },
         style,
       ]}
       testID={testID}
@@ -52,7 +63,7 @@ export function Container({
         >
           <View style={styles.headerText}>
             {title ? (
-              <Text style={[type.h2, { color: tokens.textH }]} accessibilityRole="header">
+              <Text style={[type.h2, prominent && styles.prominentTitle, { color: tokens.textH }]} accessibilityRole="header">
                 {title}
               </Text>
             ) : null}
@@ -98,6 +109,8 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   headerText: { flex: 1, minWidth: 0 },
+  // DESIGN.md's title step.
+  prominentTitle: { fontSize: 21, lineHeight: 26 },
   description: { marginTop: 2 },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   body: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 20 },

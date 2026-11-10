@@ -3,7 +3,7 @@ import { Animated, StyleSheet, type NativeScrollEvent, type NativeSyntheticEvent
 import { setStatusBarStyle } from 'expo-status-bar';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme, withAlpha } from '../theme';
+import { easedFade, linearGradient, useTheme, withAlpha } from '../theme';
 import { useReduceMotion } from './useReduceMotion';
 
 export interface BannerStatusBar {
@@ -81,21 +81,12 @@ const FADE_STEPS = 24;
 /** How long the scrim takes to fade in or out, in ms. */
 const SCRIM_DURATION = 200;
 
-/**
- * Strongest at the top, then a cosine ease to the page colour at no opacity (not
- * `transparent`, which would fade through grey), so there's no visible edge
- * where the fade starts or ends.
- */
+/** Strongest at the top, then eased out to nothing. */
 function scrimGradient(color: string, solid: number, height: number): string {
-  const peak = withAlpha(color, PEAK_ALPHA);
-  const stops = [`${peak} 0px`, `${peak} ${solid}px`];
-  for (let i = 1; i <= FADE_STEPS; i++) {
-    const t = i / FADE_STEPS;
-    const alpha = (PEAK_ALPHA * (1 + Math.cos(Math.PI * t))) / 2;
-    const at = solid + (height - solid) * t;
-    stops.push(`${withAlpha(color, alpha)} ${at.toFixed(1)}px`);
-  }
-  return `linear-gradient(to bottom, ${stops.join(', ')})`;
+  return linearGradient([
+    `${withAlpha(color, PEAK_ALPHA)} 0px`,
+    ...easedFade(color, { from: PEAK_ALPHA, to: 0, start: solid, end: height, steps: FADE_STEPS }),
+  ]);
 }
 
 const styles = StyleSheet.create({
