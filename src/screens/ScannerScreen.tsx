@@ -291,7 +291,6 @@ export function ScannerScreen() {
     {
       key: 'power-mode',
       title: 'Power mode',
-      subtitle: 'Prevents auto-lock and dims the screen after 30 seconds of inactivity',
       checked: isPowerModeEnabled,
       onSelect: () => {
         recordScannerActivity();
@@ -301,7 +300,6 @@ export function ScannerScreen() {
     {
       key: 'kiosk',
       title: 'Kiosk mode',
-      subtitle: canScan ? 'Self-serve check-in' : 'Choose a context first',
       iosIcon: 'lock',
       disabled: !canScan,
       onSelect: () => {
@@ -532,7 +530,8 @@ const styles = StyleSheet.create({
   centerText: { textAlign: 'center' },
   stateIcon: { width: 56, height: 56, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   stateMessage: { maxWidth: 360 },
-  stateAction: { marginTop: 16 },
+  // Buttons sit at the start of their row by default; this one is centred.
+  stateAction: { marginTop: 16, alignSelf: 'center' },
   onCamera: { color: overlayTokens.on },
   onCameraMuted: { color: overlayTokens.onMuted },
   scanStage: { flex: 1, minHeight: 150, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, paddingVertical: 12 },

@@ -101,11 +101,6 @@ export function ActionMenu({
                 <DropdownMenuItem.Text>
                   <ComposeText>{action.title}</ComposeText>
                 </DropdownMenuItem.Text>
-                {action.subtitle ? (
-                  <DropdownMenuItem.SupportingText>
-                    <ComposeText>{action.subtitle}</ComposeText>
-                  </DropdownMenuItem.SupportingText>
-                ) : null}
                 {action.checked ? (
                   <DropdownMenuItem.TrailingIcon>
                     <ComposeIcon source={CHECK_ICON} size={24} tint={tokens.accent} />

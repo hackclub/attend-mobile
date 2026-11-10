@@ -1,6 +1,6 @@
 import React, { type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Button, Host, Menu, Rectangle, Section, Text, Toggle } from '@expo/ui/swift-ui';
+import { Button, Host, Menu, Rectangle, Section, Toggle } from '@expo/ui/swift-ui';
 import {
   accessibilityLabel as accessibilityLabel_,
   disabled,
@@ -12,8 +12,6 @@ import { Icon } from './Icon';
 export interface MenuAction {
   key: string;
   title: string;
-  /** A second line (iOS shows it under the title; Android drops it). */
-  subtitle?: string;
   onSelect: () => void;
   destructive?: boolean;
   disabled?: boolean;
@@ -93,22 +91,15 @@ const HIT_AREA_ALPHA = 0.011;
 
 function menuItem(action: MenuAction) {
   const modifiers = action.disabled ? [disabled(true)] : undefined;
-  // Two Texts make a title with a subtitle under it in a UIMenu.
-  const label = action.subtitle ? undefined : action.title;
-  const lines = action.subtitle
-    ? [<Text key="title">{action.title}</Text>, <Text key="subtitle">{action.subtitle}</Text>]
-    : undefined;
   if (action.checked !== undefined) {
     return (
       <Toggle
         key={action.key}
         isOn={action.checked}
         onIsOnChange={() => action.onSelect()}
-        label={label}
+        label={action.title}
         modifiers={modifiers}
-      >
-        {lines}
-      </Toggle>
+      />
     );
   }
   return (
@@ -116,13 +107,11 @@ function menuItem(action: MenuAction) {
       key={action.key}
       onPress={action.onSelect}
       role={action.destructive ? 'destructive' : undefined}
-      label={label}
+      label={action.title}
       // The kit's icon names aren't typed as SF Symbols, so the type is loosened here.
-      systemImage={label && action.iosIcon ? (action.iosIcon as never) : undefined}
+      systemImage={action.iosIcon as never}
       modifiers={modifiers}
-    >
-      {lines}
-    </Button>
+    />
   );
 }
 

@@ -297,7 +297,6 @@ export function SearchScreen() {
             savedViews={savedViews.map(view => ({
               key: view.id,
               title: view.name,
-              subtitle: `${viewCounts[view.id] ?? 0} participants`,
               checked: activeViewId === view.id,
               onSelect: () => applyView(view),
             }))}
