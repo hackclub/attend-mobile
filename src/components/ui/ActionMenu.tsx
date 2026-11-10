@@ -1,13 +1,9 @@
-import React, { type ReactNode } from 'react';
+import React, { useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Button, Host, Menu, Rectangle, Section, Toggle } from '@expo/ui/swift-ui';
-import {
-  accessibilityLabel as accessibilityLabel_,
-  disabled,
-  foregroundStyle,
-} from '@expo/ui/swift-ui/modifiers';
-import { useTheme, withAlpha } from '../../theme';
+import { MenuView } from '@react-native-menu/menu';
+import { darkTokens, lightTokens, useTheme } from '../../theme';
 import { Icon } from './Icon';
+import { IOS_PRESSED_OPACITY } from './pressFeedback';
 
 export interface MenuAction {
   key: string;
@@ -45,73 +41,55 @@ export interface ActionMenuProps {
    * select field (Android, where the menu is hosted in Compose).
    */
   stretch?: boolean;
+  /**
+   * The scheme the menu is drawn in (iOS), e.g. `dark` over the camera,
+   * which is dark whatever the theme. Defaults to the app's theme.
+   */
+  colorScheme?: 'light' | 'dark';
 }
 
 /**
- * A native drop-down menu for a screen's ⋯ actions or a short picker: a
- * SwiftUI Menu (UIMenu) on iOS, via @expo/ui (a Material 3 Compose menu on
- * Android: ActionMenu.android.tsx).
+ * A native drop-down menu for a screen's ⋯ actions or a short picker: UIMenu
+ * on iOS via @react-native-menu/menu, which wraps the trigger and takes its
+ * taps (a Material 3 Compose menu on Android: ActionMenu.android.tsx).
  */
-export function ActionMenu({
-  actions,
-  accessibilityLabel,
-  children,
-  title,
-}: ActionMenuProps) {
-  const { tokens } = useTheme();
-  const items = actions.map(menuItem);
+export function ActionMenu({ actions, accessibilityLabel, children, title, colorScheme }: ActionMenuProps) {
+  const { scheme } = useTheme();
+  // The native menu takes the touch itself, so a Pressable inside never sees
+  // a press. The trigger dims while its menu is open instead.
+  const [open, setOpen] = useState(false);
+  const byKey = new Map(actions.map((action) => [action.key, action]));
+  const menuScheme = colorScheme ?? scheme;
+  // The library's new-architecture bridge always sends an icon colour, 0
+  // (clear) when none is given, so an icon needs an explicit one to show:
+  // the menu scheme's text colour, or its error colour on a destructive item.
+  const menuTokens = menuScheme === 'dark' ? darkTokens : lightTokens;
   return (
-    <View>
-      {/* React Native draws the trigger; VoiceOver reads the menu button instead. */}
-      <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+    <MenuView
+      title={title}
+      themeVariant={menuScheme}
+      actions={actions.map((action) => ({
+        id: action.key,
+        title: action.title,
+        image: action.iosIcon,
+        imageColor: action.destructive ? menuTokens.error : menuTokens.textH,
+        state: action.checked === undefined ? undefined : action.checked ? 'on' : 'off',
+        attributes: { destructive: action.destructive, disabled: action.disabled },
+      }))}
+      onPressAction={({ nativeEvent }) => byKey.get(nativeEvent.event)?.onSelect()}
+      onOpenMenu={() => setOpen(true)}
+      onCloseMenu={() => setOpen(false)}
+    >
+      <View
+        accessible
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        accessibilityState={{ expanded: open }}
+        style={open ? styles.highlighted : undefined}
+      >
         {children ?? <MoreGlyph />}
       </View>
-      {/*
-        The menu button lies over the trigger, the same size, and takes the
-        tap. A trigger hosted inside the SwiftUI label would get the touch
-        itself, and the menu would never open.
-      */}
-      <Host style={StyleSheet.absoluteFill}>
-        <Menu
-          label={<Rectangle modifiers={[foregroundStyle(withAlpha(tokens.text, HIT_AREA_ALPHA))]} />}
-          modifiers={[accessibilityLabel_(accessibilityLabel)]}
-        >
-          {title ? <Section title={title}>{items}</Section> : items}
-        </Menu>
-      </Host>
-    </View>
-  );
-}
-
-/**
- * The menu button's fill. SwiftUI only hit-tests what it draws, so the area
- * can't be fully clear; this is invisible over any trigger.
- */
-const HIT_AREA_ALPHA = 0.011;
-
-function menuItem(action: MenuAction) {
-  const modifiers = action.disabled ? [disabled(true)] : undefined;
-  if (action.checked !== undefined) {
-    return (
-      <Toggle
-        key={action.key}
-        isOn={action.checked}
-        onIsOnChange={() => action.onSelect()}
-        label={action.title}
-        modifiers={modifiers}
-      />
-    );
-  }
-  return (
-    <Button
-      key={action.key}
-      onPress={action.onSelect}
-      role={action.destructive ? 'destructive' : undefined}
-      label={action.title}
-      // The kit's icon names aren't typed as SF Symbols, so the type is loosened here.
-      systemImage={action.iosIcon as never}
-      modifiers={modifiers}
-    />
+    </MenuView>
   );
 }
 
@@ -127,4 +105,5 @@ function MoreGlyph() {
 
 const styles = StyleSheet.create({
   more: { alignItems: 'center', justifyContent: 'center' },
+  highlighted: { opacity: IOS_PRESSED_OPACITY },
 });

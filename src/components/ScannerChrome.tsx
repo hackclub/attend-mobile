@@ -70,6 +70,8 @@ export function ScannerDock({
         onPress={onTorch}
       />
       <ActionMenu
+        // The camera is dark whatever the theme.
+        colorScheme="dark"
         feedbackColor={overlayTokens.on}
         accessibilityLabel="More: Power mode, Kiosk mode"
         actions={menuActions}
