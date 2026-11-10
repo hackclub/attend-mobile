@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { EventSwitcherBody } from '../../components/EventSwitcher';
 import { Sheet, SHEET_INSET } from '../../components/ui';
@@ -7,6 +7,7 @@ import { useApp } from '../../context/AppContext';
 import { useSwitcherEvents } from '../../hooks/useSwitcherEvents';
 import { eventHomeState, passHomeState } from '../../navigation/routes';
 import { resetRoot } from '../../navigation/rootNavigation';
+import type { PartialState } from '../../navigation/routes';
 import { switchEventSheet, type SwitchEventSheetData } from '../../navigation/sheetData';
 import { useCloseSheet, useLeaveSheet } from '../../navigation/sheetPresenter';
 import { switcherPick } from '../../services/eventSwitcher';
@@ -28,27 +29,41 @@ export function SwitchEventSheet() {
 function LiveSwitcher({ currentTicketId }: SwitchEventSheetData) {
   const navigation = useNavigation();
   const leave = useLeaveSheet();
-  const { state, selectEvent, prefetchEvent } = useApp();
+  const { state, selectEvent } = useApp();
   const { groups, isLoading, loadFailed, refresh } = useSwitcherEvents();
 
   const close = useCloseSheet();
   const current = { eventId: state.currentEvent?.id, ticketId: currentTicketId };
 
-  // The current entry only closes the switcher. Anything else switches once
-  // it has gone: resetting under a closing sheet left the app not taking
-  // touches.
+  // Goes to `home` with the switcher sliding away over it, not after it.
+  // iOS: the screens under the switcher change while it is still open (it is
+  // kept on top through the reset), then it closes. Resetting while it was
+  // closing left the app not taking touches. Android: its drawer is a window
+  // outside the navigators, so the reset runs as it starts to close.
+  const switchTo = (home: PartialState, before?: () => void) => {
+    if (Platform.OS === 'ios') {
+      before?.();
+      resetRoot(navigation, home, { keepSheet: true });
+      // Once the new screens are in under it.
+      requestAnimationFrame(() => requestAnimationFrame(close));
+      return;
+    }
+    leave(() => {
+      before?.();
+      resetRoot(navigation, home);
+    }, { whileClosing: true });
+  };
+
+  // The current entry only closes the switcher.
   const pickEvent = (event: Event) => {
     if (switcherPick({ kind: 'event', id: event.id }, current) === 'close') {
       close();
       return;
     }
-    // The drawer has to finish closing before the switch (see useLeaveSheet);
-    // the event's people load meanwhile.
-    prefetchEvent(event.id);
-    leave(() => {
-      void selectEvent(event);
-      resetRoot(navigation, eventHomeState());
-    });
+    // The event changes with the reset, in one render, so no screen left
+    // from the last event sees the new one. The Overview stays mounted
+    // through it (keepRootKeys) and just shows the new event.
+    switchTo(eventHomeState(), () => void selectEvent(event));
   };
 
   const pickTicket = (ticket: Ticket) => {
@@ -56,7 +71,7 @@ function LiveSwitcher({ currentTicketId }: SwitchEventSheetData) {
       close();
       return;
     }
-    leave(() => resetRoot(navigation, passHomeState(ticket)));
+    switchTo(passHomeState(ticket));
   };
 
   return (

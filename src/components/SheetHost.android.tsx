@@ -53,9 +53,13 @@ function ComposeSheet({ sheet }: { sheet: OpenSheet }) {
 
   const presented = useMemo<PresentedSheet>(
     () => ({
-      close: (then) => {
+      close: (then, options) => {
         if (closing.current) return;
         closing.current = true;
+        if (options?.whileClosing) {
+          then?.();
+          then = undefined;
+        }
         // Removed (and `then` run) once, when the hide animation settles,
         // or after HIDE_FALLBACK_MS if it never does: a sheet left in the
         // stack keeps its window over the app, taking every touch.

@@ -20,8 +20,22 @@ export const COMPOSE_SHEETS = Platform.OS === 'android';
 
 /** What SheetHost gives each drawer it shows (Android). */
 export interface PresentedSheet {
-  /** Animates the drawer away, then unmounts it and calls `then`. */
-  close: (then?: () => void) => void;
+  /**
+   * Animates the drawer away, then unmounts it and calls `then`; or, with
+   * `whileClosing`, calls `then` straight away as it starts to go.
+   */
+  close: (then?: () => void, options?: LeaveSheetOptions) => void;
+}
+
+export interface LeaveSheetOptions {
+  /**
+   * Android: run `go` as the drawer starts to close rather than once it has
+   * gone. Its sheet is a window of its own, outside the navigators, so the
+   * screens under it can change while it animates away. iOS always waits:
+   * there the drawer is a route on the root stack. Only for a `go` the
+   * drawer's own content survives, e.g. not signing out.
+   */
+  whileClosing?: boolean;
 }
 
 export const PresentedSheetContext = createContext<PresentedSheet | null>(null);
@@ -55,13 +69,13 @@ export function useCloseSheet(): () => void {
  * touches). Android: once the Material sheet has animated away and
  * unmounted. iOS: once the form sheet's route has finished closing.
  */
-export function useLeaveSheet(): (go: () => void) => void {
+export function useLeaveSheet(): (go: () => void, options?: LeaveSheetOptions) => void {
   const presented = useContext(PresentedSheetContext);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   return useCallback(
-    (go: () => void) => {
+    (go: () => void, options?: LeaveSheetOptions) => {
       if (presented) {
-        presented.close(go);
+        presented.close(go, options);
         return;
       }
       let done = false;

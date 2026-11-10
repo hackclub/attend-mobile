@@ -59,22 +59,52 @@ export function passHomeState(ticket: Ticket): PartialState {
   };
 }
 
+interface CurrentState {
+  routes: readonly CurrentRoute[];
+}
+
+interface CurrentRoute {
+  name: string;
+  key: string;
+  state?: CurrentState | object;
+}
+
 /**
- * `target` with each root route keeping the key of the same-named route in
- * `current`, so a reset that keeps (say) the tabs keeps that screen mounted
- * and only replaces what's inside it, while what's presented over it (the
- * switcher) is dismissed.
+ * `target` with routes keeping the keys of the matching routes in `current`,
+ * so a reset keeps those screens mounted and only replaces what's around and
+ * inside them, while what's presented over them (the switcher) is dismissed.
+ *
+ * A root route matches the same-named route in `current`. Further down, a
+ * route matches the one at the same position in the same-named parent, if
+ * it has the same name and the target gives it no params: so switching
+ * events keeps the tabs, the Overview tab and its EventHome mounted (it just
+ * re-renders for the new event), while a screen with params, which would
+ * otherwise keep the last event's state, is mounted afresh.
  */
-export function keepRootKeys<S extends PartialState>(
-  target: S,
-  current: { routes: readonly { name: string; key: string }[] } | undefined
-): S {
+export function keepRootKeys<S extends PartialState>(target: S, current: CurrentState | undefined): S {
   if (!current) return target;
   return {
     ...target,
-    routes: target.routes.map((route) => {
-      const existing = current.routes.find((candidate) => candidate.name === route.name);
-      return existing ? { ...route, key: existing.key } : route;
-    }),
+    routes: target.routes.map((route) =>
+      keepRouteKey(route, current.routes.find((candidate) => candidate.name === route.name))
+    ),
   };
+}
+
+function keepRouteKey(route: PartialRoute, existing: CurrentRoute | undefined): PartialRoute {
+  if (!existing) return route;
+  const kept: PartialRoute & { key: string } = { ...route, key: existing.key };
+  const nested = existing.state && 'routes' in existing.state ? existing.state : undefined;
+  if (route.state && nested) {
+    kept.state = {
+      ...route.state,
+      routes: route.state.routes.map((child, index) => {
+        const match = nested.routes[index];
+        return match && match.name === child.name && child.params === undefined
+          ? keepRouteKey(child, match)
+          : child;
+      }),
+    };
+  }
+  return kept;
 }

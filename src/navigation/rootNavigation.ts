@@ -1,9 +1,12 @@
 import { CommonActions } from '@react-navigation/native';
 import { ROOT_NAVIGATOR, keepRootKeys, type PartialState } from './routes';
+import { isSheetRoute } from './sheets';
 
 interface NavigationLike {
   getParent: (id?: string) => unknown;
-  getState: () => { routes: readonly { name: string; key: string }[]; routeNames?: readonly string[] } | undefined;
+  getState: () =>
+    | { routes: readonly { name: string; key: string; params?: object }[]; routeNames?: readonly string[] }
+    | undefined;
   dispatch: (action: never) => void;
 }
 
@@ -17,8 +20,22 @@ export function rootNavigation(navigation: object): NavigationLike {
   return (nav.getParent(ROOT_NAVIGATOR) as NavigationLike | undefined) ?? nav;
 }
 
-/** Resets the root stack to `state`, keeping root screens that stay mounted. */
-export function resetRoot(navigation: object, state: PartialState): void {
+/**
+ * Resets the root stack to `state`, keeping root screens that stay mounted.
+ * With `keepSheet`, the drawer on top of the root stays open over the new
+ * state, to be closed after (iOS: so the screens change while it is still
+ * up, not while it is closing).
+ */
+export function resetRoot(navigation: object, state: PartialState, options?: { keepSheet?: boolean }): void {
   const root = rootNavigation(navigation);
-  root.dispatch(CommonActions.reset(keepRootKeys(state, root.getState())) as never);
+  const current = root.getState();
+  let target = state;
+  const top = current?.routes[current.routes.length - 1];
+  if (options?.keepSheet && top && isSheetRoute(top.name)) {
+    target = {
+      index: state.routes.length,
+      routes: [...state.routes, { name: top.name, params: top.params }],
+    };
+  }
+  root.dispatch(CommonActions.reset(keepRootKeys(target, current)) as never);
 }

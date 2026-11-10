@@ -59,4 +59,56 @@ describe('keepRootKeys', () => {
     expect(keepRootKeys(passHomeState({ id: 't1' } as Ticket), current).routes[0]).not.toHaveProperty('key');
     expect(keepRootKeys(eventHomeState(), undefined)).toEqual(eventHomeState());
   });
+
+  it('keeps the tabs, the Overview tab and its EventHome mounted', () => {
+    const current = {
+      routes: [
+        {
+          name: 'Main',
+          key: 'main-1',
+          state: {
+            routes: [
+              {
+                name: 'Overview',
+                key: 'overview-1',
+                state: { routes: [{ name: 'EventHome', key: 'home-1' }, { name: 'IncidentList', key: 'incidents-1' }] },
+              },
+              { name: 'Scanner', key: 'scanner-1' },
+            ],
+          },
+        },
+        { name: 'SwitchEventSheet', key: 'switch-1' },
+      ],
+    };
+    const main = keepRootKeys(eventHomeState(), current).routes[0] as { key?: string; state?: { routes: unknown[] } };
+    expect(main.key).toBe('main-1');
+    const overview = main.state!.routes[0] as { key?: string; state?: { routes: unknown[] } };
+    expect(overview.key).toBe('overview-1');
+    // The pushed screen is dropped; only EventHome stays.
+    expect(overview.state!.routes).toEqual([{ name: 'EventHome', key: 'home-1' }]);
+    // Tabs the target doesn't list are left to the navigator.
+    expect(main.state!.routes).toHaveLength(1);
+  });
+
+  it('mounts a screen with params afresh', () => {
+    const current = {
+      routes: [
+        {
+          name: 'Main',
+          key: 'main-1',
+          state: {
+            routes: [
+              {
+                name: 'Overview',
+                key: 'overview-1',
+                state: { routes: [{ name: 'EventHome', key: 'home-1' }, { name: 'IncidentForm', key: 'form-1' }] },
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const main = keepRootKeys(eventHomeState('IncidentForm', {}), current).routes[0] as { state?: { routes: { state?: { routes: object[] } }[] } };
+    expect(main.state!.routes[0].state!.routes[1]).not.toHaveProperty('key');
+  });
 });
