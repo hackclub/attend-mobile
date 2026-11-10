@@ -28,7 +28,7 @@ export function SwitchEventSheet() {
 function LiveSwitcher({ currentTicketId }: SwitchEventSheetData) {
   const navigation = useNavigation();
   const leave = useLeaveSheet();
-  const { state, selectEvent } = useApp();
+  const { state, selectEvent, prefetchEvent } = useApp();
   const { groups, isLoading, loadFailed, refresh } = useSwitcherEvents();
 
   const close = useCloseSheet();
@@ -42,6 +42,9 @@ function LiveSwitcher({ currentTicketId }: SwitchEventSheetData) {
       close();
       return;
     }
+    // The drawer has to finish closing before the switch (see useLeaveSheet);
+    // the event's people load meanwhile.
+    prefetchEvent(event.id);
     leave(() => {
       void selectEvent(event);
       resetRoot(navigation, eventHomeState());

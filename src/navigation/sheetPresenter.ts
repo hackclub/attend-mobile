@@ -80,16 +80,21 @@ export function useLeaveSheet(): (go: () => void) => void {
         finish();
         return;
       }
-      // In case the closing transition's event never arrives.
-      timer = setTimeout(finish, LEAVE_SHEET_FALLBACK_MS);
+      // A sheet closed from JS is gone from the navigation state at once, so
+      // its closing transitionEnd never arrives: this timer is what normally
+      // runs `go`, just after the sheet has animated away.
+      timer = setTimeout(finish, SHEET_DISMISS_MS);
       navigation.goBack();
     },
     [navigation, presented]
   );
 }
 
-/** A form sheet's dismissal is well under this. */
-const LEAVE_SHEET_FALLBACK_MS = 800;
+/**
+ * How long until a form sheet closed from JS has animated away. Measured at
+ * about 200 ms on iOS 26; the margin keeps `go` clear of the dismissal.
+ */
+const SHEET_DISMISS_MS = 350;
 
 /**
  * Whether this is inside a Material bottom sheet (Android), which draws its

@@ -243,6 +243,11 @@ interface AppContextValue {
   devLogin: (identifier: { userId: string } | { email: string }) => Promise<boolean>;
   logout: () => Promise<void>;
   selectEvent: (event: Event) => Promise<void>;
+  /**
+   * Starts loading an event's cached people before it's selected, e.g. when
+   * it's picked in the switcher while the drawer is still closing.
+   */
+  prefetchEvent: (eventId: string) => void;
   setEvents: (events: Event[]) => void;
   refreshParticipants: () => Promise<void>;
   updateParticipant: (participant: ParticipantUpdate) => void;
@@ -512,13 +517,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const prefetchEvent = useCallback((eventId: string) => {
+    void syncService.getCachedParticipants(eventId).catch(() => {});
+  }, []);
+
   const selectEvent = useCallback(async (event: Event): Promise<void> => {
     const generation = ++eventSelectionGenerationRef.current;
     dispatch({ type: 'SET_CURRENT_EVENT', payload: event });
-    const [cached] = await Promise.all([
-      syncService.getCachedParticipants(event.id),
-      syncService.setCurrentEvent(event),
-    ]);
+    // Persisting the choice can queue behind other cache writes, so the
+    // cached people don't wait for it.
+    void syncService.setCurrentEvent(event).catch(() => {});
+    const cached = await syncService.getCachedParticipants(event.id);
     if (eventSelectionGenerationRef.current !== generation) return;
     dispatch({ type: 'SET_PARTICIPANTS', payload: cached });
 
@@ -632,6 +641,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     devLogin,
     logout,
     selectEvent,
+    prefetchEvent,
     setEvents,
     refreshParticipants,
     updateParticipant,
@@ -646,6 +656,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     devLogin,
     logout,
     selectEvent,
+    prefetchEvent,
     setEvents,
     refreshParticipants,
     updateParticipant,
