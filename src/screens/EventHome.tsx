@@ -389,17 +389,15 @@ function Overview({
           />
         }
       >
-        <View onLayout={bannerStatusBar.onBannerLayout}>
-          <EventBanner
-            event={event}
-            eyebrow={banner.eyebrow}
-            eyebrowIcon={banner.eyebrowIcon}
-            meta={banner.meta}
-            topInset={insets.top + topTabInset}
-            onPress={canSwitch ? openSwitcher : undefined}
-            accessory={<AccountButton onBanner />}
-          />
-        </View>
+        <EventBanner
+          event={event}
+          eyebrow={banner.eyebrow}
+          eyebrowIcon={banner.eyebrowIcon}
+          meta={banner.meta}
+          topInset={insets.top + topTabInset}
+          onPress={canSwitch ? openSwitcher : undefined}
+          accessory={<AccountButton onBanner />}
+        />
 
         <View
           style={[

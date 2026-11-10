@@ -188,18 +188,16 @@ export function TicketDetailScreen() {
         onScroll={bannerStatusBar.onScroll}
         scrollEventThrottle={32}
       >
-        <View onLayout={bannerStatusBar.onBannerLayout}>
-          <EventBanner
-            event={event}
-            eyebrow={banner.eyebrow}
-            eyebrowIcon={banner.eyebrowIcon}
-            meta={banner.meta}
-            topInset={insets.top}
-            onBack={canGoBack ? () => navigation.goBack() : undefined}
-            onPress={canSwitch ? openSwitcher : undefined}
-            accessory={canGoBack ? undefined : <AccountButton onBanner />}
-          />
-        </View>
+        <EventBanner
+          event={event}
+          eyebrow={banner.eyebrow}
+          eyebrowIcon={banner.eyebrowIcon}
+          meta={banner.meta}
+          topInset={insets.top}
+          onBack={canGoBack ? () => navigation.goBack() : undefined}
+          onPress={canSwitch ? openSwitcher : undefined}
+          accessory={canGoBack ? undefined : <AccountButton onBanner />}
+        />
 
         <View style={[{ padding: spacing.lg, gap: spacing.lg }]}>
           <TicketPass ticket={ticket} pageColor={tokens.shaded} />
