@@ -1,9 +1,9 @@
 import React, { useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
-import * as DropdownMenu from 'zeego/dropdown-menu';
-import { useTheme, withAlpha } from '../../theme';
+import { MenuView } from '@react-native-menu/menu';
+import { useTheme } from '../../theme';
 import { Icon } from './Icon';
-import { IOS_PRESSED_OPACITY, isAndroid, STATE_LAYER_ALPHA } from './pressFeedback';
+import { IOS_PRESSED_OPACITY } from './pressFeedback';
 
 export interface MenuAction {
   key: string;
@@ -47,83 +47,41 @@ export interface ActionMenuProps {
 
 /**
  * A native drop-down menu for a screen's ⋯ actions or a short picker: UIMenu
- * on iOS (a Material 3 Compose menu on Android: ActionMenu.android.tsx).
+ * on iOS via @react-native-menu/menu (a Material 3 Compose menu on Android:
+ * ActionMenu.android.tsx).
  */
-export function ActionMenu({
-  actions,
-  accessibilityLabel,
-  children,
-  title,
-  feedbackColor,
-  feedbackRadius,
-}: ActionMenuProps) {
-  const { tokens, radii } = useTheme();
-  // The native menu takes the touch itself (Android's MenuView intercepts
-  // every touch; iOS's menu button tracks it), so a Pressable inside never
-  // sees a press. The trigger shows it's pressed while its menu opens and
-  // stays open instead: a state layer on Android, the dimmed highlight on iOS.
+export function ActionMenu({ actions, accessibilityLabel, children, title }: ActionMenuProps) {
+  const { scheme } = useTheme();
+  // The native menu takes the touch itself, so a Pressable inside never sees
+  // a press. The trigger dims while its menu is open instead.
   const [open, setOpen] = useState(false);
-  // iOS reports the menu about to open, before its animation; zeego's
-  // dropdown Root type leaves the prop out, though its iOS menu reads it.
-  const willChange = { onOpenWillChange: setOpen } as object;
+  const byKey = new Map(actions.map((action) => [action.key, action]));
   return (
-    <DropdownMenu.Root onOpenChange={setOpen} {...willChange}>
-      <DropdownMenu.Trigger>
-        <View
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel={accessibilityLabel}
-          accessibilityState={{ expanded: open }}
-          style={open && !isAndroid ? styles.highlighted : undefined}
-        >
-          {children ?? <MoreGlyph />}
-          {open && isAndroid ? (
-            <View
-              pointerEvents="none"
-              style={[
-                styles.stateLayer,
-                {
-                  backgroundColor: withAlpha(feedbackColor ?? tokens.text, STATE_LAYER_ALPHA),
-                  borderRadius: feedbackRadius ?? radii.pill,
-                },
-              ]}
-            />
-          ) : null}
-        </View>
-      </DropdownMenu.Trigger>
-      <DropdownMenu.Content>
-        {title ? <DropdownMenu.Label>{title}</DropdownMenu.Label> : null}
-        {actions.map((action) =>
-          action.checked !== undefined ? (
-            <DropdownMenu.CheckboxItem
-              key={action.key}
-              value={action.checked}
-              onValueChange={() => action.onSelect()}
-              disabled={action.disabled}
-              destructive={action.destructive}
-            >
-              <DropdownMenu.ItemIndicator />
-              <DropdownMenu.ItemTitle>{action.title}</DropdownMenu.ItemTitle>
-              {action.subtitle ? <DropdownMenu.ItemSubtitle>{action.subtitle}</DropdownMenu.ItemSubtitle> : null}
-            </DropdownMenu.CheckboxItem>
-          ) : (
-            <DropdownMenu.Item
-              key={action.key}
-              onSelect={action.onSelect}
-              disabled={action.disabled}
-              destructive={action.destructive}
-            >
-              <DropdownMenu.ItemTitle>{action.title}</DropdownMenu.ItemTitle>
-              {action.subtitle ? <DropdownMenu.ItemSubtitle>{action.subtitle}</DropdownMenu.ItemSubtitle> : null}
-              {action.iosIcon ? (
-                // The kit's icon names aren't SF Symbols, so the type is loosened here.
-                <DropdownMenu.ItemIcon ios={{ name: action.iosIcon as never }} />
-              ) : null}
-            </DropdownMenu.Item>
-          )
-        )}
-      </DropdownMenu.Content>
-    </DropdownMenu.Root>
+    <MenuView
+      title={title}
+      themeVariant={scheme}
+      actions={actions.map((action) => ({
+        id: action.key,
+        title: action.title,
+        subtitle: action.subtitle,
+        image: action.iosIcon,
+        state: action.checked === undefined ? undefined : action.checked ? 'on' : 'off',
+        attributes: { destructive: action.destructive, disabled: action.disabled },
+      }))}
+      onPressAction={({ nativeEvent }) => byKey.get(nativeEvent.event)?.onSelect()}
+      onOpenMenu={() => setOpen(true)}
+      onCloseMenu={() => setOpen(false)}
+    >
+      <View
+        accessible
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        accessibilityState={{ expanded: open }}
+        style={open ? styles.highlighted : undefined}
+      >
+        {children ?? <MoreGlyph />}
+      </View>
+    </MenuView>
   );
 }
 
@@ -140,5 +98,4 @@ function MoreGlyph() {
 const styles = StyleSheet.create({
   more: { alignItems: 'center', justifyContent: 'center' },
   highlighted: { opacity: IOS_PRESSED_OPACITY },
-  stateLayer: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
 });
