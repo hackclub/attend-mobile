@@ -106,9 +106,10 @@ export function useLeaveSheet(): (go: () => void, options?: LeaveSheetOptions) =
 
 /**
  * How long until a form sheet closed from JS has animated away. Measured at
- * about 200 ms on iOS 26; the margin keeps `go` clear of the dismissal.
+ * about 200 ms on iOS 26; the generous margin keeps `go` clear of the
+ * dismissal on a slower or busier device, which matters more than speed.
  */
-const SHEET_DISMISS_MS = 350;
+const SHEET_DISMISS_MS = 500;
 
 /**
  * Whether this is inside a Material bottom sheet (Android), which draws its

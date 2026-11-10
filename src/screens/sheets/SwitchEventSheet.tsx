@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { EventSwitcherBody } from '../../components/EventSwitcher';
 import { Sheet, SHEET_INSET } from '../../components/ui';
@@ -35,19 +35,11 @@ function LiveSwitcher({ currentTicketId }: SwitchEventSheetData) {
   const close = useCloseSheet();
   const current = { eventId: state.currentEvent?.id, ticketId: currentTicketId };
 
-  // Goes to `home` with the switcher sliding away over it, not after it.
-  // iOS: the screens under the switcher change while it is still open (it is
-  // kept on top through the reset), then it closes. Resetting while it was
-  // closing left the app not taking touches. Android: its drawer is a window
-  // outside the navigators, so the reset runs as it starts to close.
+  // Goes to `home` once the switcher has closed on iOS: there it's a route
+  // on the root stack, and resetting while it closed left the app not taking
+  // touches. Android's drawer is a window outside the navigators, so the
+  // reset runs as it starts to close (see useLeaveSheet).
   const switchTo = (home: PartialState, before?: () => void) => {
-    if (Platform.OS === 'ios') {
-      before?.();
-      resetRoot(navigation, home, { keepSheet: true });
-      // Once the new screens are in under it.
-      requestAnimationFrame(() => requestAnimationFrame(close));
-      return;
-    }
     leave(() => {
       before?.();
       resetRoot(navigation, home);
@@ -61,8 +53,7 @@ function LiveSwitcher({ currentTicketId }: SwitchEventSheetData) {
       return;
     }
     // The event changes with the reset, in one render, so no screen left
-    // from the last event sees the new one. The Overview stays mounted
-    // through it (keepRootKeys) and just shows the new event.
+    // from the last event sees the new one.
     switchTo(eventHomeState(), () => void selectEvent(event));
   };
 
