@@ -202,7 +202,7 @@ function KioskSetup({ scanContextId, scanContextName, preview }: KioskSetupSheet
             pins the screen itself when kiosk mode starts. */}
         <Text style={[type.body, styles.center, { color: tokens.text2 }]}>
           {Platform.OS === 'ios'
-            ? 'Tip: Turn on Guided Access (Settings › Accessibility) for a hardware-level lock. Triple-click the side button to lock the iPad to this app.'
+            ? 'Tip: To keep attendees in Attend, turn on Guided Access in Settings › Accessibility, then triple-click the side or Home button to start it.'
             : 'Kiosk mode pins the screen to Attend. Confirm when Android asks; exiting kiosk mode unpins it.'}
         </Text>
 
