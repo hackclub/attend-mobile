@@ -141,6 +141,12 @@ function useNavigationTheme() {
   }, [tokens, isDark]);
 }
 
+// The two homes (an event's tabs, a pass) replace each other when switching
+// events, behind the closing switcher. Android's default transition removed
+// the old one first, flashing the window black before the new one faded in;
+// an instant swap reads as the switcher revealing the new event.
+const HOME_OPTIONS = { animation: 'none' } as const;
+
 // Both native bars draw the app's heroicons (assets/tabs, made by bin/tab-icons):
 // the outline icon at rest and the solid one when selected. The bars tint
 // them with their active and inactive colours.
@@ -333,8 +339,8 @@ function RootNavigator() {
     <Stack.Navigator id={ROOT_NAVIGATOR} screenOptions={{ headerShown: false }}>
       {state.auth.isAuthenticated ? (
         <>
-          {isOrganizer && <Stack.Screen name="Main" component={MainTabs} />}
-          <Stack.Screen name="ParticipantMain" component={PassStackNavigator} />
+          {isOrganizer && <Stack.Screen name="Main" component={MainTabs} options={HOME_OPTIONS} />}
+          <Stack.Screen name="ParticipantMain" component={PassStackNavigator} options={HOME_OPTIONS} />
           {user?.global_admin ? (
             <Stack.Screen
               name="IdCheck"
