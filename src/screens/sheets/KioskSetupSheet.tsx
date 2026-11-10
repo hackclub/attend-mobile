@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, TextInput, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Platform, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { haptics } from '../../services/haptics';
@@ -140,38 +140,45 @@ function KioskSetup({ scanContextId, scanContextName, preview }: KioskSetupSheet
 
         <View style={styles.pinSection}>
           <Text style={[type.label, { color: tokens.text }]}>{step === 'enter' ? 'Enter PIN' : 'Confirm PIN'}</Text>
-          <Pressable
-            onPress={() => inputRef.current?.focus()}
-            style={styles.dotsRow}
-            accessibilityRole="button"
-            accessibilityLabel={`${step === 'enter' ? 'Enter PIN' : 'Confirm PIN'}, ${currentValue.length} of ${PIN_LENGTH} digits`}
-          >
-            {Array.from({ length: PIN_LENGTH }).map((_, i) => {
-              const filled = i < currentValue.length;
-              return (
-                <View
-                  key={i}
-                  style={[
-                    styles.dot,
-                    { borderColor: error ? tokens.error : filled ? tokens.accent : tokens.input },
-                    filled && { backgroundColor: tokens.accent },
-                  ]}
-                />
-              );
-            })}
-          </Pressable>
-          <TextInput
-            ref={inputRef}
-            value={currentValue}
-            onChangeText={setCurrentValue}
-            keyboardType="number-pad"
-            keyboardAppearance={isDark ? 'dark' : 'light'}
-            maxLength={PIN_LENGTH}
-            secureTextEntry
-            style={styles.hiddenInput}
-            caretHidden
-            autoFocus
-          />
+          {/* The real input lies over the dots, transparent, so a tap lands
+              on it and the system opens the keyboard. Focusing a hidden
+              input from JS didn't show the keyboard inside Android's
+              Compose sheet window. */}
+          <View style={styles.dotsRow}>
+            <View
+              style={styles.dots}
+              importantForAccessibility="no-hide-descendants"
+              accessibilityElementsHidden
+            >
+              {Array.from({ length: PIN_LENGTH }).map((_, i) => {
+                const filled = i < currentValue.length;
+                return (
+                  <View
+                    key={i}
+                    style={[
+                      styles.dot,
+                      { borderColor: error ? tokens.error : filled ? tokens.accent : tokens.input },
+                      filled && { backgroundColor: tokens.accent },
+                    ]}
+                  />
+                );
+              })}
+            </View>
+            <TextInput
+              ref={inputRef}
+              value={currentValue}
+              onChangeText={setCurrentValue}
+              keyboardType="number-pad"
+              keyboardAppearance={isDark ? 'dark' : 'light'}
+              maxLength={PIN_LENGTH}
+              secureTextEntry
+              style={styles.pinInput}
+              caretHidden
+              contextMenuHidden
+              autoFocus
+              accessibilityLabel={`${step === 'enter' ? 'Enter PIN' : 'Confirm PIN'}, ${currentValue.length} of ${PIN_LENGTH} digits`}
+            />
+          </View>
           {error ? (
             <Text style={[type.body, { color: tokens.error }]} accessibilityLiveRegion="polite">
               {error}
@@ -254,7 +261,18 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   pinSection: { alignItems: 'center', gap: 16 },
-  dotsRow: { flexDirection: 'row', gap: 16, padding: 8 },
+  dotsRow: { alignSelf: 'flex-start', padding: 8 },
   dot: { width: 18, height: 18, borderRadius: radii.pill, borderWidth: 2 },
-  hiddenInput: { position: 'absolute', width: 1, height: 1, opacity: 0 },
+  dots: { flexDirection: 'row', gap: 16 },
+  // Covers the dots; its text, caret and underline are all invisible.
+  pinInput: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    color: 'transparent',
+    backgroundColor: 'transparent',
+    padding: 0,
+  },
 });
