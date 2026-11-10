@@ -11,7 +11,9 @@ import {
   type TextInputProps,
   type ViewStyle,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
+// eslint-plugin-import's resolver can't follow @expo/ui's package exports; TypeScript and Metro can.
+// eslint-disable-next-line import/no-unresolved
+import DateTimePicker from '@expo/ui/community/datetime-picker';
 import {
   ActionMenu,
   Badge as KitBadge,
