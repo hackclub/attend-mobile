@@ -226,7 +226,8 @@ const styles = StyleSheet.create({
   meta: { marginTop: 2 },
   accessory: { position: 'absolute', right: 16 },
   back: { position: 'absolute', left: 12 },
-  card: { height: 150 },
+  // Clips the cover photo to the card's corners (iOS doesn't clip a Pressable).
+  card: { height: 150, overflow: 'hidden' },
   cardContent: { justifyContent: 'flex-end' },
   selectedMark: {
     position: 'absolute',

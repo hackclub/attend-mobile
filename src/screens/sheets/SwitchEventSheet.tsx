@@ -1,7 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { AccountButton } from '../../components/AccountSheet';
 import { EventSwitcherBody } from '../../components/EventSwitcher';
 import { Sheet, SHEET_INSET } from '../../components/ui';
 import { useApp } from '../../context/AppContext';
@@ -101,11 +100,7 @@ function PreviewSwitcher({ preview }: { preview: NonNullable<SwitchEventSheetDat
 
 function SwitcherSheet({ children }: { children: React.ReactNode }) {
   return (
-    <Sheet
-      title="Switch event"
-      // The account drawer opens over this one.
-      action={<AccountButton size={40} />}
-    >
+    <Sheet title="Switch event">
       <View style={styles.body}>{children}</View>
     </Sheet>
   );
