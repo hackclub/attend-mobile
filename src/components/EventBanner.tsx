@@ -16,6 +16,26 @@ const ON_BANNER = overlayTokens.on;
 const BLEND_HEIGHT = 120;
 
 /**
+ * The band at a banner's bottom edge that fades into the page under it, so
+ * the banner doesn't end in a hard line. Only into a dark page: fading to
+ * white would wash out the white text, so in light mode the banner keeps a
+ * clean edge. Draw it after the cover and before the text.
+ */
+export function BannerBlend({ into, height = BLEND_HEIGHT }: { into: string; height?: number }) {
+  const { scheme } = useTheme();
+  if (scheme !== 'dark') return null;
+  return (
+    <View
+      pointerEvents="none"
+      style={[
+        styles.blend,
+        { height, backgroundImage: linearGradient(easedFade(into, { from: 0, to: 1, start: 0, end: 100, unit: '%', steps: 32 })) },
+      ]}
+    />
+  );
+}
+
+/**
  * The fill behind an event's name: its banner image when it has one, else its
  * logo's colour, else Hack Club red, under faint diagonal stripes.
  */
@@ -102,12 +122,10 @@ export function EventBanner({
   blendInto,
   style,
 }: EventBannerProps) {
-  const { type, scheme } = useTheme();
+  const { type } = useTheme();
   const { width } = useWindowDimensions();
-  // Only into a dark page: fading to white would wash out the white text, so
-  // in light mode the banner keeps a clean edge. Its height is the same
-  // either way, so switching theme doesn't move the page.
-  const blend = scheme === 'dark' ? blendInto : undefined;
+  // The banner is the same height with or without the blend, so switching
+  // theme doesn't move the page.
   const height = bannerHeight(width, topInset);
   const label = [event.name, eyebrow, meta].filter(Boolean).join('. ');
 
@@ -142,15 +160,7 @@ export function EventBanner({
   return (
     <View style={[styles.hero, style]}>
       <EventCover event={event} />
-      {blend ? (
-        <View
-          pointerEvents="none"
-          style={[
-            styles.blend,
-            { height: BLEND_HEIGHT, backgroundImage: linearGradient(easedFade(blend, { from: 0, to: 1, start: 0, end: 100, unit: '%', steps: 32 })) },
-          ]}
-        />
-      ) : null}
+      {blendInto ? <BannerBlend into={blendInto} /> : null}
       {onPress ? (
         <Pressable
           onPress={onPress}

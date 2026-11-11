@@ -14,7 +14,7 @@ import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-ca
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { EventCover } from '../components/EventBanner';
+import { BannerBlend, EventCover } from '../components/EventBanner';
 import { Button, Icon, OverlayIconButton, StatusGlyph, type StatusType } from '../components/ui';
 import { overlayTokens, radii, typography, useTheme, type ThemeTokens } from '../theme';
 import { ParticipantAvatar } from '../components/ParticipantAvatar';
@@ -221,6 +221,8 @@ export function KioskScreen() {
         ]}
       >
         {event ? <EventCover event={event} /> : null}
+        {/* Fades into the page in dark mode, as the Overview's banner does. */}
+        <BannerBlend into={tokens.bg} height={KIOSK_BLEND_HEIGHT} />
         <Text style={kiosk.eventName} numberOfLines={2}>{event?.name}</Text>
         {selectedContext ? <Text style={[type.body, kiosk.onBanner]}>{selectedContext.name}</Text> : null}
         <OverlayIconButton
@@ -259,6 +261,8 @@ export function KioskScreen() {
 }
 
 const BANNER_HEIGHT = 150;
+// Shorter than a full banner's: this one is only about 150 tall.
+const KIOSK_BLEND_HEIGHT = 80;
 const CAMERA_RADIUS = radii.container;
 const FRAME = { inset: '14%', size: 44, thickness: 6, radius: 20 } as const;
 

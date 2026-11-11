@@ -194,6 +194,7 @@ export function TicketDetailScreen() {
           eyebrowIcon={banner.eyebrowIcon}
           meta={banner.meta}
           topInset={insets.top}
+          blendInto={tokens.shaded}
           onBack={canGoBack ? () => navigation.goBack() : undefined}
           onPress={canSwitch ? openSwitcher : undefined}
           accessory={canGoBack ? undefined : <AccountButton onBanner />}
