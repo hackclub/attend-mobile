@@ -12,6 +12,7 @@ export { Icon, icons, type IconName, type IconProps } from './Icon';
 export { KeyValue, type KeyValueProps } from './KeyValue';
 export { ListRow, type ListRowProps } from './ListRow';
 export { OverlayIconButton, type OverlayIconButtonProps } from './OverlayIconButton';
+export { PinPad, type PinPadProps } from './PinPad';
 export { QuickActionTile, QUICK_ACTION_LOADING, type QuickActionTileProps } from './QuickActionTile';
 export {
   SegmentedControl,

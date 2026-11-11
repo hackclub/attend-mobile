@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import Svg, { Circle, Path, type SvgProps } from 'react-native-svg';
 // One module per glyph: the package's barrel would pull in every icon.
 import ArrowLeftIcon from 'react-native-heroicons/outline/ArrowLeftIcon';
+import BackspaceIcon from 'react-native-heroicons/outline/BackspaceIcon';
 import BanIcon from 'react-native-heroicons/outline/BanIcon';
 import BellIcon from 'react-native-heroicons/outline/BellIcon';
 import CalendarIcon from 'react-native-heroicons/outline/CalendarIcon';
@@ -181,6 +182,7 @@ export const icons = {
   'device-mobile': DeviceMobileIcon,
   identification: IdentificationIcon,
   'finger-print': FingerPrintIcon,
+  backspace: BackspaceIcon,
   wifi: WifiIcon,
   ban: BanIcon,
   'clipboard-list': ClipboardListIcon,

@@ -56,6 +56,23 @@ export interface KioskSetupSheetData {
 }
 export const kioskSetupSheet = createSheetChannel<KioskSetupSheetData>();
 
+/**
+ * Exiting kiosk mode. The attempt count and lockout live with the kiosk, so
+ * closing and reopening the drawer doesn't reset them.
+ */
+export interface KioskUnlockSheetData {
+  biometricUnlock: boolean;
+  /** When the lockout after too many wrong PINs ends (epoch ms), or null. */
+  lockedUntil: number | null;
+  /** Wrong PINs left before the lockout. */
+  attemptsLeft: number;
+  /** Checks a PIN, counting a wrong one; true when it's right. */
+  checkPin: (pin: string) => boolean;
+  /** Leaves kiosk mode. Called once the drawer has gone. */
+  onUnlocked: () => void;
+}
+export const kioskUnlockSheet = createSheetChannel<KioskUnlockSheetData>();
+
 /** The scanner's search / Enter ID sheet. */
 export interface ScannerSearchSheetData {
   /** Without roster access it's an attendee-ID field only. */

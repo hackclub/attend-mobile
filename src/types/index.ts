@@ -507,6 +507,7 @@ export type RootStackParamList = {
   MultiSelectSheet: undefined;
   LinkSheet: undefined;
   KioskSetupSheet: undefined;
+  KioskUnlockSheet: undefined;
   /** The dev UI gallery (attend://ui-gallery), only in EXPO_PUBLIC_UI_GALLERY=1 builds. */
   UiGallery: undefined;
 };

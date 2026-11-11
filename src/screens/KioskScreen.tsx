@@ -3,9 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TextInput,
-  Modal,
-  Pressable,
   BackHandler,
   AccessibilityInfo,
   ScrollView,
@@ -17,8 +14,6 @@ import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-ca
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import * as LocalAuthentication from 'expo-local-authentication';
-import { haptics } from '../services/haptics';
 import { EventCover } from '../components/EventBanner';
 import { Button, Icon, OverlayIconButton, StatusGlyph, type StatusType } from '../components/ui';
 import { overlayTokens, radii, typography, useTheme, type ThemeTokens } from '../theme';
@@ -30,11 +25,13 @@ import { useApp } from '../context/AppContext';
 import type { ScannerResult } from '../services/scannerCore';
 import type { AppStackParamList } from '../types';
 import { startScreenPinning, stopScreenPinning } from '../../modules/activity-controller/src';
+import { kioskUnlockSheet } from '../navigation/sheetData';
+import { useOpenSheet } from '../navigation/sheetPresenter';
+import { useIsUnderSheet } from '../navigation/useIsUnderSheet';
 
 type NavigationProp = NativeStackNavigationProp<AppStackParamList, 'Kiosk'>;
 type KioskRoute = RouteProp<AppStackParamList, 'Kiosk'>;
 
-const PIN_LENGTH = 4;
 const MAX_PIN_ATTEMPTS = 3;
 const LOCKOUT_MS = 30_000;
 const RESULT_PRIVACY_TIMEOUT_MS = 2_500;
@@ -73,7 +70,11 @@ export function KioskScreen() {
 
   const [permission, requestPermission] = useCameraPermissions();
   const { recordScannerActivity } = useScannerPowerMode(!!permission?.granted);
-  const [escapeOpen, setEscapeOpen] = useState(false);
+  // Scanning pauses while the exit drawer is open.
+  const { underSheet } = useIsUnderSheet();
+  const openSheet = useOpenSheet();
+  const [attempts, setAttempts] = useState(0);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
   const lastFeedbackAttemptRef = useRef<string | null>(null);
 
   const selectedContext = scanContexts.find(c => c.id === selectedContextId);
@@ -133,9 +134,34 @@ export function KioskScreen() {
   };
 
   const onUnlocked = () => {
-    setEscapeOpen(false);
     void stopScreenPinning();
     navigation.goBack();
+  };
+
+  // A wrong PIN counts against the kiosk, not the drawer, so closing and
+  // reopening it doesn't reset the attempts or the lockout.
+  const checkPin = (entered: string) => {
+    if (lockedUntil !== null && Date.now() < lockedUntil) return false;
+    if (entered === kioskPin) return true;
+    const next = attempts + 1;
+    if (next >= MAX_PIN_ATTEMPTS) {
+      setLockedUntil(Date.now() + LOCKOUT_MS);
+      setAttempts(0);
+    } else {
+      setAttempts(next);
+    }
+    return false;
+  };
+  const claimUnlock = kioskUnlockSheet.useOpener({
+    biometricUnlock,
+    lockedUntil,
+    attemptsLeft: MAX_PIN_ATTEMPTS - attempts,
+    checkPin,
+    onUnlocked,
+  });
+  const openUnlock = () => {
+    claimUnlock();
+    openSheet('KioskUnlockSheet');
   };
 
   if (!permission) {
@@ -165,15 +191,8 @@ export function KioskScreen() {
           variant="link"
           icon="lock-closed"
           title="Exit kiosk mode"
-          onPress={() => setEscapeOpen(true)}
+          onPress={openUnlock}
           style={kiosk.centred}
-        />
-        <EscapeModal
-          visible={escapeOpen}
-          onClose={() => setEscapeOpen(false)}
-          onUnlocked={onUnlocked}
-          kioskPin={kioskPin}
-          biometricUnlock={biometricUnlock}
         />
       </View>
     );
@@ -208,7 +227,7 @@ export function KioskScreen() {
           icon="lock-closed"
           accessibilityLabel="Exit kiosk mode"
           accessibilityHint={biometricUnlock ? 'Asks for the PIN or biometrics' : 'Asks for the PIN'}
-          onPress={() => setEscapeOpen(true)}
+          onPress={openUnlock}
           hitSlop={8}
           style={[kiosk.lock, { top: insets.top + 8 }]}
         />
@@ -223,7 +242,7 @@ export function KioskScreen() {
             style={StyleSheet.absoluteFill}
             facing={facing}
             barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-            onBarcodeScanned={contextValid && !escapeOpen ? onBarcode : undefined}
+            onBarcodeScanned={contextValid && !underSheet ? onBarcode : undefined}
           />
           <View style={kiosk.frame} pointerEvents="none">
             <View style={[kiosk.corner, kiosk.tl]} />
@@ -235,14 +254,6 @@ export function KioskScreen() {
       </View>
 
       {lastScan ? <KioskResult result={lastScan} /> : null}
-
-      <EscapeModal
-        visible={escapeOpen}
-        onClose={() => setEscapeOpen(false)}
-        onUnlocked={onUnlocked}
-        kioskPin={kioskPin}
-        biometricUnlock={biometricUnlock}
-      />
     </View>
   );
 }
@@ -344,164 +355,6 @@ function KioskResult({ result }: { result: ScannerResult }) {
   );
 }
 
-interface EscapeProps {
-  visible: boolean;
-  onClose: () => void;
-  onUnlocked: () => void;
-  kioskPin: string;
-  biometricUnlock: boolean;
-}
-
-function EscapeModal({ visible, onClose, onUnlocked, kioskPin, biometricUnlock }: EscapeProps) {
-  const { tokens, type, radii, isDark } = useTheme();
-  const [entry, setEntry] = useState('');
-  const [attempts, setAttempts] = useState(0);
-  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
-  const [now, setNow] = useState(Date.now());
-  const inputRef = useRef<React.ComponentRef<typeof TextInput>>(null);
-  const triedBiometricRef = useRef(false);
-
-  const locked = lockedUntil !== null && now < lockedUntil;
-  const remaining = lockedUntil ? Math.max(0, Math.ceil((lockedUntil - now) / 1000)) : 0;
-
-  useEffect(() => {
-    if (!visible) {
-      setEntry('');
-      triedBiometricRef.current = false;
-      return;
-    }
-    if (biometricUnlock && !triedBiometricRef.current && !locked) {
-      triedBiometricRef.current = true;
-      tryBiometric();
-    } else {
-      setTimeout(() => inputRef.current?.focus(), 200);
-    }
-  }, [visible]);
-
-  useEffect(() => {
-    if (!lockedUntil) return;
-    const i = setInterval(() => setNow(Date.now()), 500);
-    return () => clearInterval(i);
-  }, [lockedUntil]);
-
-  const tryBiometric = async () => {
-    try {
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Exit kiosk mode',
-        fallbackLabel: 'Enter PIN',
-        cancelLabel: 'Cancel',
-        disableDeviceFallback: true,
-      });
-      if (result.success) {
-        haptics.success();
-        onUnlocked();
-      } else {
-        setTimeout(() => inputRef.current?.focus(), 100);
-      }
-    } catch {
-      setTimeout(() => inputRef.current?.focus(), 100);
-    }
-  };
-
-  const handleChange = (v: string) => {
-    if (locked) return;
-    const digits = v.replace(/\D/g, '').slice(0, PIN_LENGTH);
-    setEntry(digits);
-    if (digits.length === PIN_LENGTH) {
-      if (digits === kioskPin) {
-        haptics.success();
-        onUnlocked();
-      } else {
-        haptics.error();
-        const next = attempts + 1;
-        setAttempts(next);
-        setEntry('');
-        if (next >= MAX_PIN_ATTEMPTS) {
-          setLockedUntil(Date.now() + LOCKOUT_MS);
-          setAttempts(0);
-        }
-      }
-    }
-  };
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <View style={[styles.modalBackdrop, { backgroundColor: tokens.overlay }]}>
-        <View style={[styles.modalCard, { backgroundColor: tokens.bg, borderRadius: radii.container }]}>
-          <Button
-            variant="plain-icon"
-            icon="close"
-            title="Close"
-            onPress={onClose}
-            style={styles.modalClose}
-          />
-
-          <View style={[styles.modalIcon, { backgroundColor: tokens.tint.red.bg }]}>
-            <Icon name="lock-closed" size={28} color={tokens.tint.red.fg} />
-          </View>
-          <Text style={[type.h2, { color: tokens.textH }]} accessibilityRole="header">Exit kiosk mode</Text>
-          <Text style={[type.body, styles.modalSubtitle, { color: tokens.text2 }]}>
-            Enter your {PIN_LENGTH}-digit PIN to unlock.
-          </Text>
-
-          <Pressable
-            onPress={() => !locked && inputRef.current?.focus()}
-            style={styles.dotsRow}
-            accessibilityRole="button"
-            accessibilityLabel={`PIN, ${entry.length} of ${PIN_LENGTH} digits entered`}
-            accessibilityHint="Opens the keypad"
-          >
-            {Array.from({ length: PIN_LENGTH }).map((_, i) => (
-              <View
-                key={i}
-                style={[
-                  styles.dot,
-                  { borderColor: tokens.input },
-                  i < entry.length && { backgroundColor: tokens.accent, borderColor: tokens.accent },
-                ]}
-              />
-            ))}
-          </Pressable>
-
-          <TextInput
-            ref={inputRef}
-            value={entry}
-            onChangeText={handleChange}
-            keyboardType="number-pad"
-            keyboardAppearance={isDark ? 'dark' : 'light'}
-            secureTextEntry
-            maxLength={PIN_LENGTH}
-            editable={!locked}
-            style={styles.hiddenInput}
-            caretHidden
-            autoFocus
-          />
-
-          <Text
-            style={[type.body, styles.feedback, { color: locked ? tokens.warning : tokens.error }]}
-            accessibilityLiveRegion="polite"
-          >
-            {locked
-              ? `Too many attempts. Try again in ${remaining}s.`
-              : attempts > 0
-                ? `Wrong PIN — ${MAX_PIN_ATTEMPTS - attempts} attempt${MAX_PIN_ATTEMPTS - attempts === 1 ? '' : 's'} left`
-                : ''}
-          </Text>
-
-          {biometricUnlock && !locked ? (
-            <Button icon="finger-print" title="Use biometrics" onPress={tryBiometric} style={styles.bioBtn} />
-          ) : null}
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 const styles = StyleSheet.create({
   resultBackdrop: {
     ...StyleSheet.absoluteFill,
@@ -529,34 +382,4 @@ const styles = StyleSheet.create({
   resultStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   resultReady: { marginTop: 2 },
 
-  modalBackdrop: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  modalCard: {
-    padding: 24,
-    paddingTop: 28,
-    width: '100%',
-    maxWidth: 360,
-    alignItems: 'center',
-  },
-  modalClose: { position: 'absolute', top: 4, right: 4 },
-  modalIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  modalSubtitle: { marginTop: 4, marginBottom: 20, textAlign: 'center' },
-  // 44pt tall, so the whole row is an easy target for the keypad.
-  dotsRow: { flexDirection: 'row', alignItems: 'center', gap: 16, minHeight: 44, paddingHorizontal: 8 },
-  dot: { width: 16, height: 16, borderRadius: radii.pill, borderWidth: 2 },
-  hiddenInput: { position: 'absolute', width: 1, height: 1, opacity: 0 },
-  // Reserves its line so the card doesn't jump when a message appears.
-  feedback: { minHeight: 20, marginTop: 8, textAlign: 'center' },
-  bioBtn: { marginTop: 12 },
 });
