@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
+import { SectionList, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
@@ -14,6 +14,7 @@ import {
   GroupToggle,
   LoadingView,
   PressableSurface,
+  RefreshControl,
   Screen,
   StatusIndicator,
   TextField,

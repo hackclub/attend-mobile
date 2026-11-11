@@ -7,6 +7,7 @@ import type { ScannerResult, ScannerOutcome } from '../../services/scannerCore';
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
 
+jest.mock('../../services/haptics', () => ({ haptics: { selection: jest.fn() } }));
 jest.mock('react-native', () => ({
   View: 'View',
   Text: 'Text',

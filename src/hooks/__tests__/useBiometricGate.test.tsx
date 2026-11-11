@@ -4,6 +4,8 @@ import renderer, { act } from 'react-test-renderer';
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
 
+jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
+jest.mock('../../services/haptics', () => ({ haptics: { success: jest.fn() } }));
 jest.mock('../../services/biometric', () => {
   const listeners = new Set<() => void>();
   return {
@@ -24,6 +26,7 @@ import { biometricService } from '../../services/biometric';
 import { useBiometricGate } from '../useBiometricGate';
 
 type Gate = ReturnType<typeof useBiometricGate>;
+const { haptics } = jest.requireMock<typeof import('../../services/haptics')>('../../services/haptics');
 
 let latest: Gate;
 let root: renderer.ReactTestRenderer | undefined;
@@ -63,6 +66,7 @@ describe('useBiometricGate', () => {
 
     expect(biometricService.authenticate).toHaveBeenCalledTimes(1);
     expect(latest.status).toBe('unlocked');
+    expect(haptics.success).toHaveBeenCalledTimes(1);
   });
 
   it('opens straight away, without a prompt, while the session is valid', async () => {
@@ -71,6 +75,7 @@ describe('useBiometricGate', () => {
 
     expect(biometricService.authenticate).not.toHaveBeenCalled();
     expect(latest.status).toBe('unlocked');
+    expect(haptics.success).not.toHaveBeenCalled();
   });
 
   it('stays locked when the prompt is cancelled', async () => {

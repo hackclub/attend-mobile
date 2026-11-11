@@ -1,7 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  RefreshControl,
   SectionList,
   StyleSheet,
   Text,
@@ -25,6 +24,7 @@ import {
   TextField,
   PressableSurface,
   type StatusType,
+  RefreshControl,
 } from '../components/ui';
 import { CHROME_MAX_FONT_SCALE } from '../components/ui/fontScale';
 import type {

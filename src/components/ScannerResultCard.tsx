@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AccessibilityInfo, Animated, PanResponder, Platform, StyleSheet, Text, View } from 'react-native';
 import { ParticipantAvatar } from './ParticipantAvatar';
 import { useReduceMotion } from '../hooks/useReduceMotion';
+import { haptics } from '../services/haptics';
 import { Badge, Button, RETRY_LABEL, StatusGlyph, type BadgeColor, type StatusType } from './ui';
 import type { ScannerOutcome, ScannerResult } from '../services/scannerCore';
 import { radii, useTheme, type ThemeTokens } from '../theme';
@@ -92,9 +93,12 @@ export function ScannerResultCard({
     });
   }, [onClear, reduceMotion, translateY]);
 
+  // One tick as a swipe commits the dismiss, not while it drags.
   const releaseOrSettle = useCallback((dy: number, vy: number) => {
-    if (dy > 64 || vy > 0.7) dismiss();
-    else settleBack();
+    if (dy > 64 || vy > 0.7) {
+      haptics.selection();
+      dismiss();
+    } else settleBack();
   }, [dismiss, settleBack]);
 
   // Claims the gesture on touch-start so the surrounding ScrollView can't

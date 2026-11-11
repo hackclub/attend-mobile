@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text } from 'react-native';
+import { haptics } from '../../services/haptics';
 import { useTheme } from '../../theme';
 import { CHROME_MAX_FONT_SCALE } from './fontScale';
 import { PressableSurface } from './PressableSurface';
@@ -19,7 +20,10 @@ export function FilterChip({ label, selected, onPress }: FilterChipProps) {
   const { tokens, type, radii } = useTheme();
   return (
     <PressableSurface
-      onPress={onPress}
+      onPress={() => {
+        haptics.selection();
+        onPress();
+      }}
       accessibilityRole="button"
       accessibilityState={{ selected }}
       rippleColor={selected ? tokens.accent : tokens.text}

@@ -4,6 +4,7 @@ import {
   Icon as ComposeIcon,
   Text as ComposeText,
 } from '@expo/ui/jetpack-compose';
+import { haptics } from '../../services/haptics';
 import type { FilterChipProps } from './FilterChip';
 import { MaterialHost } from './MaterialHost';
 
@@ -19,7 +20,10 @@ export function FilterChip({ label, selected, onPress }: FilterChipProps) {
     <MaterialHost matchContents>
       <ComposeFilterChip
         selected={selected}
-        onClick={onPress}
+        onClick={() => {
+          haptics.selection();
+          onPress();
+        }}
       >
         <ComposeFilterChip.Label>
           <ComposeText maxLines={1}>{label}</ComposeText>

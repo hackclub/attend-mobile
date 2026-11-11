@@ -18,6 +18,7 @@ import * as Linking from 'expo-linking';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { holdSplash, hideSplash, isAppReady } from './src/services/splash';
 import { notificationService } from './src/services/notifications';
+import { haptics } from './src/services/haptics';
 import { AppProvider, useApp } from './src/context/AppContext';
 import { useEventAccess } from './src/hooks/useEventAccess';
 import { LoginScreen } from './src/screens/LoginScreen';
@@ -250,6 +251,13 @@ function MainTabs() {
     <Tab.Navigator
       tabBarActiveTintColor={tokens.accent}
       {...androidTabBarProps}
+      // A tick when a tap switches tabs; reselecting the current tab (which
+      // scrolls it to the top) stays silent.
+      screenListeners={({ navigation }) => ({
+        tabPress: () => {
+          if (!navigation.isFocused()) haptics.selection();
+        },
+      })}
     >
       <Tab.Screen
         name="Overview"

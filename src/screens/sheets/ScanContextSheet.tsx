@@ -2,6 +2,7 @@ import React from 'react';
 import { useCloseSheet } from '../../navigation/sheetPresenter';
 import { Icon, ListRow, Sheet } from '../../components/ui';
 import { scanContextSheet } from '../../navigation/sheetData';
+import { haptics } from '../../services/haptics';
 import { useTheme } from '../../theme';
 import { useSheetData } from './useSheetData';
 
@@ -29,6 +30,7 @@ export function ScanContextSheet() {
             chevron={false}
             divider={index < contexts.length - 1}
             onPress={() => {
+              haptics.selection();
               close();
               onSelect(context);
             }}

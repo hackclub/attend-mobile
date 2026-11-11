@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { api } from '../services/api';
@@ -9,6 +9,7 @@ import {
   FilterChip,
   isAndroid,
   LoadingView,
+  RefreshControl,
   ripple,
   ROW_STATE_LAYER_ALPHA,
   Screen,

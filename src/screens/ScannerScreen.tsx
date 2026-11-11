@@ -424,11 +424,13 @@ export function ScannerScreen() {
             torchOn={torchOn}
             onTorch={() => {
               recordScannerActivity();
-              setTorchOn(on => !on);
+              haptics.toggle(!torchOn);
+              setTorchOn(!torchOn);
             }}
             facing={facing}
             onFlipCamera={() => {
               recordScannerActivity();
+              haptics.selection();
               // The front camera has no torch; it's off when you come back.
               setTorchOn(false);
               setFacing(f => (f === 'back' ? 'front' : 'back'));

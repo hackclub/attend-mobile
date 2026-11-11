@@ -8,7 +8,6 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { useTheme } from '../../theme';
-import { haptics, type HapticImpact } from '../../services/haptics';
 import { Icon, type IconName } from './Icon';
 import { PressableSurface } from './PressableSurface';
 import { Spinner } from './Spinner';
@@ -26,8 +25,6 @@ export interface ButtonProps {
   disabled?: boolean;
   /** Stretch to the container width. */
   fullWidth?: boolean;
-  /** Tactile feedback on press. Off by default; use for commits like "Check in". */
-  haptic?: HapticImpact | 'success' | false;
   accessibilityLabel?: string;
   accessibilityHint?: string;
   style?: StyleProp<ViewStyle>;
@@ -49,7 +46,6 @@ export function Button({
   loading = false,
   disabled = false,
   fullWidth = false,
-  haptic = false,
   accessibilityLabel,
   accessibilityHint,
   style,
@@ -84,12 +80,6 @@ export function Button({
     }
   }
 
-  const handlePress = (event: GestureResponderEvent) => {
-    if (haptic === 'success') haptics.success();
-    else if (haptic) haptics.impact(haptic);
-    onPress?.(event);
-  };
-
   const { shape: callerShape, content: callerContent } = splitButtonStyle(style);
 
   const iconNode = loading ? (
@@ -100,7 +90,7 @@ export function Button({
 
   return (
     <PressableSurface
-      onPress={handlePress}
+      onPress={onPress}
       disabled={inactive}
       accessibilityRole={isLink ? 'link' : 'button'}
       accessibilityLabel={accessibilityLabel ?? title}

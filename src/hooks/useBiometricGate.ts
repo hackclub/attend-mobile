@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Platform } from 'react-native';
 import { biometricService } from '../services/biometric';
+import { haptics } from '../services/haptics';
 
 export type BiometricGateStatus = 'authenticating' | 'unlocked' | 'locked';
 
@@ -35,6 +37,9 @@ export function useBiometricGate(reason: string = DEFAULT_GATE_REASON) {
     inFlight.current = true;
     setStatus('authenticating');
 
+    // Only a prompt the user just passed earns a haptic, not a session that
+    // was still valid.
+    const prompted = !biometricService.isSessionValid();
     let success = false;
     try {
       success = await biometricService.authenticate(reasonRef.current);
@@ -46,6 +51,9 @@ export function useBiometricGate(reason: string = DEFAULT_GATE_REASON) {
 
     if (mounted.current) {
       setStatus(success === true ? 'unlocked' : 'locked');
+      // Android's biometric prompt already vibrates on success; Face ID and
+      // Touch ID don't.
+      if (success === true && prompted && Platform.OS === 'ios') haptics.success();
     }
     return success === true;
   }, []);

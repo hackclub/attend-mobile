@@ -1,5 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { haptics } from '../../services/haptics';
 import { useTheme } from '../../theme';
 import { Icon } from './Icon';
 import { pressedStyle, ripple, STATE_LAYER_ALPHA } from './pressFeedback';
@@ -39,7 +40,10 @@ export function GroupToggle({ label, count, open, onToggle, style }: GroupToggle
   }
   return (
     <Pressable
-      onPress={onToggle}
+      onPress={() => {
+        haptics.toggle(!open);
+        onToggle();
+      }}
       hitSlop={8}
       android_ripple={ripple(tokens.text, { alpha: STATE_LAYER_ALPHA })}
       style={({ pressed }) => [styles.toggle, styles.pressable, style, pressedStyle(pressed)]}

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { Button, Icon, PressableSurface, SheetHeader, SHEET_INSET, TextField, useSheetBottomPadding } from '../../components/ui';
 import { multiSelectSheet } from '../../navigation/sheetData';
+import { haptics } from '../../services/haptics';
 import { useTheme } from '../../theme';
 import { useSheetData } from './useSheetData';
 
@@ -26,8 +27,10 @@ export function MultiSelectSheet() {
   if (!data) return null;
   const { title, selected, onChange, noun, searchPlaceholder = 'Search' } = data;
   const selectedSet = new Set(selected);
-  const toggle = (id: string) =>
+  const toggle = (id: string) => {
+    haptics.selection();
     onChange(selectedSet.has(id) ? selected.filter((s) => s !== id) : [...selected, id]);
+  };
 
   return (
     <FlatList

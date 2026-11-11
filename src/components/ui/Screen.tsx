@@ -1,7 +1,6 @@
 import React, { type ReactNode } from 'react';
 import {
   Platform,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -18,6 +17,7 @@ import { backLabelFor, previousRoute } from '../../navigation/backLabels';
 import { Button } from './Button';
 import { Icon } from './Icon';
 import { PressableSurface } from './PressableSurface';
+import { RefreshControl } from './RefreshControl';
 
 /** Pushed screens' content column on a tablet. */
 const CONTENT_MAX_WIDTH = 620;

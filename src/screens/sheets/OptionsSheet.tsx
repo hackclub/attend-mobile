@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { useCloseSheet } from '../../navigation/sheetPresenter';
 import { Icon, ListRow, PressableSurface, Sheet, SHEET_INSET } from '../../components/ui';
 import { optionsSheet } from '../../navigation/sheetData';
+import { haptics } from '../../services/haptics';
 import { useTheme } from '../../theme';
 import { useSheetData } from './useSheetData';
 
@@ -23,6 +24,7 @@ export function OptionsSheet() {
   const choose = (value: string) => {
     if (chosen.current) return;
     chosen.current = true;
+    haptics.selection();
     close();
     onSelect(value);
   };

@@ -11,6 +11,7 @@ import { resetRoot } from '../navigation/rootNavigation';
 import { collapsibleGroup } from '../services/collapsibleGroup';
 import { eventPhaseLabel } from '../services/eventDates';
 import { eventRoleLabel } from '../services/eventRoles';
+import { haptics } from '../services/haptics';
 import {
   SWITCHER_SEARCH_THRESHOLD,
   filterSwitcherEvents,
@@ -71,7 +72,10 @@ export function EventSwitcherBody({
       event={event}
       meta={joinMeta(eventPhaseLabel(event, undefined, 'in'), eventRoleLabel(event.role))}
       selected={event.id === currentEventId}
-      onPress={() => onPickEvent(event)}
+      onPress={() => {
+        haptics.selection();
+        onPickEvent(event);
+      }}
     />
   );
   const ticketCard = (ticket: Ticket) => (
@@ -80,7 +84,10 @@ export function EventSwitcherBody({
       event={ticket.event}
       meta={joinMeta(eventPhaseLabel(ticket.event, undefined, 'in'), 'Attendee')}
       selected={ticket.id === currentTicketId}
-      onPress={() => onPickTicket(ticket)}
+      onPress={() => {
+        haptics.selection();
+        onPickTicket(ticket);
+      }}
       accessibilityHint="Opens your ticket"
     />
   );

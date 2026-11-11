@@ -4,6 +4,7 @@ import renderer, { act } from 'react-test-renderer';
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean })
   .IS_REACT_ACT_ENVIRONMENT = true;
 
+jest.mock('../../../services/haptics', () => ({ haptics: { selection: jest.fn() } }));
 jest.mock('react-native', () => ({
   StyleSheet: { create: <T,>(styles: T) => styles },
   View: 'View',

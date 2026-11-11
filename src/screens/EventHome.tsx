@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -27,6 +26,7 @@ import {
   PressableSurface,
   type IconName,
   type QuickActionTileProps,
+  RefreshControl,
 } from '../components/ui';
 import { useApp } from '../context/AppContext';
 import { useBannerStatusBar } from '../hooks/useBannerStatusBar';

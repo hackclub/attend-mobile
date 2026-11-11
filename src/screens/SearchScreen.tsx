@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   ActivityIndicator,
-  RefreshControl,
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -30,6 +29,7 @@ import {
   PressableSurface,
   type IconName,
   type MenuAction,
+  RefreshControl,
 } from '../components/ui';
 import { CHROME_MAX_FONT_SCALE } from '../components/ui/fontScale';
 import {
