@@ -75,14 +75,15 @@ export function rubberBand(distance: number): number {
 }
 
 /**
- * A pull on the list to close it: close to the finger, with a little
- * resistance only further on, so the list feels held rather than elastic.
+ * A pull on the list to close it: it moves with the finger, resisting more
+ * the further it goes, so it reads as a pull against something rather than
+ * the list sliding off.
  */
 export function followPull(distance: number): number {
   'worklet';
   if (distance <= 0) return 0;
-  const limit = 1400;
-  return (distance * 0.95 * limit) / (limit + distance * 0.95);
+  const limit = 420;
+  return (distance * 0.7 * limit) / (limit + distance * 0.7);
 }
 
 export interface OverlayState {
