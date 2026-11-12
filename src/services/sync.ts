@@ -271,10 +271,33 @@ class SyncService {
     event: Event | null,
     generation = this.cacheGeneration
   ): Promise<void> {
-    await this.enqueueCacheWrite(generation, () => event
-      ? asyncStorage.set(STORAGE_KEYS.CURRENT_EVENT, event)
-      : asyncStorage.remove(STORAGE_KEYS.CURRENT_EVENT)
-    );
+    await this.enqueueCacheWrite(generation, async () => {
+      if (!event) {
+        await asyncStorage.remove(STORAGE_KEYS.CURRENT_EVENT);
+        return;
+      }
+      await asyncStorage.set(STORAGE_KEYS.CURRENT_EVENT, event);
+      await this.pruneOtherEventScans(event.id);
+    });
+  }
+
+  /**
+   * The scan list is only kept to merge the next incremental pull into, so
+   * other events' copies are dead weight that would otherwise pile up, one
+   * per event ever opened. Their cursors go with them so coming back to an
+   * event starts with a full pull.
+   */
+  private async pruneOtherEventScans(currentEventId: string): Promise<void> {
+    const keep = new Set([
+      STORAGE_KEYS.SCANS(currentEventId),
+      STORAGE_KEYS.SCAN_SYNC_CURSOR(currentEventId),
+    ]);
+    const keys = await asyncStorage.getAllKeys();
+    for (const key of keys) {
+      if ((key.startsWith('scans_') || key.startsWith('scan_sync_cursor_')) && !keep.has(key)) {
+        await asyncStorage.remove(key);
+      }
+    }
   }
 
   async getCurrentEvent(): Promise<Event | null> {

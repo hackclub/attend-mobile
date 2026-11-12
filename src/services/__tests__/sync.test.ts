@@ -72,6 +72,25 @@ beforeEach(async () => {
   mockGetParticipants.mockReset();
 });
 
+describe('syncService.setCurrentEvent', () => {
+  it("drops other events' scan lists and cursors, keeping the current event's and its roster", async () => {
+    await syncService.clear();
+    await asyncStorage.set(STORAGE_KEYS.SCANS('old'), [{ id: 's1' }]);
+    await asyncStorage.set(STORAGE_KEYS.SCAN_SYNC_CURSOR('old'), '2026-01-01T00:00:00Z');
+    await asyncStorage.set(STORAGE_KEYS.PARTICIPANTS('old'), [participant()]);
+    await asyncStorage.set(STORAGE_KEYS.SCANS(EVENT_ID), [{ id: 's2' }]);
+    await asyncStorage.set(STORAGE_KEYS.SCAN_SYNC_CURSOR(EVENT_ID), '2026-02-01T00:00:00Z');
+
+    await syncService.setCurrentEvent({ id: EVENT_ID, name: 'Current' } as Event);
+
+    expect(await asyncStorage.get(STORAGE_KEYS.SCANS('old'))).toBeNull();
+    expect(await asyncStorage.get(STORAGE_KEYS.SCAN_SYNC_CURSOR('old'))).toBeNull();
+    expect(await asyncStorage.get(STORAGE_KEYS.PARTICIPANTS('old'))).not.toBeNull();
+    expect(await asyncStorage.get(STORAGE_KEYS.SCANS(EVENT_ID))).toEqual([{ id: 's2' }]);
+    expect(await asyncStorage.get(STORAGE_KEYS.SCAN_SYNC_CURSOR(EVENT_ID))).toBe('2026-02-01T00:00:00Z');
+  });
+});
+
 describe('syncService.refreshParticipants', () => {
   it('invalidates stale operational cache writes across clear', async () => {
     const generation = syncService.getCacheGeneration();
