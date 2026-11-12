@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -111,30 +111,40 @@ function ParticipantDetailBody({
   const [isSubmittingNote, setIsSubmittingNote] = useState(false);
   const [notesSupported, setNotesSupported] = useState(true);
 
+  // Which participant is on screen right now. Notes requests check it when
+  // they come back, so a slow answer for the previous person in split view
+  // can't land under the next one.
+  const shownIdRef = useRef(participant.participant_event_id);
+  shownIdRef.current = participant.participant_event_id;
+
   // Reset state when the participant prop changes (split view selection)
   useEffect(() => {
     setCurrentParticipant(participant);
     setNewNoteText('');
+    setNotes([]);
+    setNotesSupported(true);
+    setIsLoadingNotes(false);
   }, [participant.participant_event_id]);
 
   const loadNotes = useCallback(async () => {
     if (!state.currentEvent) return;
+    const participantId = currentParticipant.participant_event_id;
+    if (participantId !== shownIdRef.current) return;
     setIsLoadingNotes(true);
     try {
-      const fetchedNotes = await api.getParticipantNotes(
-        state.currentEvent.id,
-        currentParticipant.participant_event_id
-      );
+      const fetchedNotes = await api.getParticipantNotes(state.currentEvent.id, participantId);
+      if (participantId !== shownIdRef.current) return;
       setNotes(fetchedNotes);
       setNotesSupported(true);
     } catch (error: any) {
+      if (participantId !== shownIdRef.current) return;
       if (error?.status === 404) {
         setNotesSupported(false);
       } else {
         console.error('Failed to load notes:', error);
       }
     } finally {
-      setIsLoadingNotes(false);
+      if (participantId === shownIdRef.current) setIsLoadingNotes(false);
     }
   }, [state.currentEvent, currentParticipant.participant_event_id]);
 
@@ -166,15 +176,20 @@ function ParticipantDetailBody({
   const handleSubmitNote = async () => {
     if (!newNoteText.trim() || !state.currentEvent || isSubmittingNote) return;
 
+    const participantId = currentParticipant.participant_event_id;
+    if (participantId !== shownIdRef.current) return;
     setIsSubmittingNote(true);
     try {
       const newNote = await api.createParticipantNote(
         state.currentEvent.id,
-        currentParticipant.participant_event_id,
+        participantId,
         newNoteText.trim()
       );
-      setNotes(prev => [newNote, ...prev]);
-      setNewNoteText('');
+      // Saved either way; only show it if that person is still on screen.
+      if (participantId === shownIdRef.current) {
+        setNotes(prev => [newNote, ...prev]);
+        setNewNoteText('');
+      }
     } catch (error) {
       Alert.alert('Error', 'Failed to add note. Please try again.');
     } finally {
