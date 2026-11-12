@@ -23,6 +23,7 @@ import { useScannerPowerMode } from '../hooks/useScannerPowerMode';
 import { useApp } from '../context/AppContext';
 import type { AppStackParamList } from '../types';
 import { startScreenPinning, stopScreenPinning } from '../../modules/activity-controller/src';
+import { holdKioskLock } from '../navigation/kioskLock';
 import { kioskUnlockSheet } from '../navigation/sheetData';
 import { useOpenSheet } from '../navigation/sheetPresenter';
 import { useIsUnderSheet } from '../navigation/useIsUnderSheet';
@@ -80,6 +81,10 @@ export function KioskScreen() {
   const selectedContext = scanContexts.find(c => c.id === selectedContextId);
   const contextValid = contextsReady
     && (scanContexts.length === 0 || !!selectedContext);
+
+  // Deep links, push taps, Live Activity taps and shortcuts are ignored for
+  // as long as the kiosk is mounted (see navigation/kioskLock).
+  useEffect(() => holdKioskLock(), []);
 
   // Disable back gesture / hardware back while in kiosk.
   useFocusEffect(

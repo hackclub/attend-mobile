@@ -51,6 +51,7 @@ import { stripHttpBreadcrumbQuery } from './src/services/breadcrumbScrub';
 import { fallbackToRegisteredRoute, limitLinkParams, preferOrganizerTabs } from './src/services/deepLinks';
 import { ROOT_NAVIGATOR } from './src/navigation/routes';
 import { linkingConfig } from './src/navigation/linking';
+import { isKioskLocked } from './src/navigation/kioskLock';
 import { lazyScreens } from './src/navigation/lazyScreens';
 import { useSheetScreens } from './src/navigation/sheetScreens';
 import { sheetStack } from './src/navigation/sheetStack';
@@ -407,6 +408,9 @@ const childRouteNames = () => {
 const linking: LinkingOptions<RootStackParamList> = {
   prefixes: [Linking.createURL('/'), 'attend://'],
   config: linkingConfig,
+  // Kiosk mode takes no links: navigating would dismiss it without the PIN.
+  // This also covers home screen shortcuts, which are re-opened as links.
+  filter: () => !isKioskLocked(),
   // Scan and People live in Main (organizers only), and Travel only for an
   // event with travel; a link to a route this user doesn't have opens their
   // home instead of doing nothing.
@@ -464,7 +468,7 @@ function AppNavigation() {
 
   useEffect(() => {
     const openScanner = (url?: string | null) => {
-      if (!url || !isScannerLink(url) || !navigationRef.isReady()) return;
+      if (!url || !isScannerLink(url) || !navigationRef.isReady() || isKioskLocked()) return;
       // A participant-only user has no Scanner; the linking config's
       // fallback already sends them home.
       if (!rootRouteNames()?.includes('Main')) return;
@@ -482,7 +486,7 @@ function AppNavigation() {
     // participant's tickets as before.
     const notifSub = notificationService.addNotificationResponseListener((response) => {
       const data = response.notification.request.content.data as { type?: string; message_id?: string } | undefined;
-      if (data?.type !== 'message' || !navigationRef.isReady()) return;
+      if (data?.type !== 'message' || !navigationRef.isReady() || isKioskLocked()) return;
       if (data.message_id) {
         // `initial: false` keeps the ticket list under it to go back to.
         navigationRef.navigate('ParticipantMain', {
