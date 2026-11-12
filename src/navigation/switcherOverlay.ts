@@ -208,8 +208,13 @@ export const SWITCHER_CLOSE_TIMING = { duration: 340, easing: Easing.bezier(0.2,
 export function closeSwitcherOverlay(): void {
   switcherOverlay.closed();
 }
+/** A pull passing the point where letting go opens (or closes) the switcher. */
 export function switcherPullTick(): void {
   haptics.selection();
+}
+/** A pull reaching fully open. */
+export function switcherDetentTick(): void {
+  haptics.impact('light');
 }
 export function openSwitcherFromPull(key: string): void {
   void switcherOverlay.open(key, false);

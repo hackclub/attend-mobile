@@ -28,6 +28,7 @@ import {
   switcherOverlay,
   switcherOverpull,
   switcherProgress,
+  switcherDetentTick,
   switcherPullTick,
   switcherSourceRect,
   type SwitcherBanner,
@@ -423,6 +424,7 @@ export function useSwitcherPull(switcher: BannerSwitcher | undefined, page: Bann
   const bannerRef = useAnimatedRef<Animated.View>();
   const { scrollRef, scrollY, maxScroll, fling } = page;
   const past = useSharedValue(false);
+  const full = useSharedValue(false);
   const active = useSharedValue(false);
   const opened = useSharedValue(false);
   const startScroll = useSharedValue(0);
@@ -445,6 +447,7 @@ export function useSwitcherPull(switcher: BannerSwitcher | undefined, page: Bann
       active.value = true;
       opened.value = false;
       past.value = false;
+      full.value = false;
       startScroll.value = scrollY.value;
     },
     onUpdate: (e) => {
@@ -455,10 +458,9 @@ export function useSwitcherPull(switcher: BannerSwitcher | undefined, page: Bann
       scrollTo(scrollRef, 0, Math.min(Math.max(0, target), Math.max(maxScroll.value, 0)), false);
       if (!canSwitch) return;
       const pulled = Math.max(0, -target);
-      if (pulled > 0 && !opened.value) {
-        opened.value = true;
-        scheduleOnRN(markOpen);
-      }
+      // Not marked open (taking touches, hiding the app from screen readers)
+      // until it's let go: changing either under a finger cancels the pull.
+      if (pulled > 0) opened.value = true;
       const progress = Math.min(1, pulled / SWITCHER_PULL_DISTANCE);
       switcherProgress.value = progress;
       // Past fully open, the list stretches on down after the finger.
@@ -467,6 +469,12 @@ export function useSwitcherPull(switcher: BannerSwitcher | undefined, page: Bann
       if (isPast !== past.value) {
         past.value = isPast;
         if (isPast) scheduleOnRN(switcherPullTick);
+      }
+      // A light tap at fully open, where the stretch takes over.
+      const isFull = progress >= 1;
+      if (isFull !== full.value) {
+        full.value = isFull;
+        if (isFull) scheduleOnRN(switcherDetentTick);
       }
     },
     // On release, cancel or failure alike (onFinalize runs for all of them).
@@ -490,6 +498,7 @@ export function useSwitcherPull(switcher: BannerSwitcher | undefined, page: Bann
       const opening =
         switcherProgress.value >= SWITCHER_OPEN_THRESHOLD || velocity.value > SWITCHER_FLICK_VELOCITY;
       if (opening) {
+        scheduleOnRN(markOpen);
         switcherProgress.value = withSpring(1, SWITCHER_SPRING);
       } else {
         switcherProgress.value = withTiming(0, SWITCHER_CLOSE_TIMING, (finished) => {

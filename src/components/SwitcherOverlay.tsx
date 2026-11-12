@@ -33,6 +33,7 @@ import {
   followPull,
   switcherOverlay,
   switcherOverpull,
+  switcherPullTick,
   switcherProgress,
   switcherSourceRect,
   switcherStretch,
@@ -238,13 +239,12 @@ function SwitcherOverlay({
   // The morphing card: the banner at `bannerRect` (progress 0), scaled into
   // a card (1): the current one's live place in the list, or `landingCard`.
   const heroOn = useSharedValue(reduceMotion || currentIndex < 0 ? 0 : 1);
-  const currentIsPast = !!currentRow && (currentRow.kind === 'event' || currentRow.kind === 'ticket') && currentRow.past;
   const currentCardHeight = currentRow ? cardHeightOf(currentRow, metrics) : metrics.cardHeight;
   // Hidden until its photo is drawn: until then the real banner under it
   // shows, rather than the fill behind a photo still decoding.
   const heroReady = useSharedValue(0);
   const [hero, setHero] = useState<HeroState>(() =>
-    heroFor(source, width, currentCardHeight, cardWidth, currentIsPast)
+    heroFor(source, width, currentCardHeight, cardWidth, false)
   );
   // A switch's ends: the new banner (cropped as the hero is) and the card.
   const landingFrom = useSharedValue<Rect | null>(null);
@@ -273,7 +273,7 @@ function SwitcherOverlay({
     landingCard.set(null);
     heroOn.set(reduceMotion || currentIndex < 0 ? 0 : 1);
     setHero((was) => {
-      const next = heroFor(source, width, currentCardHeight, cardWidth, currentIsPast);
+      const next = heroFor(source, width, currentCardHeight, cardWidth, false);
       // A different photo mounts hidden until it's drawn.
       if (was.event.id !== next.event.id || was.event.banner_url !== next.event.banner_url) heroReady.set(0);
       return next;
@@ -281,7 +281,7 @@ function SwitcherOverlay({
     scrollY.set(targetOffset);
     listRef.current?.scrollToOffset({ offset: targetOffset, animated: false });
   }, [
-    cardWidth, currentCardHeight, currentIndex, currentIsPast, heroOn, heroReady, landingCard, landingFrom, open,
+    cardWidth, currentCardHeight, currentIndex, heroOn, heroReady, landingCard, landingFrom, open,
     reduceMotion, scrollY, source, targetOffset, width,
   ]);
 
@@ -410,12 +410,14 @@ function SwitcherOverlay({
   // Pulling the header up closes it, following the finger.
   const headerActive = useSharedValue(false);
   const headerVelocity = useSharedValue(0);
+  const headerPast = useSharedValue(false);
   const pullUp = usePanGesture({
     activeOffsetY: -6,
     failOffsetY: 6,
     onActivate: () => {
       'worklet';
       headerActive.value = true;
+      headerPast.value = false;
       const rowTop = currentTop.value;
       if (rowTop < 0 || reduceMotion) {
         heroOn.value = 0;
@@ -428,6 +430,12 @@ function SwitcherOverlay({
       'worklet';
       headerVelocity.value = e.velocityY;
       progress.value = Math.min(1, Math.max(0, 1 + e.translationY / SWITCHER_PULL_DISTANCE));
+      // A tick where letting go closes it.
+      const isPast = progress.value < 1 - SWITCHER_OPEN_THRESHOLD;
+      if (isPast !== headerPast.value) {
+        headerPast.value = isPast;
+        if (isPast) scheduleOnRN(switcherPullTick);
+      }
     },
     onFinalize: (e) => {
       'worklet';
@@ -454,6 +462,16 @@ function SwitcherOverlay({
   const atEnd = useSharedValue(initialOffset >= maxScroll - 0.5);
   const listActive = useSharedValue(false);
   const listVelocity = useSharedValue(0);
+  const listPast = useSharedValue(false);
+  // A tick where letting go of a pull on the list closes it.
+  const listTick = () => {
+    'worklet';
+    const isPast = Math.abs(stretch.value) > followPull(LIST_CLOSE_DISTANCE);
+    if (isPast !== listPast.value) {
+      listPast.value = isPast;
+      if (isPast) scheduleOnRN(switcherPullTick);
+    }
+  };
   const listRelease = (canceled: boolean) => {
     'worklet';
     if (!listActive.value) return;
@@ -476,11 +494,13 @@ function SwitcherOverlay({
     onActivate: () => {
       'worklet';
       listActive.value = true;
+      listPast.value = false;
     },
     onUpdate: (e) => {
       'worklet';
       listVelocity.value = e.velocityY;
       stretch.value = followPull(e.translationY);
+      listTick();
     },
     onFinalize: (e) => {
       'worklet';
@@ -495,11 +515,13 @@ function SwitcherOverlay({
     onActivate: () => {
       'worklet';
       listActive.value = true;
+      listPast.value = false;
     },
     onUpdate: (e) => {
       'worklet';
       listVelocity.value = e.velocityY;
       stretch.value = -followPull(-e.translationY);
+      listTick();
     },
     onFinalize: (e) => {
       'worklet';
@@ -770,6 +792,8 @@ function SwitcherCard({
   const content = rowFace(row);
   if (!content || (row.kind !== 'event' && row.kind !== 'ticket')) return null;
   const { event, text } = content;
+  // An ended event is greyed out, unless it's the current one.
+  const greyed = row.past && !row.current;
   return (
     <PressableSurface
       onPress={onPress}
@@ -795,7 +819,7 @@ function SwitcherCard({
             height: face.height,
             transform: [{ scale: face.scale }],
           },
-          row.past ? { filter: PAST_FILTER } : null,
+          greyed ? { filter: PAST_FILTER } : null,
         ]}
         importantForAccessibility="no-hide-descendants"
       >
@@ -809,7 +833,7 @@ function SwitcherCard({
           transition={0}
         />
       </View>
-      {row.past ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.pastTint]} /> : null}
+      {greyed ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.pastTint]} /> : null}
       {row.current ? (
         <View pointerEvents="none" style={styles.currentMark}>
           <Icon name="check" size={14} color={overlayTokens.ink} />
