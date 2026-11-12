@@ -18,14 +18,12 @@ import { DateTimeField, MultiSelectField, SelectField } from '../../components/f
 import { ScanFrame, ScannerDock } from '../../components/ScannerChrome';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 import { resetRoot } from '../../navigation/rootNavigation';
-import { groupSwitcherEvents } from '../../services/eventSwitcher';
 import type { FilterRule, SortRule } from '../../services/participantFilters';
 import { scanFrameSize } from '../../services/scannerLayout';
 import {
   accountSheetPreview,
   filterSheet,
   kioskSetupSheet,
-  switchEventSheet,
   linkSheet,
   multiSelectSheet,
   optionsSheet,
@@ -34,7 +32,7 @@ import {
 } from '../../navigation/sheetData';
 import { useOpenSheet } from '../../navigation/sheetPresenter';
 import { overlayTokens, useTheme, useThemePreference, type ThemePreference } from '../../theme';
-import type { Event, ScanContext, SelectOption, Ticket } from '../../types';
+import type { ScanContext, SelectOption } from '../../types';
 
 // Sample data only: the gallery never touches the network or the session.
 const PEOPLE = [
@@ -72,42 +70,6 @@ const UNDO_OPTIONS: SheetOption[] = [
   { value: 'locked', label: 'Airport pickup', description: 'Not yours to undo', disabled: true },
 ];
 
-const DAY = 86_400_000;
-const isoDay = (offsetDays: number) => new Date(Date.now() + offsetDays * DAY).toISOString();
-const sampleEvent = (id: string, name: string, startIn: number, days: number, role?: string): Event => ({
-  id,
-  name,
-  slug: id,
-  starts_at: isoDay(startIn),
-  ends_at: isoDay(startIn + days),
-  location_city: 'Sydney',
-  role,
-});
-const sampleTicket = (event: Event): Ticket => ({
-  id: `ticket-${event.id}`,
-  participant_id: 'sample',
-  status: 'confirmed',
-  display_status: 'Confirmed',
-  confirmed: true,
-  checked_in: false,
-  attendee_name: 'Sample Person',
-  qr_payload: 'attend://checkin/sample',
-  short_code: 'SAMPLE',
-  onboarding_url: 'https://example.com',
-  event,
-});
-
-// The switcher's sample events: two organized (one running, the current
-// one), one attended, and one of each that has ended.
-const SWITCHER_GROUPS = groupSwitcherEvents(
-  [
-    sampleEvent('hackathon', 'Sample Hackathon', -1, 2, 'event_admin'),
-    sampleEvent('spring-jam', 'Spring Jam', 30, 1, 'event_admin'),
-    sampleEvent('winter-build', 'Winter Build', -60, 2, 'event_admin'),
-  ],
-  [sampleTicket(sampleEvent('summer-camp', 'Summer Camp', 60, 3)), sampleTicket(sampleEvent('autumn-jam', 'Autumn Jam', -120, 1))]
-);
-
 const SAMPLE_USER = {
   id: 'sample',
   name: 'Sample Organizer',
@@ -141,13 +103,6 @@ export function UiGallery() {
     resetRoot(navigation, { index: 0, routes: [{ name: 'UiGallery' }] });
     setLastAction(action);
   };
-  const claimSwitcher = switchEventSheet.useOpener({
-    preview: {
-      groups: SWITCHER_GROUPS,
-      currentEventId: 'hackathon',
-      onPick: (name) => resetHere(`Switched to ${name}`),
-    },
-  });
   const claimAccount = accountSheetPreview.useOpener({
     user: SAMPLE_USER,
     onSignOut: () => resetHere('Signed out'),
@@ -240,13 +195,6 @@ export function UiGallery() {
 
       <Container title="Drawers">
         <View style={styles.stack}>
-          <Button
-            title="Switch event"
-            onPress={() => {
-              claimSwitcher();
-              openSheet('SwitchEventSheet');
-            }}
-          />
           <Button
             title="Account"
             onPress={() => {

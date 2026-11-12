@@ -25,7 +25,6 @@ const sheet = (name: SheetRouteName, getComponent: ScreenGetter): SheetConfig =>
 
 /** Each sheet's screen, loaded on its first open, and its resting heights. */
 export const SHEETS: Record<SheetRouteName, SheetConfig> = {
-  SwitchEventSheet: sheet('SwitchEventSheet', () => require('../screens/sheets/SwitchEventSheet').SwitchEventSheet),
   AccountSheet: sheet('AccountSheet', () => require('../components/AccountSheet').AccountSheet),
   ScanContextSheet: sheet('ScanContextSheet', () => require('../screens/sheets/ScanContextSheet').ScanContextSheet),
   ScannerSearchSheet: sheet('ScannerSearchSheet', () => require('../screens/sheets/ScannerSearchSheet').ScannerSearchSheet),

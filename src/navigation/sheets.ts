@@ -7,7 +7,6 @@ import type { RootStackParamList } from '../types';
  * callbacks come through a sheet channel (navigation/sheetChannel).
  */
 export const SHEET_ROUTES = [
-  'SwitchEventSheet',
   'AccountSheet',
   'ScanContextSheet',
   'ScannerSearchSheet',

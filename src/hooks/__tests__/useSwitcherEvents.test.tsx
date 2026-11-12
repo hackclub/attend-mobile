@@ -23,9 +23,11 @@ jest.mock('../../services/sync', () => ({
 }));
 jest.mock('../../services/eventSwitcher', () => ({
   canSwitchEvents: () => false,
-  groupSwitcherEvents: () => ({ organising: [], past: [] }),
+  groupSwitcherEvents: () => ({ organising: [], attending: [], past: [] }),
+  pastEntryEvent: (entry: { event: unknown }) => entry.event,
   switcherEventCount: () => 0,
 }));
+jest.mock('expo-image', () => ({ Image: { prefetch: jest.fn().mockResolvedValue(true) } }));
 
 import { api } from '../../services/api';
 import { resetSwitcherEventsCache, useSwitcherEvents } from '../useSwitcherEvents';

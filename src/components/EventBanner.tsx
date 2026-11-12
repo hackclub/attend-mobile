@@ -1,7 +1,21 @@
-import React, { type ReactNode } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
+import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
+import { useSharedValue, withSpring } from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
+import {
+  SWITCHER_FLICK_VELOCITY,
+  SWITCHER_OPEN_THRESHOLD,
+  SWITCHER_PULL_DISTANCE,
+  SWITCHER_SPRING,
+  switcherOverlay,
+  switcherProgress,
+  type SwitcherBanner,
+} from '../navigation/switcherOverlay';
+import { haptics } from '../services/haptics';
+import type { SwitcherCurrent } from '../services/switcherLayout';
 import { useEventPassColor } from '../hooks/useEventPassColor';
 import { Badge, Icon, OverlayIconButton, PressableSurface, pressedStyle, ripple, type BadgeColor, type IconName } from './ui';
 import { easedFade, hackClubColors, linearGradient, overlayTokens, radii, typography, useTheme, withAlpha } from '../theme';
@@ -82,6 +96,17 @@ export function EventCover({ event, children }: { event: Event; children?: React
   );
 }
 
+/** What makes a banner the way into the event switcher overlay. */
+export interface BannerSwitcher {
+  /** `bannerKey.event(...)` or `bannerKey.ticket(...)`. */
+  key: string;
+  current: SwitcherCurrent;
+  /** Its screen's root reset, run under the overlay when switching. */
+  switchTo: SwitcherBanner['switchTo'];
+  /** With one event or none to switch to, it doesn't respond. */
+  enabled: boolean;
+}
+
 interface EventBannerProps {
   event: Event;
   /** Small line above the name, e.g. "Day 1 of 2". */
@@ -89,8 +114,11 @@ interface EventBannerProps {
   eyebrowIcon?: IconName;
   /** Line under the name: dates, city, role. */
   meta?: string | null;
-  /** Opens the switcher. Without it the banner isn't pressable and has no chevron. */
-  onPress?: () => void;
+  /**
+   * Makes it the way into the event switcher: pull it down, or tap it. It
+   * registers with the overlay either way, so a switch can land on it.
+   */
+  switcher?: BannerSwitcher;
   /** Space above the content for the status bar and a top tab bar. */
   topInset?: number;
   /** Top-right slot, e.g. the account avatar. Sits outside the pressable area. */
@@ -105,32 +133,23 @@ interface EventBannerProps {
   style?: StyleProp<ViewStyle>;
 }
 
-/**
- * An event's home header, shared by the Overview and the attendee's pass: the
- * event's photo at a 16:9 ratio with its name, day count and dates pinned to
- * the bottom, and (when `onPress` is set) the way into the switcher.
- */
-export function EventBanner({
-  event,
+/** The banner's eyebrow, name and meta, pinned to the bottom of what holds it. */
+export function BannerText({
+  name,
   eyebrow,
   eyebrowIcon = 'calendar',
   meta,
-  onPress,
-  topInset = 0,
-  accessory,
-  onBack,
-  blendInto,
-  style,
-}: EventBannerProps) {
+  chevron = false,
+}: {
+  name: string;
+  eyebrow?: string | null;
+  eyebrowIcon?: IconName;
+  meta?: string | null;
+  chevron?: boolean;
+}) {
   const { type } = useTheme();
-  const { width } = useWindowDimensions();
-  // The banner is the same height with or without the blend, so switching
-  // theme doesn't move the page.
-  const height = bannerHeight(width, topInset);
-  const label = [event.name, eyebrow, meta].filter(Boolean).join('. ');
-
-  const content = (
-    <View style={[styles.heroContent, { minHeight: height, paddingTop: topInset + 56 }]}>
+  return (
+    <>
       {eyebrow ? (
         <View style={styles.eyebrow}>
           <Icon name={eyebrowIcon} size={16} color={ON_BANNER} />
@@ -141,9 +160,9 @@ export function EventBanner({
       ) : null}
       <View style={styles.nameRow}>
         <Text style={[styles.heroName, styles.onBanner]} numberOfLines={2} accessibilityRole="header">
-          {event.name}
+          {name}
         </Text>
-        {onPress ? (
+        {chevron ? (
           <View style={styles.chevron}>
             <Icon name="chevron-down" size={16} color={ON_BANNER} />
           </View>
@@ -154,39 +173,149 @@ export function EventBanner({
           {meta}
         </Text>
       ) : null}
+    </>
+  );
+}
+
+/**
+ * An event's home header, shared by the Overview and the attendee's pass: the
+ * event's photo at a 16:9 ratio with its name, day count and dates pinned to
+ * the bottom, and (with `switcher`) the way into the event switcher.
+ */
+export function EventBanner({
+  event,
+  eyebrow,
+  eyebrowIcon = 'calendar',
+  meta,
+  switcher,
+  topInset = 0,
+  accessory,
+  onBack,
+  blendInto,
+  style,
+}: EventBannerProps) {
+  const { width } = useWindowDimensions();
+  // The banner is the same height with or without the blend, so switching
+  // theme doesn't move the page.
+  const height = bannerHeight(width, topInset);
+  const label = [event.name, eyebrow, meta].filter(Boolean).join('. ');
+  const viewRef = useRef<React.ComponentRef<typeof View>>(null);
+  const canSwitch = !!switcher?.enabled;
+
+  // Registered while mounted, so the overlay can grow out of it, or land on
+  // it after a switch. The latest props are read through a ref.
+  const latest = useRef({ event, eyebrow, eyebrowIcon, meta, topInset, blendInto, switcher });
+  useLayoutEffect(() => {
+    latest.current = { event, eyebrow, eyebrowIcon, meta, topInset, blendInto, switcher };
+  });
+  const key = switcher?.key;
+  useEffect(() => {
+    if (!key) return;
+    const read = () => latest.current;
+    return switcherOverlay.registerBanner({
+      key,
+      get event() { return read().event; },
+      get eyebrow() { return read().eyebrow ?? undefined; },
+      get eyebrowIcon() { return read().eyebrowIcon; },
+      get meta() { return read().meta ?? undefined; },
+      get topInset() { return read().topInset; },
+      get blendInto() { return read().blendInto; },
+      get current() { return read().switcher?.current ?? {}; },
+      switchTo: (home, before) => read().switcher?.switchTo(home, before),
+      measure: () =>
+        new Promise((resolve) => {
+          const view = viewRef.current;
+          if (!view) return resolve(null);
+          view.measureInWindow((x, y, w, h) => resolve(w > 0 && h > 0 ? { x, y, width: w, height: h } : null));
+        }),
+    });
+  }, [key]);
+
+  const openFromPull = useCallback(() => {
+    if (key) void switcherOverlay.open(key, false);
+  }, [key]);
+  const pull = useBannerPull(canSwitch, openFromPull);
+
+  const content = (
+    <View style={[styles.heroContent, { minHeight: height, paddingTop: topInset + 56 }]}>
+      <BannerText name={event.name} eyebrow={eyebrow} eyebrowIcon={eyebrowIcon} meta={meta} chevron={canSwitch} />
     </View>
   );
 
   return (
-    <View style={[styles.hero, style]}>
-      <EventCover event={event} />
-      {blendInto ? <BannerBlend into={blendInto} /> : null}
-      {onPress ? (
-        <Pressable
-          onPress={onPress}
-          android_ripple={ripple(withAlpha(overlayTokens.on, 0.18))}
-          style={({ pressed }) => pressedStyle(pressed, 0.8)}
-          accessibilityRole="button"
-          accessibilityLabel={label}
-          accessibilityHint="Switch event"
-        >
-          {content}
-        </Pressable>
-      ) : (
-        <View accessible accessibilityLabel={label}>{content}</View>
-      )}
-      {onBack ? (
-        <OverlayIconButton
-          icon="back"
-          accessibilityLabel="Back"
-          onPress={onBack}
-          hitSlop={4}
-          style={[styles.back, { top: topInset + 8 }]}
-        />
-      ) : null}
-      {accessory ? <View style={[styles.accessory, { top: topInset + 8 }]}>{accessory}</View> : null}
-    </View>
+    <GestureDetector gesture={pull}>
+      <View ref={viewRef} collapsable={false} style={[styles.hero, style]}>
+        <EventCover event={event} />
+        {blendInto ? <BannerBlend into={blendInto} /> : null}
+        {canSwitch && key ? (
+          <Pressable
+            onPress={() => void switcherOverlay.open(key, true)}
+            android_ripple={ripple(withAlpha(overlayTokens.on, 0.18))}
+            style={({ pressed }) => pressedStyle(pressed, 0.8)}
+            accessibilityRole="button"
+            accessibilityLabel="Switch event"
+            accessibilityValue={{ text: label }}
+          >
+            {content}
+          </Pressable>
+        ) : (
+          <View accessible accessibilityLabel={label}>{content}</View>
+        )}
+        {onBack ? (
+          <OverlayIconButton
+            icon="back"
+            accessibilityLabel="Back"
+            onPress={onBack}
+            hitSlop={4}
+            style={[styles.back, { top: topInset + 8 }]}
+          />
+        ) : null}
+        {accessory ? <View style={[styles.accessory, { top: topInset + 8 }]}>{accessory}</View> : null}
+      </View>
+    </GestureDetector>
   );
+}
+
+/**
+ * Pulling the banner down: the switcher follows the finger
+ * (`switcherProgress`), with a tick as the pull passes the point where
+ * letting go opens it. Let go past it (or flicked) it springs open, short of
+ * it back. Only downward pulls: a tap, or an upward drag that scrolls the
+ * page, never starts it.
+ */
+function useBannerPull(enabled: boolean, onStart: () => void) {
+  const past = useSharedValue(false);
+  return usePanGesture({
+    enabled,
+    activeOffsetY: 8,
+    failOffsetY: -8,
+    failOffsetX: [-24, 24],
+    onActivate: () => {
+      'worklet';
+      past.value = false;
+      scheduleOnRN(onStart);
+    },
+    onUpdate: (e) => {
+      'worklet';
+      const progress = Math.min(1, Math.max(0, e.translationY / SWITCHER_PULL_DISTANCE));
+      switcherProgress.value = progress;
+      const isPast = progress >= SWITCHER_OPEN_THRESHOLD;
+      if (isPast !== past.value) {
+        past.value = isPast;
+        if (isPast) scheduleOnRN(haptics.selection);
+      }
+    },
+    onDeactivate: (e) => {
+      'worklet';
+      if (switcherProgress.value >= SWITCHER_OPEN_THRESHOLD || e.velocityY > SWITCHER_FLICK_VELOCITY) {
+        switcherProgress.value = withSpring(1, SWITCHER_SPRING);
+      } else {
+        switcherProgress.value = withSpring(0, SWITCHER_SPRING, (finished) => {
+          if (finished) scheduleOnRN(switcherOverlay.closed);
+        });
+      }
+    },
+  });
 }
 
 interface EventCardProps {

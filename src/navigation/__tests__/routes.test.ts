@@ -34,19 +34,19 @@ describe('passHomeState', () => {
 });
 
 describe('keepRootKeys', () => {
-  it('keeps the key of a root route that stays, and drops the switcher sheet over it', () => {
-    const current = { routes: [{ name: 'Main', key: 'main-1' }, { name: 'SwitchEventSheet', key: 'switch-1' }] };
+  it('keeps the key of a root route that stays, and drops a sheet over it', () => {
+    const current = { routes: [{ name: 'Main', key: 'main-1' }, { name: 'OptionsSheet', key: 'options-1' }] };
     const reset = keepRootKeys(eventHomeState(), current);
     expect(reset.routes).toHaveLength(1);
     expect(reset.routes[0]).toMatchObject({ name: 'Main', key: 'main-1' });
     expect(reset.routes[0].state).toEqual(eventHomeState().routes[0].state);
   });
 
-  it('replaces the switcher sheet and the screen under it with a pass home', () => {
+  it('replaces the sheets and the screen under it with a pass home', () => {
     const current = {
       routes: [
         { name: 'Main', key: 'main-1' },
-        { name: 'SwitchEventSheet', key: 'switch-1' },
+        { name: 'OptionsSheet', key: 'options-1' },
         { name: 'AccountSheet', key: 'account-1' },
       ],
     };

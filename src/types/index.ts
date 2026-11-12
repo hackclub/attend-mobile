@@ -498,7 +498,6 @@ export type RootStackParamList = {
   };
   // Form sheets (navigation/sheets). Their data comes through a sheet
   // channel, not params.
-  SwitchEventSheet: undefined;
   AccountSheet: undefined;
   ScanContextSheet: undefined;
   ScannerSearchSheet: undefined;

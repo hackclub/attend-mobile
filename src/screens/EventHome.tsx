@@ -56,8 +56,9 @@ import { radii, useTheme } from '../theme';
 import { travelClock, travelWeekday } from '../services/travelTimes';
 import type { Event, MainTabParamList, AppStackParamList, TravelCalendarEntry } from '../types';
 import { SwitchEventList } from '../components/EventSwitcher';
-import { switchEventSheet, type SwitchEventSheetData } from '../navigation/sheetData';
-import { useOpenSheet } from '../navigation/sheetPresenter';
+import { resetRoot } from '../navigation/rootNavigation';
+import type { PartialState } from '../navigation/routes';
+import { bannerKey } from '../navigation/switcherOverlay';
 
 type Navigation = NavigationProp<AppStackParamList & MainTabParamList>;
 
@@ -111,9 +112,6 @@ export function EventHome() {
   return <Overview event={event} canSwitch={canSwitch} onRefreshEvents={refreshSwitcher} />;
 }
 
-// The Overview's switcher has the event, not a pass, as current.
-const NO_TICKET: SwitchEventSheetData = {};
-
 function Overview({
   event,
   canSwitch,
@@ -134,12 +132,18 @@ function Overview({
   const access = useEventAccess();
   const { contexts } = useEventScanContexts(event.id);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const openSheet = useOpenSheet();
-  const claimSwitcher = switchEventSheet.useOpener(NO_TICKET);
-  const openSwitcher = () => {
-    claimSwitcher();
-    openSheet('SwitchEventSheet');
-  };
+  const bannerSwitcher = useMemo(
+    () => ({
+      key: bannerKey.event(event),
+      current: { eventId: event.id },
+      enabled: canSwitch,
+      switchTo: (home: PartialState, before?: () => void) => {
+        before?.();
+        resetRoot(navigation, home);
+      },
+    }),
+    [canSwitch, event, navigation]
+  );
 
   const participants = state.participants;
   const stats = useMemo(() => computeEventStats(participants, contexts), [participants, contexts]);
@@ -405,7 +409,7 @@ function Overview({
           meta={banner.meta}
           topInset={insets.top + topTabInset}
           blendInto={tokens.bg}
-          onPress={canSwitch ? openSwitcher : undefined}
+          switcher={bannerSwitcher}
           accessory={<AccountButton onBanner />}
         />
 

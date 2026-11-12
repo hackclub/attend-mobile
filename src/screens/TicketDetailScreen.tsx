@@ -18,9 +18,9 @@ import { EventBanner, eventBannerText } from '../components/EventBanner';
 import { EventStatusCard } from '../components/EventStatusCard';
 import { TicketPass } from '../components/TicketPass';
 import { WalletButtons } from '../components/WalletButtons';
-import { rootNavigation } from '../navigation/rootNavigation';
-import { switchEventSheet } from '../navigation/sheetData';
-import { useOpenSheet } from '../navigation/sheetPresenter';
+import { resetRoot, rootNavigation } from '../navigation/rootNavigation';
+import type { PartialState } from '../navigation/routes';
+import { bannerKey } from '../navigation/switcherOverlay';
 import {
   startTicketActivity,
   stopTicketActivity,
@@ -115,12 +115,18 @@ export function TicketDetailScreen() {
   // events like the Overview's does. (Only organizers have the switcher:
   // they're the ones with the event tabs, Main.)
   const canSwitch = !canGoBack && !!rootNavigation(navigation).getState()?.routeNames?.includes('Main');
-  const openSheet = useOpenSheet();
-  const claimSwitcher = switchEventSheet.useOpener(useMemo(() => ({ currentTicketId: ticket.id }), [ticket.id]));
-  const openSwitcher = () => {
-    claimSwitcher();
-    openSheet('SwitchEventSheet');
-  };
+  const bannerSwitcher = useMemo(
+    () => ({
+      key: bannerKey.ticket(ticket),
+      current: { eventId: ticket.event.id, ticketId: ticket.id },
+      enabled: canSwitch,
+      switchTo: (home: PartialState, before?: () => void) => {
+        before?.();
+        resetRoot(navigation, home);
+      },
+    }),
+    [canSwitch, navigation, ticket]
+  );
 
   // Live Activity: let confirmed attendees pin their pass to the Lock Screen.
   // iOS: a Live Activity. Android: an ongoing notification (a Live Update on
@@ -196,7 +202,7 @@ export function TicketDetailScreen() {
           topInset={insets.top}
           blendInto={tokens.shaded}
           onBack={canGoBack ? () => navigation.goBack() : undefined}
-          onPress={canSwitch ? openSwitcher : undefined}
+          switcher={bannerSwitcher}
           accessory={canGoBack ? undefined : <AccountButton onBanner />}
         />
 

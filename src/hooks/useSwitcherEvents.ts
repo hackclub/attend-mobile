@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Image } from 'expo-image';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
-import { canSwitchEvents, groupSwitcherEvents, switcherEventCount } from '../services/eventSwitcher';
+import {
+  canSwitchEvents,
+  groupSwitcherEvents,
+  pastEntryEvent,
+  switcherEventCount,
+  type SwitcherGroups,
+} from '../services/eventSwitcher';
 import { syncService } from '../services/sync';
 import type { Event, Ticket } from '../types';
 import { resetSwitcherEventsCache, switcherCache, type SwitcherLoadKey } from './switcherEventsCache';
@@ -98,6 +105,9 @@ export function useSwitcherEvents() {
 
   const groups = useMemo(() => groupSwitcherEvents(state.events, tickets), [state.events, tickets]);
 
+  // The switcher's cover cards show at once when it opens.
+  useEffect(() => preloadCovers(groups), [groups]);
+
   // More than one entry, ended events included. A current event missing from
   // every group (access removed) still leaves somewhere else to go.
   const currentId = state.currentEvent?.id;
@@ -113,4 +123,27 @@ export function useSwitcherEvents() {
     loadFailed,
     refresh,
   };
+}
+
+/** Past this many ended events, only the most recent covers are preloaded. */
+const PRELOAD_PAST = 10;
+const preloaded = new Set<string>();
+
+/**
+ * Fetches the switcher's cover photos ahead of it opening: every upcoming
+ * event's, and the latest ended ones' (a global admin's full list would be
+ * far too many). Each URL once per app run.
+ */
+function preloadCovers(groups: SwitcherGroups): void {
+  const events = [
+    ...groups.organising,
+    ...groups.attending.map((ticket) => ticket.event),
+    ...groups.past.slice(0, PRELOAD_PAST).map(pastEntryEvent),
+  ];
+  const urls = events
+    .map((event) => event.banner_url)
+    .filter((url): url is string => !!url && !preloaded.has(url));
+  if (urls.length === 0) return;
+  urls.forEach((url) => preloaded.add(url));
+  void Image.prefetch(urls, 'memory-disk').catch(() => {});
 }

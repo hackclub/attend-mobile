@@ -18,7 +18,7 @@ const main = (tab: string, stackTop: string) => ({
 describe('isSheetRoute', () => {
   it('knows the form sheets', () => {
     expect(isSheetRoute('ScanContextSheet')).toBe(true);
-    expect(isSheetRoute('SwitchEventSheet')).toBe(true);
+    expect(isSheetRoute('AccountSheet')).toBe(true);
     expect(isSheetRoute('Kiosk')).toBe(false);
   });
 });

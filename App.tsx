@@ -14,6 +14,7 @@ import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SwitcherOverlayHost, useSwitcherOverlayOpen } from './src/components/SwitcherOverlay';
 import { StatusBar } from 'expo-status-bar';
 import * as Linking from 'expo-linking';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -518,7 +519,8 @@ function ThemedNavigationContainer({
       {/* "auto" tracks the system appearance, so the clock and icons stay
           readable against whichever background the scheme paints. */}
       <StatusBar style="auto" />
-      {children}
+      <AppUnderOverlay>{children}</AppUnderOverlay>
+      <SwitcherOverlayHost />
       <SheetHost />
     </NavigationContainer>
   );
@@ -533,6 +535,21 @@ const makeStyles = ({ tokens }: Theme) => StyleSheet.create({
   },
 });
 
+/** The app, hidden from screen readers while the event switcher covers it. */
+function AppUnderOverlay({ children }: { children: React.ReactNode }) {
+  const overlayOpen = useSwitcherOverlayOpen();
+  return (
+    <View
+      style={rootStyles.fill}
+      importantForAccessibility={overlayOpen ? 'no-hide-descendants' : 'auto'}
+      accessibilityElementsHidden={overlayOpen}
+    >
+      {children}
+    </View>
+  );
+}
+
 const rootStyles = StyleSheet.create({
   gestureRoot: { flex: 1 },
+  fill: { flex: 1 },
 });
