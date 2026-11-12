@@ -32,7 +32,9 @@ import {
 } from '../../navigation/sheetData';
 import { useOpenSheet } from '../../navigation/sheetPresenter';
 import { overlayTokens, useTheme, useThemePreference, type ThemePreference } from '../../theme';
-import type { ScanContext, SelectOption } from '../../types';
+import type { Participant, ScanContext, SelectOption } from '../../types';
+import type { ScannerResult } from '../../services/scannerCore';
+import { KioskWelcome } from '../../components/KioskWelcome';
 
 // Sample data only: the gallery never touches the network or the session.
 const PEOPLE = [
@@ -96,6 +98,7 @@ export function UiGallery() {
   const navigation = useNavigation();
   const [lastAction, setLastAction] = useState('Nothing yet');
   const [scannerPreview, setScannerPreview] = useState(false);
+  const [kioskWelcomePreview, setKioskWelcomePreview] = useState(false);
   // What the real drawers do after closing (reset the root, open the
   // kiosk) stands in as a reset to this screen, to check the app still
   // takes touches afterwards.
@@ -177,6 +180,7 @@ export function UiGallery() {
   );
 
   if (scannerPreview) return <ScannerPreview onClose={() => setScannerPreview(false)} />;
+  if (kioskWelcomePreview) return <KioskWelcomePreview onClose={() => setKioskWelcomePreview(false)} />;
 
   return (
     <Screen title="UI gallery" contentContainerStyle={{ gap: spacing.lg }}>
@@ -217,6 +221,7 @@ export function UiGallery() {
             }}
           />
           <Button title="Scanner layout" onPress={() => setScannerPreview(true)} />
+          <Button title="Kiosk welcome" onPress={() => setKioskWelcomePreview(true)} />
         </View>
       </Container>
 
@@ -470,3 +475,66 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   chips: { gap: 8 },
 });
+
+const SAMPLE_ATTENDEE = {
+  participant_id: 'sample',
+  participant_event_id: 'sample',
+  display_name: 'Ingo Wolf',
+  full_name: 'Ingo Wolf',
+  email: 'sample@example.com',
+  status: 'confirmed',
+} as Participant;
+
+/**
+ * Kiosk mode's scan answer (KioskWelcome) over a stand-in camera, with a
+ * button per outcome; each shows for as long as the kiosk would show it.
+ */
+function KioskWelcomePreview({ onClose }: { onClose: () => void }) {
+  const { tokens, type } = useTheme();
+  const { width, height } = useWindowDimensions();
+  const [result, setResult] = useState<ScannerResult | null>(null);
+  const timer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const size = Math.min(width - 48, height * 0.42, 280);
+  const origin = { x: (width - size) / 2, y: height * 0.3, width: size, height: size };
+
+  const show = (outcome: ScannerResult['outcome'], message?: string) => {
+    clearTimeout(timer.current);
+    setResult({
+      attemptId: `${outcome}-${Date.now()}`,
+      rawData: 'sample',
+      source: 'qr',
+      outcome,
+      participant: outcome === 'not_scanned' ? undefined : SAMPLE_ATTENDEE,
+      message,
+      retryable: false,
+    });
+    if (outcome !== 'confirming') timer.current = setTimeout(() => setResult(null), 2500);
+  };
+
+  return (
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: tokens.bg }]}>
+      <Text style={[type.h1, { color: tokens.textH, textAlign: 'center', marginTop: height * 0.3 - 56 }]}>
+        Scan your QR code
+      </Text>
+      <View
+        style={{
+          position: 'absolute',
+          left: origin.x,
+          top: origin.y,
+          width: size,
+          height: size,
+          borderRadius: 24,
+          backgroundColor: overlayTokens.cameraStage,
+        }}
+      />
+      <View style={{ position: 'absolute', left: 24, right: 24, bottom: 48, gap: 8 }}>
+        <Button title="Scanned" onPress={() => show('scanned')} />
+        <Button title="Already scanned" onPress={() => show('already_scanned')} />
+        <Button title="Saved offline" onPress={() => show('queued')} />
+        <Button title="Not scanned" onPress={() => show('not_scanned', 'This QR code isn’t for this event.')} />
+        <Button title="Close" variant="link" onPress={onClose} />
+      </View>
+      <KioskWelcome result={result} origin={origin} />
+    </View>
+  );
+}

@@ -5,7 +5,6 @@ import {
   StyleSheet,
   BackHandler,
   AccessibilityInfo,
-  ScrollView,
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,14 +14,13 @@ import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/nativ
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BannerBlend, EventCover } from '../components/EventBanner';
-import { Button, Icon, OverlayIconButton, StatusGlyph, type StatusType } from '../components/ui';
-import { overlayTokens, radii, typography, useTheme, type ThemeTokens } from '../theme';
-import { ParticipantAvatar } from '../components/ParticipantAvatar';
+import { Button, Icon, OverlayIconButton } from '../components/ui';
+import { overlayTokens, radii, typography, useTheme } from '../theme';
+import { KioskWelcome, type WelcomeOrigin } from '../components/KioskWelcome';
 import { useScanFeedback } from '../hooks/useScanFeedback';
 import { useScanner } from '../hooks/useScanner';
 import { useScannerPowerMode } from '../hooks/useScannerPowerMode';
 import { useApp } from '../context/AppContext';
-import type { ScannerResult } from '../services/scannerCore';
 import type { AppStackParamList } from '../types';
 import { startScreenPinning, stopScreenPinning } from '../../modules/activity-controller/src';
 import { kioskUnlockSheet } from '../navigation/sheetData';
@@ -69,6 +67,8 @@ export function KioskScreen() {
   const { play, isReady: isFeedbackReady } = useScanFeedback();
 
   const [permission, requestPermission] = useCameraPermissions();
+  const cameraRef = useRef<React.ComponentRef<typeof View>>(null);
+  const [cameraRect, setCameraRect] = useState<WelcomeOrigin | null>(null);
   const { recordScannerActivity } = useScannerPowerMode(!!permission?.granted);
   // Scanning pauses while the exit drawer is open.
   const { underSheet } = useIsUnderSheet();
@@ -239,7 +239,14 @@ export function KioskScreen() {
         <Text style={[type.h1, kiosk.center, { color: tokens.textH }]} accessibilityRole="header" accessibilityLiveRegion="polite">
           {prompt}
         </Text>
-        <View style={[kiosk.camera, { width: scanSize, height: scanSize }]}>
+        <View
+          ref={cameraRef}
+          style={[kiosk.camera, { width: scanSize, height: scanSize }]}
+          // Where a scan's result blooms from.
+          onLayout={() =>
+            cameraRef.current?.measureInWindow((x, y, w, h) => setCameraRect({ x, y, width: w, height: h }))
+          }
+        >
           <CameraView
             style={StyleSheet.absoluteFill}
             facing={facing}
@@ -255,7 +262,7 @@ export function KioskScreen() {
         </View>
       </View>
 
-      {lastScan ? <KioskResult result={lastScan} /> : null}
+      <KioskWelcome result={lastScan} origin={cameraRect} />
     </View>
   );
 }
@@ -296,94 +303,4 @@ const kiosk = StyleSheet.create({
   br: { bottom: 0, right: 0, borderBottomWidth: FRAME.thickness, borderRightWidth: FRAME.thickness, borderBottomRightRadius: FRAME.radius },
 });
 
-const RESULT: Record<ScannerResult['outcome'], { status: StatusType; label: string }> = {
-  confirming: { status: 'in-progress', label: 'Confirming' },
-  scanned: { status: 'success', label: 'Scanned' },
-  already_scanned: { status: 'warning', label: 'Already scanned' },
-  // Not confirmed by Attend yet, so never success-coloured.
-  queued: { status: 'pending', label: 'Saved offline' },
-  not_scanned: { status: 'error', label: 'Not scanned' },
-};
 
-function resultColor(status: StatusType, tokens: ThemeTokens): string {
-  switch (status) {
-    case 'success': return tokens.success;
-    case 'warning': return tokens.warning;
-    case 'error': return tokens.error;
-    case 'in-progress': return tokens.info;
-    default: return tokens.inactive;
-  }
-}
-
-function KioskResult({ result }: { result: ScannerResult }) {
-  const { tokens, type, radii, shadowOpacity, elevation } = useTheme();
-  const status = RESULT[result.outcome];
-  const tint = resultColor(status.status, tokens);
-  const name = result.participant?.display_name || result.participant?.full_name || '';
-
-  return (
-    <View style={styles.resultBackdrop} pointerEvents="box-none">
-      <ScrollView
-        style={styles.resultScroll}
-        contentContainerStyle={styles.resultScrollContent}
-        bounces={false}
-        showsVerticalScrollIndicator={false}
-      >
-        <View
-          style={[
-            styles.resultCard,
-            {
-              backgroundColor: tokens.bg,
-              borderColor: tint,
-              borderRadius: radii.container,
-              shadowOpacity: shadowOpacity * 2,
-              elevation,
-            },
-          ]}
-        >
-          <ParticipantAvatar participant={result.participant} size={64} />
-          <View style={styles.resultCopy}>
-            <View style={styles.resultStatusRow}>
-              <StatusGlyph type={status.status} color={tint} size={20} />
-              <Text style={[type.h3, { color: tint }]}>{status.label}</Text>
-            </View>
-            {name ? <Text style={[type.h1, { color: tokens.textH }]}>{name}</Text> : null}
-            {result.message ? <Text style={[type.body, { color: tokens.text2 }]}>{result.message}</Text> : null}
-            <Text style={[type.small, styles.resultReady, { color: tokens.muted }]}>
-              {result.outcome === 'confirming' ? 'Hold steady' : 'Ready for next attendee'}
-            </Text>
-          </View>
-        </View>
-      </ScrollView>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  resultBackdrop: {
-    ...StyleSheet.absoluteFill,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingHorizontal: 24,
-    paddingBottom: 88,
-  },
-  resultCard: {
-    width: '100%',
-    maxWidth: 640,
-    minHeight: 116,
-    padding: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    borderWidth: 2,
-    shadowColor: overlayTokens.ink,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-  },
-  resultScroll: { width: '100%', maxWidth: 640, maxHeight: '55%' },
-  resultScrollContent: { flexGrow: 1, justifyContent: 'flex-end' },
-  resultCopy: { flex: 1, gap: 4 },
-  resultStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  resultReady: { marginTop: 2 },
-
-});

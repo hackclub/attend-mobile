@@ -16,6 +16,7 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { SwitcherOverlayHost, useSwitcherOverlayOpen } from './src/components/SwitcherOverlay';
+import { PortalHost } from './src/components/Portal';
 import { SWITCHER_APP_RADIUS, SWITCHER_APP_SCALE_OUT, switcherProgress } from './src/navigation/switcherOverlay';
 import { StatusBar } from 'expo-status-bar';
 import * as Linking from 'expo-linking';
@@ -523,6 +524,7 @@ function ThemedNavigationContainer({
       <StatusBar style="auto" />
       <AppUnderOverlay>{children}</AppUnderOverlay>
       <SwitcherOverlayHost />
+      <PortalHost />
       <SheetHost />
     </NavigationContainer>
   );
