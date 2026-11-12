@@ -2,8 +2,12 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../theme';
 import { Avatar, Badge, PressableSurface, ROW_STATE_LAYER_ALPHA, type BadgeColor } from './ui';
-import { isWithdrawn } from '../services/participantStatus';
-import { participantDetailLine } from '../services/participantCheckIn';
+import {
+  PARTICIPANT_STATE_LABELS,
+  participantState,
+  type ParticipantState,
+} from '../services/participantStatus';
+import { checkInDetail } from '../services/participantCheckIn';
 import type { Participant } from '../types';
 
 interface ParticipantRowProps {
@@ -16,13 +20,20 @@ interface ParticipantRowProps {
   last?: boolean;
 }
 
+const STATE_BADGE_COLORS: Record<ParticipantState, BadgeColor> = {
+  here: 'green',
+  not_here: 'grey',
+  awaiting_parent: 'yellow',
+  registering: 'yellow',
+  invited: 'blue',
+  withdrawn: 'grey',
+  rejected: 'grey',
+};
+
 export function participantBadges(participant: Participant): { label: string; color: BadgeColor }[] {
+  const state = participantState(participant);
   const badges: { label: string; color: BadgeColor }[] = [
-    isWithdrawn(participant)
-      ? { label: 'Withdrawn', color: 'red' }
-      : participant.checked_in_at
-        ? { label: 'Checked in', color: 'green' }
-        : { label: 'Not checked in', color: 'grey' },
+    { label: PARTICIPANT_STATE_LABELS[state], color: STATE_BADGE_COLORS[state] },
   ];
   if (participant.has_anaphylaxis_risk) badges.push({ label: 'Anaphylaxis', color: 'red' });
   if (participant.high_support_flag) badges.push({ label: 'High support', color: 'yellow' });
@@ -40,8 +51,12 @@ export const ParticipantRow = React.memo(function ParticipantRow({
 }: ParticipantRowProps) {
   const { tokens, type, radii } = useTheme();
   const name = participant.display_name || participant.full_name;
-  const detail = participantDetailLine(participant);
+  // Only someone who's here has a second line (when and where); everyone
+  // else's state is the badge.
+  const detail = checkInDetail(participant);
   const badges = participantBadges(participant);
+  const state = participantState(participant);
+  const inactive = state === 'withdrawn' || state === 'rejected';
 
   return (
     <PressableSurface
@@ -68,15 +83,19 @@ export const ParticipantRow = React.memo(function ParticipantRow({
       ]}
       contentStyle={styles.row}
     >
-      <Avatar name={name} uri={participant.headshot_url} size={36} decorative />
+      <View style={inactive && styles.inactive}>
+        <Avatar name={name} uri={participant.headshot_url} size={36} decorative />
+      </View>
       <View style={styles.text}>
         <Text style={[type.body, { color: tokens.muted }]} numberOfLines={1}>
           <Text style={[type.label, { color: tokens.textH }]}>{name}</Text>
           {participant.pronouns ? ` ${participant.pronouns}` : ''}
         </Text>
-        <Text style={[type.body, { color: tokens.text2 }]} numberOfLines={1}>
-          {detail}
-        </Text>
+        {detail ? (
+          <Text style={[type.body, { color: tokens.text2 }]} numberOfLines={1}>
+            {detail}
+          </Text>
+        ) : null}
       </View>
       <View style={styles.badges}>
         {badges.map((badge) => (
@@ -104,6 +123,7 @@ const styles = StyleSheet.create({
     minHeight: 55,
   },
   last: { borderBottomWidth: 1 },
+  inactive: { opacity: 0.5 },
   text: { flex: 1, minWidth: 0 },
   badges: { alignItems: 'flex-end', gap: 4, flexShrink: 0 },
   badge: { alignSelf: 'flex-end' },

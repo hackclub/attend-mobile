@@ -1,14 +1,5 @@
 import type { Participant } from '../types';
-
-// Registration statuses as Attend sends them; "complete" is the normal state
-// for someone who just hasn't arrived yet.
-const STATUS_LABELS: Record<string, string> = {
-  invited: 'Invited',
-  in_progress: 'Registration in progress',
-  awaiting_guardian: 'Awaiting guardian',
-  withdrawn: 'Withdrawn',
-  rejected: 'Rejected',
-};
+import { participantStateLabel } from './participantStatus';
 
 function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -47,12 +38,12 @@ export function checkInDetail(
   return [time, context].filter(Boolean).join(' · ');
 }
 
-/** A row's secondary line: when and where they checked in, or where their registration stands. */
+/** When and where they checked in, or where their registration stands. */
 export function participantDetailLine(
   participant: Pick<Participant, 'checked_in_at' | 'scans_by_context' | 'status'>,
   now?: Date,
 ): string {
   const checkIn = checkInDetail(participant, now);
   if (checkIn) return checkIn;
-  return STATUS_LABELS[participant.status?.toLowerCase() ?? ''] ?? 'Not checked in';
+  return participantStateLabel(participant);
 }

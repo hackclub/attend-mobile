@@ -46,8 +46,8 @@ describe('participantCheckIn', () => {
   });
 
   it('falls back to the registration status when not checked in', () => {
-    expect(participantDetailLine({ status: 'complete' }, now)).toBe('Not checked in');
-    expect(participantDetailLine({ status: 'awaiting_guardian' }, now)).toBe('Awaiting guardian');
+    expect(participantDetailLine({ status: 'complete' }, now)).toBe('Not here');
+    expect(participantDetailLine({ status: 'awaiting_guardian' }, now)).toBe('Awaiting parent');
     expect(participantDetailLine({ status: 'withdrawn' }, now)).toBe('Withdrawn');
   });
 });

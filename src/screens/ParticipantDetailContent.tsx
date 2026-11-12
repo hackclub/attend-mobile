@@ -42,7 +42,7 @@ import { api } from '../services/api';
 import { buildPhoneActions } from '../services/contactLinks';
 import { checkInDetail, participantDetailLine } from '../services/participantCheckIn';
 import { formatDateOnly } from '../services/eventDates';
-import { isWithdrawn } from '../services/participantStatus';
+import { PARTICIPANT_STATE_LABELS, participantState } from '../services/participantStatus';
 import { travelDayTime } from '../services/travelTimes';
 import { useTheme } from '../theme';
 import { BiometricGate } from '../components/BiometricGate';
@@ -423,8 +423,9 @@ function ParticipantDetailBody({
 
   const name = currentParticipant.full_name || currentParticipant.display_name;
   const checkIn = checkInDetail(currentParticipant);
-  const status: { glyph: StatusType; text: string; color: string } = isWithdrawn(currentParticipant)
-    ? { glyph: 'stopped', text: 'Withdrawn', color: tokens.error }
+  const registration = participantState(currentParticipant);
+  const status: { glyph: StatusType; text: string; color: string } = registration === 'withdrawn' || registration === 'rejected'
+    ? { glyph: 'stopped', text: PARTICIPANT_STATE_LABELS[registration], color: tokens.error }
     : checkIn
       ? { glyph: 'success', text: `Checked in ${checkIn}`, color: tokens.success }
       : { glyph: 'pending', text: participantDetailLine(currentParticipant), color: tokens.text2 };
