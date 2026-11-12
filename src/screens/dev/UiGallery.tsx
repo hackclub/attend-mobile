@@ -18,7 +18,7 @@ import { DateTimeField, MultiSelectField, SelectField } from '../../components/f
 import { ScanFrame, ScannerDock } from '../../components/ScannerChrome';
 import { useResponsiveLayout } from '../../hooks/useResponsiveLayout';
 import { resetRoot } from '../../navigation/rootNavigation';
-import type { FilterRule, SortRule } from '../../services/participantFilters';
+import { EMPTY_BASIC, type BasicFilters, type FilterRule, type SortRule } from '../../services/participantFilters';
 import { scanFrameSize } from '../../services/scannerLayout';
 import {
   accountSheetPreview,
@@ -119,6 +119,7 @@ export function UiGallery() {
   const [filterRules, setFilterRules] = useState<FilterRule[]>([]);
   const [filterConjunction, setFilterConjunction] = useState<'and' | 'or'>('and');
   const [filterSort, setFilterSort] = useState<SortRule | null>(null);
+  const [filterBasic, setFilterBasic] = useState<BasicFilters>(EMPTY_BASIC);
   const claimFilter = filterSheet.useOpener({
     rules: filterRules,
     onRulesChange: setFilterRules,
@@ -126,6 +127,14 @@ export function UiGallery() {
     onConjunctionChange: setFilterConjunction,
     sort: filterSort,
     onSortChange: setFilterSort,
+    basic: filterBasic,
+    onBasicChange: setFilterBasic,
+    onClearAll: () => {
+      setFilterRules([]);
+      setFilterSort(null);
+      setFilterBasic(EMPTY_BASIC);
+    },
+    resultCount: 0,
     savedViews: [],
     onSaveView: (name) => setLastAction(`Saved view ${name}`),
     onDeleteView: () => {},

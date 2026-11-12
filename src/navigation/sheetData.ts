@@ -4,6 +4,7 @@ import type {
   FilterContext,
   FilterRule,
   SavedView,
+  BasicFilters,
   SortRule,
 } from '../services/participantFilters';
 import type { Participant, ScanContext, User } from '../types';
@@ -81,6 +82,12 @@ export interface FilterSheetData {
   onConjunctionChange: (conjunction: Conjunction) => void;
   sort: SortRule | null;
   onSortChange: (sort: SortRule | null) => void;
+  basic: BasicFilters;
+  onBasicChange: (basic: BasicFilters) => void;
+  /** Takes off every filter and the sort (not the chip). */
+  onClearAll: () => void;
+  /** How many people the list shows with all of it applied. */
+  resultCount: number;
   savedViews: SavedView[];
   onSaveView: (name: string) => void;
   onDeleteView: (viewId: string) => void;

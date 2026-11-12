@@ -13,15 +13,19 @@ import {
   type IconName,
 } from './ui';
 import {
+  BASIC_STATES,
+  BASIC_TOGGLES,
+  basicFilterCount,
+  DEFAULT_SORT,
   FILTER_FIELDS,
   SORT_FIELDS,
   OPERATORS_BY_TYPE,
   OPERATOR_LABELS,
   getField,
-  getSortField,
   operatorNeedsValue,
-  applyFilters,
   newRuleId,
+  ruleIsComplete,
+  type SortRule,
   type FilterRule,
   type FilterOperator,
   type FieldOption,
@@ -31,6 +35,7 @@ import { useCloseSheet } from '../navigation/sheetPresenter';
 import { useSheetData } from '../screens/sheets/useSheetData';
 import { SelectField } from './forms';
 import type { SelectOption } from '../types';
+import { PARTICIPANT_STATE_LABELS, type ParticipantState } from '../services/participantStatus';
 
 
 type PickerTarget =
@@ -38,11 +43,29 @@ type PickerTarget =
   | { kind: 'operator'; ruleId: string }
   | { kind: 'value'; ruleId: string };
 
-// The sort select's "no sort" option.
-const DEFAULT_ORDER = '';
-const SORT_OPTIONS: SelectOption[] = [
-  { value: DEFAULT_ORDER, label: 'Default order' },
-  ...SORT_FIELDS.map(f => ({ value: f.key, label: f.label })),
+const SORT_OPTIONS: SelectOption[] = SORT_FIELDS.map(f => ({ value: f.key, label: f.label }));
+
+// What each direction means for each field, in words.
+const DIRECTION_LABELS: Record<string, { asc: string; desc: string }> = {
+  name: { asc: 'A to Z', desc: 'Z to A' },
+  checked_in_at: { asc: 'Earliest first', desc: 'Latest first' },
+  status: { asc: 'Here first', desc: 'Invited first' },
+  email: { asc: 'A to Z', desc: 'Z to A' },
+};
+
+// The direction a field starts in when picked: latest check-ins first.
+const FIRST_DIRECTION: Record<string, SortRule['direction']> = { checked_in_at: 'desc' };
+
+/** Name A to Z is the list's own order, kept as no sort at all. */
+function normaliseSort(sort: SortRule): SortRule | null {
+  return sort.field === DEFAULT_SORT.field && sort.direction === DEFAULT_SORT.direction ? null : sort;
+}
+
+type TriState = 'any' | 'yes' | 'no';
+const TRI_STATE_OPTIONS: { value: TriState; label: string }[] = [
+  { value: 'any', label: 'Any' },
+  { value: 'yes', label: 'Yes' },
+  { value: 'no', label: 'No' },
 ];
 
 const PICKER_TITLES: Record<PickerTarget['kind'], string> = {
@@ -64,6 +87,10 @@ function FilterSheetBody({
   onConjunctionChange,
   sort,
   onSortChange,
+  basic,
+  onBasicChange,
+  onClearAll,
+  resultCount,
   savedViews,
   onSaveView,
   onDeleteView,
@@ -74,9 +101,14 @@ function FilterSheetBody({
   const [viewName, setViewName] = useState('');
   const [isNamingView, setIsNamingView] = useState(false);
 
-  const matchCount = useMemo(
-    () => applyFilters(filterContext.participants, rules, conjunction, filterContext).length,
-    [filterContext, rules, conjunction],
+  const toggleState = useCallback(
+    (state: ParticipantState) => {
+      const states = basic.states.includes(state)
+        ? basic.states.filter(s => s !== state)
+        : [...basic.states, state];
+      onBasicChange({ ...basic, states });
+    },
+    [basic, onBasicChange],
   );
 
   const addRule = useCallback(() => {
@@ -172,8 +204,11 @@ function FilterSheetBody({
     return () => sub.remove();
   }, [picker]);
 
-  const sortField = sort ? getSortField(sort.field) : undefined;
-  const canSaveView = rules.length > 0 || sort !== null;
+  const effectiveSort = sort ?? DEFAULT_SORT;
+  const directionLabels = DIRECTION_LABELS[effectiveSort.field] ?? { asc: 'Ascending', desc: 'Descending' };
+  const filterCount = rules.filter(ruleIsComplete).length + basicFilterCount(basic);
+  const canSaveView = filterCount > 0 || sort !== null;
+  const canClear = rules.length > 0 || basicFilterCount(basic) > 0 || sort !== null;
 
   const pickerContent = picker ? (
     <Sheet
@@ -206,15 +241,75 @@ function FilterSheetBody({
       footer={(
         <>
           <Text style={[type.body, styles.matchCount, { color: tokens.text2 }]} accessibilityLiveRegion="polite">
-            {matchCount} of {filterContext.participants.length} participants match
+            {resultCount} {resultCount === 1 ? 'participant' : 'participants'} shown
           </Text>
+          <Button variant="link" title="Clear all" onPress={onClearAll} disabled={!canClear} />
           <Button variant="primary" title="Done" onPress={handleClose} />
         </>
       )}
     >
       <View style={styles.content}>
         <Text style={[type.h3, styles.sectionTitle, { color: tokens.textH }]} accessibilityRole="header">
-          Filters
+          Status
+        </Text>
+        <View style={styles.stateChips}>
+          {BASIC_STATES.map(state => (
+            <OptionChip
+              key={state}
+              label={PARTICIPANT_STATE_LABELS[state]}
+              selected={basic.states.includes(state)}
+              onPress={() => toggleState(state)}
+            />
+          ))}
+        </View>
+
+        {BASIC_TOGGLES.map(toggle => {
+          const value = basic[toggle.key];
+          return (
+            <View key={toggle.key} style={styles.toggleRow}>
+              <Text style={[type.body, styles.toggleLabel, { color: tokens.text }]}>{toggle.label}</Text>
+              <SegmentedControl
+                options={TRI_STATE_OPTIONS}
+                value={value === undefined ? 'any' : value ? 'yes' : 'no'}
+                onChange={(next: TriState) =>
+                  onBasicChange({ ...basic, [toggle.key]: next === 'any' ? undefined : next === 'yes' })
+                }
+                accessibilityLabel={toggle.label}
+                style={styles.toggleControl}
+              />
+            </View>
+          );
+        })}
+
+        <Divider style={styles.divider} />
+
+        <Text style={[type.h3, styles.sectionTitle, { color: tokens.textH }]} accessibilityRole="header">
+          Sort
+        </Text>
+        <View style={styles.sortRow}>
+          <SelectField
+            title="Sort by"
+            value={effectiveSort.field}
+            options={SORT_OPTIONS}
+            onChange={(field) =>
+              onSortChange(normaliseSort({ field, direction: FIRST_DIRECTION[field] ?? 'asc' }))
+            }
+          />
+          <SegmentedControl
+            options={[
+              { value: 'asc', label: directionLabels.asc },
+              { value: 'desc', label: directionLabels.desc },
+            ]}
+            value={effectiveSort.direction}
+            onChange={(direction) => onSortChange(normaliseSort({ ...effectiveSort, direction }))}
+            accessibilityLabel="Sort direction"
+          />
+        </View>
+
+        <Divider style={styles.divider} />
+
+        <Text style={[type.h3, styles.sectionTitle, { color: tokens.textH }]} accessibilityRole="header">
+          Advanced filters
         </Text>
 
         {rules.length > 1 && (
@@ -236,7 +331,7 @@ function FilterSheetBody({
 
         {rules.length === 0 && (
           <Text style={[type.body, styles.emptyText, { color: tokens.text2 }]}>
-            No filters. Showing all participants.
+            Build your own: any field, with All or Any matching.
           </Text>
         )}
 
@@ -306,33 +401,6 @@ function FilterSheetBody({
         })}
 
         <Button variant="link" icon="plus" title="Add filter" onPress={addRule} style={styles.linkButton} />
-
-        <Divider style={styles.divider} />
-
-        <Text style={[type.h3, styles.sectionTitle, { color: tokens.textH }]} accessibilityRole="header">
-          Sort
-        </Text>
-        <View style={styles.sortRow}>
-          <SelectField
-            title="Sort by"
-            value={sort?.field ?? DEFAULT_ORDER}
-            options={SORT_OPTIONS}
-            onChange={(field) =>
-              onSortChange(field === DEFAULT_ORDER ? null : { field, direction: sort?.direction ?? 'asc' })
-            }
-          />
-          {sortField && sort ? (
-            <SegmentedControl
-              options={[
-                { value: 'asc', label: 'Ascending' },
-                { value: 'desc', label: 'Descending' },
-              ]}
-              value={sort.direction}
-              onChange={(direction) => onSortChange({ ...sort, direction })}
-              accessibilityLabel="Sort direction"
-            />
-          ) : null}
-        </View>
 
         <Divider style={styles.divider} />
 
@@ -408,6 +476,34 @@ function FilterSheetBody({
   // Choosing an option replaces the sheet's content rather than stacking a
   // second sheet on top of it; Back returns to the filters.
   return picker ? pickerContent : mainContent;
+}
+
+/** A multi-select chip: ticked and tinted when selected. */
+function OptionChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  const { tokens, type, radii } = useTheme();
+  const color = selected ? tokens.accent : tokens.text;
+  return (
+    <PressableSurface
+      onPress={onPress}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: selected }}
+      accessibilityLabel={label}
+      rippleColor={color}
+      hitSlop={{ top: 4, bottom: 4 }}
+      style={[
+        styles.optionChip,
+        {
+          borderRadius: radii.item,
+          borderColor: selected ? tokens.accent : tokens.input,
+          backgroundColor: selected ? tokens.selected : tokens.bg,
+        },
+      ]}
+      contentStyle={styles.optionChipContent}
+    >
+      {selected ? <Icon name="check" size={14} color={color} /> : null}
+      <Text style={[type.label, { color }]} numberOfLines={1}>{label}</Text>
+    </PressableSurface>
+  );
 }
 
 function SelectPill({
@@ -531,6 +627,33 @@ const styles = StyleSheet.create({
   },
   sortRow: {
     gap: 12,
+  },
+  stateChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+  optionChip: { borderWidth: 1 },
+  optionChipContent: {
+    // 36 including the 1px border; hitSlop makes the target 44.
+    minHeight: 34,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
+  },
+  toggleLabel: {
+    flex: 1,
+  },
+  toggleControl: {
+    width: 180,
   },
   matchCount: {
     flex: 1,
