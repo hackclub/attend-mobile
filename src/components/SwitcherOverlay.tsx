@@ -1,12 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import {
-  BackHandler,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-  type ListRenderItemInfo,
-} from 'react-native';
+import { BackHandler, StyleSheet, Text, View, useWindowDimensions, type ListRenderItemInfo } from 'react-native';
 import Animated, {
   Extrapolation,
   interpolate,
@@ -19,58 +12,71 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
-import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
+import { GestureDetector, useCompetingGestures, usePanGesture } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { setStatusBarStyle } from 'expo-status-bar';
-import { BannerBlend, BannerText, EventCover } from './EventBanner';
-import { Button, EmptyState, ErrorView, GroupToggle, Icon, PressableSurface, TextField } from './ui';
+import { BannerBlend, BannerChevron, BannerFace } from './EventBanner';
+import { Button, EmptyState, ErrorView, Icon, PressableSurface, TextField } from './ui';
 import { CHROME_MAX_FONT_SCALE } from './ui/fontScale';
 import { useApp } from '../context/AppContext';
 import { useReduceMotion } from '../hooks/useReduceMotion';
 import { useSwitcherEvents } from '../hooks/useSwitcherEvents';
 import { eventHomeState, passHomeState } from '../navigation/routes';
 import {
+  SWITCHER_CLOSE_TIMING,
   SWITCHER_FLICK_VELOCITY,
   SWITCHER_OPEN_THRESHOLD,
   SWITCHER_PULL_DISTANCE,
   SWITCHER_SPRING,
   bannerKey,
+  closeSwitcherOverlay,
+  rubberBand,
   switcherOverlay,
   switcherProgress,
+  switcherStretch,
   type Rect,
   type SwitcherBanner,
 } from '../navigation/switcherOverlay';
-import { eventPhaseLabel } from '../services/eventDates';
+import { bannerHeight, eventBannerText } from '../services/eventBanner';
 import { eventRoleLabel } from '../services/eventRoles';
-import {
-  SWITCHER_SEARCH_THRESHOLD,
-  filterSwitcherEvents,
-  switcherEventCount,
-} from '../services/eventSwitcher';
+import { SWITCHER_SEARCH_THRESHOLD, filterSwitcherEvents, switcherEventCount } from '../services/eventSwitcher';
 import { haptics } from '../services/haptics';
 import {
-  bannerTargetTop,
+  SWITCHER_CARD_INSET,
+  cardHeightOf,
+  centreTargetTop,
+  centredPaddingTop,
   contentHeight,
-  currentIsPast,
   currentRowIndex,
   initialScrollOffset,
   rowHeight,
   rowOffsets,
+  switcherCardScale,
   switcherMetrics,
   switcherRows,
+  type SwitcherMetrics,
   type SwitcherRow,
 } from '../services/switcherLayout';
-import { easedFade, linearGradient, overlayTokens, radii, typography, useTheme } from '../theme';
+import { overlayTokens, radii, useTheme, withAlpha } from '../theme';
 import type { Event } from '../types';
 
 const HEADER_BAR = 56;
 const SEARCH_BAR = 64;
-const SIDE = 16;
+const SIDE = SWITCHER_CARD_INSET;
 /** How far the other cards travel in as it opens. */
-const CARD_SLIDE = 48;
+const CARD_SLIDE = 56;
 /** How long a switch waits for the new screen's banner before just fading. */
 const LANDING_WAIT_MS = 1500;
+/** How long it waits for the picked event's photo before growing anyway. */
+const PHOTO_WAIT_MS = 300;
 const FADE_MS = 220;
+/** A pull on the list this far (before resistance) closes the overlay. */
+const LIST_CLOSE_DISTANCE = 110;
+/** How much a full stretch fades the overlay, as a hint it's closing. */
+const STRETCH_FADE = 0.35;
+/** Greys out an ended event's card. */
+const PAST_TINT = withAlpha(overlayTokens.ink, 0.45);
+const PAST_FILTER = [{ grayscale: 1 }];
 
 /**
  * The event switcher overlay, mounted over the whole app while open (see
@@ -91,40 +97,52 @@ export function useSwitcherOverlayOpen(): boolean {
   );
 }
 
-const joinMeta = (...parts: (string | null | undefined)[]) => parts.filter(Boolean).join(' · ');
-
-function rowEvent(row: SwitcherRow): Event | null {
-  if (row.kind === 'event') return row.event;
-  if (row.kind === 'ticket') return row.ticket.event;
+/** A card's event and what its banner would say. */
+function rowFace(row: SwitcherRow): { event: Event; text: ReturnType<typeof eventBannerText> } | null {
+  if (row.kind === 'event') return { event: row.event, text: eventBannerText(row.event, eventRoleLabel(row.event.role)) };
+  if (row.kind === 'ticket') return { event: row.ticket.event, text: eventBannerText(row.ticket.event, 'Attendee') };
   return null;
 }
 
-function rowMeta(row: SwitcherRow): string {
-  if (row.kind === 'event') return joinMeta(eventPhaseLabel(row.event, undefined, 'in'), eventRoleLabel(row.event.role));
-  if (row.kind === 'ticket') return joinMeta(eventPhaseLabel(row.ticket.event, undefined, 'in'), 'Attendee');
-  return '';
-}
-
-/** What the morphing card shows: the banner at one end, a card at the other. */
-interface HeroContent {
+/**
+ * The morphing card: a banner, laid out where it is on screen but cropped
+ * from the top to the card's shape (the crop shows the real banner under
+ * it), so a uniform scale takes it exactly onto the card.
+ */
+interface HeroState {
   event: Event;
-  eyebrow?: string;
+  eyebrow?: string | null;
   eyebrowIcon?: SwitcherBanner['eyebrowIcon'];
-  bannerMeta?: string;
-  cardMeta: string;
+  meta?: string | null;
   topInset: number;
   blendInto?: string;
+  accessory?: React.ReactNode;
+  /** The banner's full height, and how much of its top is cropped. */
+  faceHeight: number;
+  crop: number;
+  /** Laid out here: the banner's rect, less the crop. */
+  box: Rect;
+  /** Turning into an ended event's (grey) card. */
+  grey: boolean;
 }
 
-const heroFromBanner = (banner: SwitcherBanner, cardMeta: string): HeroContent => ({
-  event: banner.event,
-  eyebrow: banner.eyebrow,
-  eyebrowIcon: banner.eyebrowIcon,
-  bannerMeta: banner.meta,
-  cardMeta,
-  topInset: banner.topInset,
-  blendInto: banner.blendInto,
-});
+function heroFor(banner: SwitcherBanner, rect: Rect, cardHeight: number, cardWidth: number, grey: boolean): HeroState {
+  const scale = cardWidth / rect.width;
+  const crop = Math.max(0, rect.height - cardHeight / scale);
+  return {
+    event: banner.event,
+    eyebrow: banner.eyebrow,
+    eyebrowIcon: banner.eyebrowIcon,
+    meta: banner.meta,
+    topInset: banner.topInset,
+    blendInto: banner.blendInto,
+    accessory: banner.accessory,
+    faceHeight: rect.height,
+    crop,
+    box: { x: rect.x, y: rect.y + crop, width: rect.width, height: rect.height - crop },
+    grey,
+  };
+}
 
 function SwitcherOverlay({
   source,
@@ -143,10 +161,13 @@ function SwitcherOverlay({
   const { groups: allGroups, isLoading, loadFailed, refresh } = useSwitcherEvents();
   const current = source.current;
   const progress = switcherProgress;
+  const stretch = switcherStretch;
 
-  // Layout, all in fixed heights (services/switcherLayout).
-  const metrics = useMemo(() => switcherMetrics(width, insets.bottom), [width, insets.bottom]);
+  // Layout, all in fixed heights (services/switcherLayout). A card is the
+  // banner scaled to the card's width, its status bar space cropped off.
+  const cardScale = switcherCardScale(width);
   const cardWidth = width - SIDE * 2;
+  const face = { width, height: bannerHeight(width, source.topInset), scale: cardScale, topInset: source.topInset };
   const searchable = switcherEventCount(allGroups) > SWITCHER_SEARCH_THRESHOLD;
   const headerHeight = insets.top + HEADER_BAR;
   const viewportTop = headerHeight + (searchable ? SEARCH_BAR : 0);
@@ -154,51 +175,65 @@ function SwitcherOverlay({
 
   const [query, setQuery] = useState('');
   const searching = searchable && query.trim().length > 0;
-  // Past starts open when the current event is a past one.
-  const [pastOpen, setPastOpen] = useState(() => currentIsPast(allGroups, current));
   const groups = useMemo(
     () => (searchable ? filterSwitcherEvents(allGroups, query) : allGroups),
     [allGroups, query, searchable]
   );
-  const rows = useMemo(
-    () => switcherRows(groups, current, { pastOpen, searching, loading: isLoading }),
-    [current, groups, isLoading, pastOpen, searching]
-  );
+  const rows = useMemo(() => switcherRows(groups, current, { loading: isLoading }), [current, groups, isLoading]);
+  // A short list sits in the middle of the screen.
+  const metrics: SwitcherMetrics = useMemo(() => {
+    const base = switcherMetrics(width, insets.bottom);
+    return { ...base, paddingTop: centredPaddingTop(rows, base, viewportHeight) };
+  }, [insets.bottom, rows, viewportHeight, width]);
   const offsets = useMemo(() => rowOffsets(rows, metrics), [rows, metrics]);
+  const content = contentHeight(rows, metrics);
   const currentIndex = currentRowIndex(rows);
+  const currentRow = currentIndex >= 0 ? rows[currentIndex] : null;
 
-  // Opens scrolled so the current card sits where the banner was.
-  const [initialOffset] = useState(() => {
-    if (currentIndex < 0) return 0;
-    const targetTop = bannerTargetTop(
-      { bannerTop: sourceRect.y + source.topInset, bannerBottom: sourceRect.y + sourceRect.height, viewportTop },
-      metrics.cardHeight
-    );
-    return initialScrollOffset({
-      cardTop: offsets[currentIndex],
-      targetTop,
-      contentHeight: contentHeight(rows, metrics),
-      viewportHeight,
-    });
-  });
+  // Opens scrolled so the current card is in the middle of the screen, as
+  // near as the list can scroll, so the banner travels down into it.
+  const [initialOffset] = useState(() =>
+    currentIndex < 0
+      ? 0
+      : initialScrollOffset({
+          cardTop: offsets[currentIndex],
+          targetTop: centreTargetTop(viewportHeight, cardHeightOf(rows[currentIndex], metrics)),
+          contentHeight: content,
+          viewportHeight,
+        })
+  );
 
   const scrollY = useSharedValue(initialOffset);
   // The current card's top in the list, or -1 when it isn't listed (still
-  // loading, filtered out by a search, in a collapsed Past).
+  // loading, filtered out by a search).
   const currentTop = useSharedValue(currentIndex >= 0 ? offsets[currentIndex] : -1);
   useEffect(() => {
     currentTop.set(currentIndex >= 0 ? offsets[currentIndex] : -1);
   }, [currentIndex, currentTop, offsets]);
 
-  // The morphing card: between `bannerRect` (progress 0) and a card (1),
-  // the current one's live place in the list unless `landingCard` is set.
+  // The morphing card: the banner at `bannerRect` (progress 0), scaled into
+  // a card (1): the current one's live place in the list, or `landingCard`.
   const heroOn = useSharedValue(reduceMotion || currentIndex < 0 ? 0 : 1);
-  const bannerRect = useSharedValue<Rect>(sourceRect);
+  // Hidden until its photo is drawn: until then the real banner under it
+  // shows, rather than the fill behind a photo still decoding.
+  const heroReady = useSharedValue(0);
+  const [hero, setHero] = useState<HeroState>(() =>
+    heroFor(
+      source,
+      sourceRect,
+      currentRow ? cardHeightOf(currentRow, metrics) : metrics.cardHeight,
+      cardWidth,
+      !!currentRow && (currentRow.kind === 'event' || currentRow.kind === 'ticket') && currentRow.past
+    )
+  );
+  const bannerRect = useSharedValue<Rect>(hero.box);
   const landingCard = useSharedValue<Rect | null>(null);
-  const [hero, setHero] = useState<HeroContent>(() => {
-    const row = currentIndex >= 0 ? rows[currentIndex] : null;
-    return heroFromBanner(source, row ? rowMeta(row) : '');
-  });
+  const heroReadyWaiter = useRef<(() => void) | null>(null);
+  const onHeroReady = useCallback(() => {
+    heroReady.set(1);
+    heroReadyWaiter.current?.();
+    heroReadyWaiter.current = null;
+  }, [heroReady]);
   // The card a switch is growing out of, hidden under the hero meanwhile.
   const [pickedKey, setPickedKey] = useState<string | null>(null);
   const busy = useRef(false);
@@ -226,25 +261,27 @@ function SwitcherOverlay({
     [barStyle, restoreStyle]
   );
 
+  const currentCardHeight = currentRow ? cardHeightOf(currentRow, metrics) : metrics.cardHeight;
   const isCurrentOnScreen = useCallback(() => {
-    if (currentTop.value < 0) return false;
-    const top = viewportTop + currentTop.value - scrollY.value;
-    return top + metrics.cardHeight > viewportTop && top < height;
-  }, [currentTop, height, metrics.cardHeight, scrollY, viewportTop]);
+    const rowTop = currentTop.get();
+    if (rowTop < 0) return false;
+    const top = viewportTop + rowTop - scrollY.get() + stretch.get();
+    return top + currentCardHeight > viewportTop && top < height;
+  }, [currentCardHeight, currentTop, height, scrollY, stretch, viewportTop]);
 
   /** Back into the banner, or a fade when the current card is off-screen. */
   const close = useCallback(() => {
     if (busy.current) return;
     busy.current = true;
-    heroOn.set(!reduceMotion && isCurrentOnScreen() ? 1 : 0);
-    const done = (finished?: boolean) => {
-      'worklet';
-      if (finished) scheduleOnRN(switcherOverlay.closed);
-    };
+    const morph = !reduceMotion && isCurrentOnScreen();
+    heroOn.set(morph ? 1 : 0);
+    stretch.set(withTiming(0, SWITCHER_CLOSE_TIMING));
     progress.set(
-      reduceMotion || !heroOn.get() ? withTiming(0, { duration: FADE_MS }, done) : withSpring(0, SWITCHER_SPRING, done)
+      withTiming(0, morph ? SWITCHER_CLOSE_TIMING : { duration: FADE_MS }, (finished) => {
+        if (finished) scheduleOnRN(closeSwitcherOverlay);
+      })
     );
-  }, [heroOn, isCurrentOnScreen, progress, reduceMotion]);
+  }, [heroOn, isCurrentOnScreen, progress, reduceMotion, stretch]);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -268,17 +305,18 @@ function SwitcherOverlay({
       if (busy.current) return;
       busy.current = true;
       haptics.selection();
+      const pickedHeight = cardHeightOf(row, metrics);
       const cardRect: Rect = {
         x: SIDE,
-        y: viewportTop + offsets[index] - scrollY.value,
+        y: viewportTop + offsets[index] - scrollY.get() + stretch.get(),
         width: cardWidth,
-        height: metrics.cardHeight,
+        height: pickedHeight,
       };
       setPickedKey(row.key);
       // Fully covered while the screens change under it.
       progress.set(1);
+      stretch.set(0);
 
-      const event = row.kind === 'event' ? row.event : row.ticket.event;
       if (row.kind === 'event') source.switchTo(eventHomeState(), () => void selectEvent(row.event));
       else source.switchTo(passHomeState(row.ticket));
       // The new screen sets the banner's status bar as it focuses; it's
@@ -288,77 +326,158 @@ function SwitcherOverlay({
       const key = row.kind === 'event' ? bannerKey.event(row.event) : bannerKey.ticket(row.ticket);
       const target = await switcherOverlay.waitForBanner(key, LANDING_WAIT_MS);
       const targetRect = target && !reduceMotion ? await target.measure() : null;
-      const done = (finished?: boolean) => {
+      const finish = (finished?: boolean) => {
         'worklet';
-        if (finished) scheduleOnRN(switcherOverlay.closed);
+        if (finished) scheduleOnRN(closeSwitcherOverlay);
       };
-      if (target && targetRect) {
-        setHero({ ...heroFromBanner(target, rowMeta(row)), event });
-        bannerRect.set(targetRect);
-        landingCard.set(cardRect);
-        heroOn.set(1);
-        // A frame for the hero to render the picked event before it moves.
-        requestAnimationFrame(() => {
-          progress.set(withSpring(0, SWITCHER_SPRING, done));
-        });
-      } else {
+      if (!target || !targetRect) {
         heroOn.set(0);
-        progress.set(withTiming(0, { duration: FADE_MS }, done));
+        progress.set(withTiming(0, { duration: FADE_MS }, finish));
+        return;
       }
+      const next = heroFor(target, targetRect, pickedHeight, cardWidth, row.past);
+      // The new face mounts hidden; it grows once its photo is drawn.
+      heroReady.set(0);
+      const ready = new Promise<void>((resolve) => {
+        heroReadyWaiter.current = resolve;
+        setTimeout(resolve, PHOTO_WAIT_MS);
+      });
+      setHero(next);
+      bannerRect.set(next.box);
+      landingCard.set(cardRect);
+      heroOn.set(1);
+      await ready;
+      requestAnimationFrame(() => progress.set(withTiming(0, SWITCHER_CLOSE_TIMING, finish)));
     },
     [
-      bannerRect, barStyle, cardWidth, close, heroOn, landingCard, metrics.cardHeight, offsets, progress,
-      reduceMotion, scrollY, selectEvent, source, viewportTop,
+      bannerRect, barStyle, cardWidth, close, heroOn, heroReady, landingCard, metrics, offsets, progress,
+      reduceMotion, scrollY, selectEvent, source, stretch, viewportTop,
     ]
   );
 
-  // Pulling the header back up closes it, following the finger.
+  // Pulling the header up closes it, following the finger.
+  const headerActive = useSharedValue(false);
+  const headerVelocity = useSharedValue(0);
   const pullUp = usePanGesture({
-    activeOffsetY: -8,
-    failOffsetY: 8,
+    activeOffsetY: -6,
+    failOffsetY: 6,
     onActivate: () => {
       'worklet';
-      if (currentTop.value < 0 || reduceMotion) {
-        heroOn.set(0);
+      headerActive.value = true;
+      const rowTop = currentTop.value;
+      if (rowTop < 0 || reduceMotion) {
+        heroOn.value = 0;
         return;
       }
-      const top = viewportTop + currentTop.value - scrollY.value;
-      heroOn.set(top + metrics.cardHeight > viewportTop && top < height ? 1 : 0);
+      const top = viewportTop + rowTop - scrollY.value;
+      heroOn.value = top + currentCardHeight > viewportTop && top < height ? 1 : 0;
     },
     onUpdate: (e) => {
       'worklet';
-      progress.set(Math.min(1, Math.max(0, 1 + e.translationY / SWITCHER_PULL_DISTANCE)));
+      headerVelocity.value = e.velocityY;
+      progress.value = Math.min(1, Math.max(0, 1 + e.translationY / SWITCHER_PULL_DISTANCE));
     },
-    onDeactivate: (e) => {
+    onFinalize: (e) => {
       'worklet';
-      if (progress.value < 1 - SWITCHER_OPEN_THRESHOLD || e.velocityY < -SWITCHER_FLICK_VELOCITY) {
-        progress.set(
-          withSpring(0, SWITCHER_SPRING, (finished) => {
-            if (finished) scheduleOnRN(switcherOverlay.closed);
-          })
-        );
+      if (!headerActive.value) return;
+      headerActive.value = false;
+      const closing =
+        !e.canceled &&
+        (progress.value < 1 - SWITCHER_OPEN_THRESHOLD || headerVelocity.value < -SWITCHER_FLICK_VELOCITY);
+      if (closing) {
+        progress.value = withTiming(0, SWITCHER_CLOSE_TIMING, (finished) => {
+          if (finished) scheduleOnRN(closeSwitcherOverlay);
+        });
       } else {
-        progress.set(withSpring(1, SWITCHER_SPRING));
+        progress.value = withSpring(1, SWITCHER_SPRING);
       }
     },
   });
 
+  // Pulling the list down from its top, or up from its end, stretches it
+  // after the finger, the overlay starting to fade; letting go far enough
+  // closes it back into the banner, as × does. Anywhere else it scrolls.
+  const maxScroll = Math.max(0, content - viewportHeight);
+  const atTop = useSharedValue(initialOffset <= 0.5);
+  const atEnd = useSharedValue(initialOffset >= maxScroll - 0.5);
+  const listActive = useSharedValue(false);
+  const listVelocity = useSharedValue(0);
+  const listRelease = (canceled: boolean) => {
+    'worklet';
+    if (!listActive.value) return;
+    listActive.value = false;
+    const pulled = Math.abs(stretch.value);
+    const flicked = Math.abs(listVelocity.value) > SWITCHER_FLICK_VELOCITY;
+    if (!canceled && (pulled > rubberBand(LIST_CLOSE_DISTANCE) || flicked)) {
+      scheduleOnRN(close);
+    } else {
+      stretch.value = withSpring(0, SWITCHER_SPRING);
+    }
+  };
+  const pullDown = usePanGesture({
+    enabled: atTop,
+    activeOffsetY: 10,
+    failOffsetY: -10,
+    failOffsetX: [-24, 24],
+    onActivate: () => {
+      'worklet';
+      listActive.value = true;
+    },
+    onUpdate: (e) => {
+      'worklet';
+      listVelocity.value = e.velocityY;
+      stretch.value = rubberBand(e.translationY);
+    },
+    onFinalize: (e) => {
+      'worklet';
+      listRelease(e.canceled);
+    },
+  });
+  const pullUpList = usePanGesture({
+    enabled: atEnd,
+    activeOffsetY: -10,
+    failOffsetY: 10,
+    failOffsetX: [-24, 24],
+    onActivate: () => {
+      'worklet';
+      listActive.value = true;
+    },
+    onUpdate: (e) => {
+      'worklet';
+      listVelocity.value = e.velocityY;
+      stretch.value = -rubberBand(-e.translationY);
+    },
+    onFinalize: (e) => {
+      'worklet';
+      listRelease(e.canceled);
+    },
+  });
+  const listPull = useCompetingGestures(pullDown, pullUpList);
+
   const onScroll = useAnimatedScrollHandler((e) => {
-    scrollY.set(e.contentOffset.y);
+    scrollY.value = e.contentOffset.y;
+    atTop.value = e.contentOffset.y <= 0.5;
+    atEnd.value = e.contentOffset.y + e.layoutMeasurement.height >= e.contentSize.height - 0.5;
   });
 
   const listRef = useRef<Animated.FlatList<SwitcherRow>>(null);
   const scrolledInitially = useRef(false);
 
+  // A stretch fades the overlay a little, as a hint that letting go closes it.
+  const stretchFade = () => {
+    'worklet';
+    return 1 - STRETCH_FADE * Math.min(1, Math.abs(stretch.value) / rubberBand(LIST_CLOSE_DISTANCE * 2));
+  };
   const backdropStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0, 0.6], [0, 1], Extrapolation.CLAMP),
+    opacity: interpolate(progress.value, [0, 0.6], [0, 1], Extrapolation.CLAMP) * stretchFade(),
   }));
   const chromeStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0.3, 1], [0, 1], Extrapolation.CLAMP),
+    opacity: interpolate(progress.value, [0.3, 1], [0, 1], Extrapolation.CLAMP) * stretchFade(),
   }));
   // With the hero off (reduced motion, a fade) the list fades as a whole.
   const listStyle = useAnimatedStyle(() => ({
     opacity: heroOn.value ? 1 : interpolate(progress.value, [0, 0.8], [0, 1], Extrapolation.CLAMP),
+    transform: [{ translateY: stretch.value }],
   }));
 
   const renderItem = ({ item, index }: ListRenderItemInfo<SwitcherRow>) => {
@@ -371,24 +490,13 @@ function SwitcherOverlay({
         </RowFade>
       );
     }
-    if (item.kind === 'past') {
-      return (
-        <RowFade progress={progress} heroOn={heroOn} style={[styles.header, { height: metrics.toggleHeight }]}>
-          <GroupToggle
-            label="Past"
-            count={item.count}
-            open={item.open}
-            onToggle={item.toggleable ? () => setPastOpen((open) => !open) : undefined}
-          />
-        </RowFade>
-      );
-    }
     const slide = currentIndex < 0 ? 1 : index < currentIndex ? -1 : 1;
     return (
       <CardRow
         row={item}
-        height={metrics.cardHeight}
+        cardHeight={cardHeightOf(item, metrics)}
         gap={metrics.cardGap}
+        face={face}
         progress={progress}
         heroOn={heroOn}
         slide={reduceMotion ? 0 : slide * CARD_SLIDE}
@@ -401,8 +509,8 @@ function SwitcherOverlay({
 
   const empty = switcherEventCount(allGroups) === 0;
   const footer = !empty ? (
-    searching && switcherEventCount(groups) === 0 ? <EmptyState title={`No events match “${query.trim()}”`} /> : null
-  ) : isLoading ? null : loadFailed ? (
+    searching && switcherEventCount(groups) === 0 ? <EmptyState title={`No events match “${query.trim()}”`} /> : undefined
+  ) : isLoading ? undefined : loadFailed ? (
     <ErrorView
       title="Couldn’t load your events"
       message="Check your connection and try again."
@@ -419,35 +527,40 @@ function SwitcherOverlay({
         style={[StyleSheet.absoluteFill, { backgroundColor: tokens.bg }, backdropStyle]}
       />
 
-      <Animated.View style={[styles.list, { top: viewportTop }, listStyle]}>
-        <Animated.FlatList
-          ref={listRef}
-          data={rows}
-          keyExtractor={(row) => row.key}
-          renderItem={renderItem}
-          getItemLayout={(_, index) => ({
-            length: rowHeight(rows[index], metrics),
-            offset: offsets[index] - metrics.paddingTop,
-            index,
-          })}
-          contentContainerStyle={{ paddingTop: metrics.paddingTop, paddingBottom: metrics.paddingBottom }}
-          contentOffset={{ x: 0, y: initialOffset }}
-          onLayout={() => {
-            // Android may not apply contentOffset; this lands before the
-            // cards have faded in.
-            if (scrolledInitially.current) return;
-            scrolledInitially.current = true;
-            if (initialOffset > 0) listRef.current?.scrollToOffset({ offset: initialOffset, animated: false });
-          }}
-          onScroll={onScroll}
-          scrollEventThrottle={16}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          ListFooterComponent={footer ?? undefined}
-          initialNumToRender={12}
-          windowSize={7}
-        />
-      </Animated.View>
+      <GestureDetector gesture={listPull}>
+        <Animated.View style={[styles.list, { top: viewportTop }, listStyle]}>
+          <Animated.FlatList
+            ref={listRef}
+            data={rows}
+            keyExtractor={(row) => row.key}
+            renderItem={renderItem}
+            getItemLayout={(_, index) => ({
+              length: rowHeight(rows[index], metrics),
+              offset: offsets[index] - metrics.paddingTop,
+              index,
+            })}
+            contentContainerStyle={{ paddingTop: metrics.paddingTop, paddingBottom: metrics.paddingBottom }}
+            contentOffset={{ x: 0, y: initialOffset }}
+            onLayout={() => {
+              // Android may not apply contentOffset; this lands before the
+              // cards have faded in.
+              if (scrolledInitially.current) return;
+              scrolledInitially.current = true;
+              if (initialOffset > 0) listRef.current?.scrollToOffset({ offset: initialOffset, animated: false });
+            }}
+            onScroll={onScroll}
+            scrollEventThrottle={16}
+            // The list's own stretch would fight this one.
+            overScrollMode="never"
+            bounces={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            ListFooterComponent={footer}
+            initialNumToRender={8}
+            windowSize={7}
+          />
+        </Animated.View>
+      </GestureDetector>
 
       <GestureDetector gesture={pullUp}>
         <Animated.View style={[styles.top, { backgroundColor: tokens.bg }, chromeStyle]}>
@@ -480,7 +593,10 @@ function SwitcherOverlay({
       </GestureDetector>
 
       <Hero
-        content={hero}
+        hero={hero}
+        onReady={onHeroReady}
+        ready={heroReady}
+        stretch={stretch}
         progress={progress}
         heroOn={heroOn}
         bannerRect={bannerRect}
@@ -488,7 +604,7 @@ function SwitcherOverlay({
         currentTop={currentTop}
         scrollY={scrollY}
         viewportTop={viewportTop}
-        card={{ x: SIDE, width: cardWidth, height: metrics.cardHeight }}
+        card={{ x: SIDE, width: cardWidth, height: currentCardHeight }}
       />
     </View>
   );
@@ -512,10 +628,19 @@ function RowFade({
   return <Animated.View style={[style, animated]}>{children}</Animated.View>;
 }
 
+interface FaceSize {
+  /** The banner's full size, which a card scales down by `scale`. */
+  width: number;
+  height: number;
+  topInset: number;
+  scale: number;
+}
+
 function CardRow({
   row,
-  height,
+  cardHeight,
   gap,
+  face,
   progress,
   heroOn,
   slide,
@@ -523,8 +648,9 @@ function CardRow({
   onPress,
 }: {
   row: SwitcherRow;
-  height: number;
+  cardHeight: number;
   gap: number;
+  face: FaceSize;
   progress: SharedValue<number>;
   heroOn: SharedValue<number>;
   slide: number;
@@ -541,8 +667,12 @@ function CardRow({
     };
   });
   return (
-    <Animated.View style={[{ height, marginBottom: gap, paddingHorizontal: SIDE }, animated]}>
-      {row.kind === 'placeholder' ? <PlaceholderCard /> : <SwitcherCard row={row} onPress={onPress} />}
+    <Animated.View style={[{ height: cardHeight, marginBottom: gap, paddingHorizontal: SIDE }, animated]}>
+      {row.kind === 'placeholder' ? (
+        <PlaceholderCard />
+      ) : (
+        <SwitcherCard row={row} face={face} cardHeight={cardHeight} onPress={onPress} />
+      )}
     </Animated.View>
   );
 }
@@ -557,12 +687,25 @@ function PlaceholderCard() {
   );
 }
 
-/** A full-width cover card: the event's photo, or an accent gradient. */
-function SwitcherCard({ row, onPress }: { row: SwitcherRow; onPress: () => void }) {
+/**
+ * A card: the event's banner scaled down to the card's width, showing its
+ * bottom (the photo and text); an ended event's is shorter and greyed out.
+ */
+function SwitcherCard({
+  row,
+  face,
+  cardHeight,
+  onPress,
+}: {
+  row: SwitcherRow;
+  face: FaceSize;
+  cardHeight: number;
+  onPress: () => void;
+}) {
   const { radii: r } = useTheme();
-  const event = rowEvent(row);
-  if (!event || (row.kind !== 'event' && row.kind !== 'ticket')) return null;
-  const meta = rowMeta(row);
+  const content = rowFace(row);
+  if (!content || (row.kind !== 'event' && row.kind !== 'ticket')) return null;
+  const { event, text } = content;
   return (
     <PressableSurface
       onPress={onPress}
@@ -572,60 +715,57 @@ function SwitcherCard({ row, onPress }: { row: SwitcherRow; onPress: () => void 
       pressedOpacity={0.8}
       pressScale={0.98}
       style={[styles.fill, styles.card, { borderRadius: r.container }]}
-      contentStyle={styles.cardContent}
+      contentStyle={styles.fill}
       accessibilityRole="button"
       accessibilityState={{ selected: row.current }}
-      accessibilityLabel={[event.name, meta, row.current ? 'Current' : null].filter(Boolean).join('. ')}
+      accessibilityLabel={[event.name, text.eyebrow, text.meta, row.current ? 'Current' : null].filter(Boolean).join('. ')}
       accessibilityHint={row.kind === 'ticket' ? 'Opens your ticket' : undefined}
     >
-      <CardCover event={event} />
+      <View
+        pointerEvents="none"
+        style={[
+          styles.face,
+          {
+            top: cardHeight - face.height * face.scale,
+            width: face.width,
+            height: face.height,
+            transform: [{ scale: face.scale }],
+          },
+          row.past ? { filter: PAST_FILTER } : null,
+        ]}
+        importantForAccessibility="no-hide-descendants"
+      >
+        <BannerFace
+          event={event}
+          height={face.height}
+          topInset={face.topInset}
+          eyebrow={text.eyebrow}
+          eyebrowIcon={text.eyebrowIcon}
+          meta={text.meta}
+          transition={0}
+        />
+      </View>
+      {row.past ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.pastTint]} /> : null}
       {row.current ? (
-        <View style={styles.currentMark}>
+        <View pointerEvents="none" style={styles.currentMark}>
           <Icon name="check" size={14} color={overlayTokens.ink} />
         </View>
       ) : null}
-      <CardText name={event.name} meta={meta} />
     </PressableSurface>
   );
 }
 
-/** A card's fill: the cover photo when there is one, else an accent gradient. */
-function CardCover({ event }: { event: Event }) {
-  if (event.banner_url) return <EventCover event={event} />;
-  return <AccentCover />;
-}
-
-function AccentCover() {
-  const { tokens } = useTheme();
-  return (
-    <View style={[StyleSheet.absoluteFill, { backgroundColor: tokens.accent }]}>
-      <View style={[StyleSheet.absoluteFill, styles.accentShade]} />
-    </View>
-  );
-}
-
-function CardText({ name, meta }: { name: string; meta: string }) {
-  const { type } = useTheme();
-  return (
-    <View style={styles.cardText}>
-      <Text style={[styles.cardName, styles.onCard]} numberOfLines={1} maxFontSizeMultiplier={CHROME_MAX_FONT_SCALE}>
-        {name}
-      </Text>
-      {meta ? (
-        <Text style={[type.small, styles.onCard]} numberOfLines={1} maxFontSizeMultiplier={CHROME_MAX_FONT_SCALE}>
-          {meta}
-        </Text>
-      ) : null}
-    </View>
-  );
-}
-
 /**
- * The morphing card: the banner at progress 0, a card at 1. The banner's
- * text fades out as the card's fades in, and so does its dark-mode blend.
+ * The morphing card: the banner itself at progress 0, scaled and moved into
+ * a card at 1, its corners rounding and its dark-mode fade, chevron and
+ * avatar fading out on the way. Only its transform and opacity animate, so
+ * its photo keeps the same crop throughout.
  */
 function Hero({
-  content,
+  hero,
+  onReady,
+  ready,
+  stretch,
   progress,
   heroOn,
   bannerRect,
@@ -635,7 +775,10 @@ function Hero({
   viewportTop,
   card,
 }: {
-  content: HeroContent;
+  hero: HeroState;
+  onReady: () => void;
+  ready: SharedValue<number>;
+  stretch: SharedValue<number>;
   progress: SharedValue<number>;
   heroOn: SharedValue<number>;
   bannerRect: SharedValue<Rect>;
@@ -650,49 +793,56 @@ function Hero({
     const from = bannerRect.value;
     const to = landingCard.value ?? {
       x: card.x,
-      y: viewportTop + currentTop.value - scrollY.value,
+      y: viewportTop + currentTop.value - scrollY.value + stretch.value,
       width: card.width,
       height: card.height,
     };
+    const scale = 1 + (to.width / from.width - 1) * p;
     return {
-      opacity: heroOn.value === 1 && p < 0.999 ? 1 : 0,
-      left: from.x + (to.x - from.x) * p,
-      top: from.y + (to.y - from.y) * p,
-      width: from.width + (to.width - from.width) * p,
-      height: from.height + (to.height - from.height) * p,
-      borderRadius: radii.container * p,
+      opacity: heroOn.value === 1 && ready.value === 1 && p < 0.999 ? 1 : 0,
+      // Corners as the card's once scaled.
+      borderRadius: (radii.container * p) / scale,
+      transform: [{ translateX: (to.x - from.x) * p }, { translateY: (to.y - from.y) * p }, { scale }],
     };
   });
-  const bannerLayer = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0, 0.5], [1, 0], Extrapolation.CLAMP),
+  const fadeOut = useAnimatedStyle(() => ({
+    opacity: interpolate(progress.value, [0, 0.6], [1, 0], Extrapolation.CLAMP),
   }));
-  const cardLayer = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0.5, 1], [0, 1], Extrapolation.CLAMP),
-  }));
-  const { event } = content;
+  const greyIn = useAnimatedStyle(() => ({ opacity: progress.value }));
   return (
-    <Animated.View pointerEvents="none" style={[styles.hero, box]} importantForAccessibility="no-hide-descendants">
-      <EventCover event={event} />
-      {event.banner_url ? null : (
-        <Animated.View style={[StyleSheet.absoluteFill, cardLayer]}>
-          <AccentCover />
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.hero, { left: hero.box.x, top: hero.box.y, width: hero.box.width, height: hero.box.height }, box]}
+      importantForAccessibility="no-hide-descendants"
+    >
+      {/* The whole banner, its cropped top above the box. Keyed by event so
+          a switch mounts a fresh photo, which reports when it's drawn. */}
+      <View style={[styles.heroFace, { top: -hero.crop, height: hero.faceHeight }]}>
+        <BannerFace
+          key={hero.event.id}
+          event={hero.event}
+          height={hero.faceHeight}
+          topInset={hero.topInset}
+          eyebrow={hero.eyebrow}
+          eyebrowIcon={hero.eyebrowIcon}
+          meta={hero.meta}
+          chevron={<BannerChevron style={fadeOut} />}
+          transition={0}
+          onReady={onReady}
+        >
+          {hero.blendInto ? (
+            <Animated.View style={[StyleSheet.absoluteFill, fadeOut]}>
+              <BannerBlend into={hero.blendInto} />
+            </Animated.View>
+          ) : null}
+        </BannerFace>
+      </View>
+      {hero.grey ? <Animated.View style={[StyleSheet.absoluteFill, styles.pastTint, greyIn]} /> : null}
+      {hero.accessory ? (
+        <Animated.View style={[styles.accessory, { top: hero.topInset + 8 - hero.crop }, fadeOut]}>
+          {hero.accessory}
         </Animated.View>
-      )}
-      <Animated.View style={[StyleSheet.absoluteFill, bannerLayer]}>
-        {content.blendInto ? <BannerBlend into={content.blendInto} /> : null}
-        <View style={styles.heroBannerText}>
-          <BannerText
-            name={event.name}
-            eyebrow={content.eyebrow}
-            eyebrowIcon={content.eyebrowIcon}
-            meta={content.bannerMeta}
-            chevron
-          />
-        </View>
-      </Animated.View>
-      <Animated.View style={[StyleSheet.absoluteFill, styles.cardContent, cardLayer]}>
-        <CardText name={event.name} meta={content.cardMeta} />
-      </Animated.View>
+      ) : null}
     </Animated.View>
   );
 }
@@ -706,30 +856,21 @@ const styles = StyleSheet.create({
   search: { height: SEARCH_BAR, paddingHorizontal: SIDE, justifyContent: 'center' },
   header: { paddingHorizontal: SIDE + 4, justifyContent: 'flex-end', paddingBottom: 8 },
   card: { overflow: 'hidden' },
-  cardContent: { justifyContent: 'flex-end' },
-  cardText: {
-    paddingHorizontal: 16,
-    paddingTop: 24,
-    paddingBottom: 12,
-    gap: 2,
-    backgroundImage: linearGradient(easedFade(overlayTokens.ink, { from: 0, to: 0.55, start: 0, end: 100, unit: '%' })),
-  },
-  cardName: { ...typography.h3 },
-  onCard: { color: overlayTokens.on },
+  // The banner at full size, scaled from its top-left corner into the card.
+  face: { position: 'absolute', left: 0, transformOrigin: 'top left' },
+  pastTint: { backgroundColor: PAST_TINT },
   currentMark: {
     position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 24,
-    height: 24,
+    top: 12,
+    right: 12,
+    width: 26,
+    height: 26,
     borderRadius: radii.pill,
     backgroundColor: overlayTokens.on,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  accentShade: {
-    backgroundImage: linearGradient(easedFade(overlayTokens.ink, { from: 0, to: 0.45, start: 0, end: 100, unit: '%' })),
-  },
-  hero: { position: 'absolute', overflow: 'hidden' },
-  heroBannerText: { position: 'absolute', left: 16, right: 16, bottom: 16 },
+  hero: { position: 'absolute', overflow: 'hidden', transformOrigin: 'top left' },
+  heroFace: { position: 'absolute', left: 0, right: 0 },
+  accessory: { position: 'absolute', right: 16 },
 });

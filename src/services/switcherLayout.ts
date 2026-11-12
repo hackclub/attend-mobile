@@ -9,9 +9,9 @@ import type { Event, Ticket } from '../types';
 
 export type SwitcherRow =
   | { kind: 'header'; key: string; label: string }
-  | { kind: 'past'; key: 'past'; count: number; open: boolean; toggleable: boolean }
-  | { kind: 'event'; key: string; event: Event; current: boolean }
-  | { kind: 'ticket'; key: string; ticket: Ticket; current: boolean }
+  /** `past`: an ended event, shown shorter and greyed out. */
+  | { kind: 'event'; key: string; event: Event; current: boolean; past: boolean }
+  | { kind: 'ticket'; key: string; ticket: Ticket; current: boolean; past: boolean }
   | { kind: 'placeholder'; key: string };
 
 export interface SwitcherCurrent {
@@ -22,29 +22,53 @@ export interface SwitcherCurrent {
 
 export interface SwitcherMetrics {
   cardHeight: number;
+  /** An ended event's card, shorter. */
+  pastCardHeight: number;
   /** Space under each card. */
   cardGap: number;
   headerHeight: number;
-  /** The Past group's toggle row. */
-  toggleHeight: number;
   paddingTop: number;
   paddingBottom: number;
 }
 
-/** Cards are half the banner's photo, so the banner shrinks into one. */
-export function switcherCardHeight(width: number): number {
-  return Math.round(bannerHeight(width) / 2);
+/** The cards' inset from each side of the screen. */
+export const SWITCHER_CARD_INSET = 16;
+
+/**
+ * A card is the banner scaled down to the card's width (without the status
+ * bar space above its photo), so the banner only shrinks into it (scale,
+ * corners, its fade) and never changes shape.
+ */
+export function switcherCardScale(width: number): number {
+  return (width - SWITCHER_CARD_INSET * 2) / width;
 }
 
+export function switcherCardHeight(width: number): number {
+  return Math.round(bannerHeight(width) * switcherCardScale(width));
+}
+
+/** An ended event's card is this much of a card's height. */
+const PAST_CARD_RATIO = 0.6;
+
 export function switcherMetrics(width: number, bottomInset = 0): SwitcherMetrics {
+  const cardHeight = switcherCardHeight(width);
   return {
-    cardHeight: switcherCardHeight(width),
-    cardGap: 12,
+    cardHeight,
+    pastCardHeight: Math.round(cardHeight * PAST_CARD_RATIO),
+    cardGap: 16,
     headerHeight: 40,
-    toggleHeight: 48,
     paddingTop: 8,
     paddingBottom: bottomInset + 24,
   };
+}
+
+/**
+ * The list's top padding: its usual one, or more to centre a list shorter
+ * than its viewport.
+ */
+export function centredPaddingTop(rows: SwitcherRow[], metrics: SwitcherMetrics, viewportHeight: number): number {
+  const content = contentHeight(rows, metrics);
+  return metrics.paddingTop + Math.max(0, (viewportHeight - content) / 2);
 }
 
 const PLACEHOLDERS = 4;
@@ -52,65 +76,59 @@ const PLACEHOLDERS = 4;
 const isCurrentEvent = (event: Event, current: SwitcherCurrent) => !current.ticketId && event.id === current.eventId;
 const isCurrentTicket = (ticket: Ticket, current: SwitcherCurrent) => ticket.id === current.ticketId;
 
-/** Whether the current entry is an ended one, so Past starts open. */
-export function currentIsPast(groups: SwitcherGroups, current: SwitcherCurrent): boolean {
-  return groups.past.some((entry) =>
-    entry.kind === 'organising' ? isCurrentEvent(entry.event, current) : isCurrentTicket(entry.ticket, current)
-  );
-}
-
 /**
- * The list's rows, always in the same order: Organizing, Attending, then Past
- * (its cards only while open, or while searching). Placeholder cards stand in
- * while nothing has loaded yet.
+ * The list's rows, always in the same order: Organizing, Attending, then
+ * Past, each under its heading. Placeholder cards stand in while nothing
+ * has loaded yet.
  */
 export function switcherRows(
   groups: SwitcherGroups,
   current: SwitcherCurrent,
-  { pastOpen, searching, loading }: { pastOpen: boolean; searching: boolean; loading: boolean }
+  { loading }: { loading: boolean }
 ): SwitcherRow[] {
   if (loading && switcherEventCount(groups) === 0) {
     return Array.from({ length: PLACEHOLDERS }, (_, i) => ({ kind: 'placeholder' as const, key: `placeholder-${i}` }));
   }
   const rows: SwitcherRow[] = [];
-  const eventRow = (event: Event): SwitcherRow => ({
+  const eventRow = (event: Event, past: boolean): SwitcherRow => ({
     kind: 'event',
     key: `event-${event.id}`,
     event,
     current: isCurrentEvent(event, current),
+    past,
   });
-  const ticketRow = (ticket: Ticket): SwitcherRow => ({
+  const ticketRow = (ticket: Ticket, past: boolean): SwitcherRow => ({
     kind: 'ticket',
     key: `ticket-${ticket.id}`,
     ticket,
     current: isCurrentTicket(ticket, current),
+    past,
   });
 
   if (groups.organising.length > 0) {
-    rows.push({ kind: 'header', key: 'organising', label: 'Organizing' }, ...groups.organising.map(eventRow));
+    rows.push({ kind: 'header', key: 'organising', label: 'Organizing' }, ...groups.organising.map((e) => eventRow(e, false)));
   }
   if (groups.attending.length > 0) {
-    rows.push({ kind: 'header', key: 'attending', label: 'Attending' }, ...groups.attending.map(ticketRow));
+    rows.push({ kind: 'header', key: 'attending', label: 'Attending' }, ...groups.attending.map((t) => ticketRow(t, false)));
   }
   if (groups.past.length > 0) {
-    const open = pastOpen || searching;
-    rows.push({ kind: 'past', key: 'past', count: groups.past.length, open, toggleable: !searching });
-    if (open) {
-      rows.push(...groups.past.map((entry) => (entry.kind === 'organising' ? eventRow(entry.event) : ticketRow(entry.ticket))));
-    }
+    rows.push(
+      { kind: 'header', key: 'past', label: 'Past' },
+      ...groups.past.map((entry) => (entry.kind === 'organising' ? eventRow(entry.event, true) : ticketRow(entry.ticket, true)))
+    );
   }
   return rows;
 }
 
+/** The height of a card row's card: a past one is shorter, unless it's current. */
+export function cardHeightOf(row: SwitcherRow, metrics: SwitcherMetrics): number {
+  return (row.kind === 'event' || row.kind === 'ticket') && row.past && !row.current
+    ? metrics.pastCardHeight
+    : metrics.cardHeight;
+}
+
 export function rowHeight(row: SwitcherRow, metrics: SwitcherMetrics): number {
-  switch (row.kind) {
-    case 'header':
-      return metrics.headerHeight;
-    case 'past':
-      return metrics.toggleHeight;
-    default:
-      return metrics.cardHeight + metrics.cardGap;
-  }
+  return row.kind === 'header' ? metrics.headerHeight : cardHeightOf(row, metrics) + metrics.cardGap;
 }
 
 /** Each row's top in the list's content, after the top padding. */
@@ -151,14 +169,7 @@ export function initialScrollOffset({
   return Math.min(max, Math.max(0, cardTop - targetTop));
 }
 
-/**
- * Where to aim the current card in the viewport: centred on the banner's
- * photo, which is `bannerTop` to `bannerBottom` on screen, with the list's
- * viewport starting `viewportTop` down the screen.
- */
-export function bannerTargetTop(
-  { bannerTop, bannerBottom, viewportTop }: { bannerTop: number; bannerBottom: number; viewportTop: number },
-  cardHeight: number
-): number {
-  return (bannerTop + bannerBottom) / 2 - cardHeight / 2 - viewportTop;
+/** Where to aim the current card: the middle of the list's viewport. */
+export function centreTargetTop(viewportHeight: number, cardHeight: number): number {
+  return (viewportHeight - cardHeight) / 2;
 }

@@ -1,11 +1,14 @@
 import type { SwitcherGroups } from '../eventSwitcher';
 import {
-  bannerTargetTop,
+  cardHeightOf,
+  centredPaddingTop,
+  centreTargetTop,
   contentHeight,
-  currentIsPast,
   currentRowIndex,
   initialScrollOffset,
   rowOffsets,
+  switcherCardHeight,
+  switcherCardScale,
   switcherRows,
   type SwitcherMetrics,
 } from '../switcherLayout';
@@ -16,9 +19,9 @@ const ticket = (id: string, e: Event): Ticket => ({ id, event: e } as Ticket);
 
 const metrics: SwitcherMetrics = {
   cardHeight: 100,
+  pastCardHeight: 60,
   cardGap: 10,
   headerHeight: 40,
-  toggleHeight: 50,
   paddingTop: 8,
   paddingBottom: 20,
 };
@@ -30,57 +33,55 @@ const groups: SwitcherGroups = {
 };
 
 const keys = (rows: ReturnType<typeof switcherRows>) => rows.map((row) => row.key);
+const loaded = { loading: false };
 
 describe('switcherRows', () => {
-  const closed = { pastOpen: false, searching: false, loading: false };
-
-  it('lists Organizing, then Attending, then a collapsed Past', () => {
-    expect(keys(switcherRows(groups, { eventId: 'a' }, closed))).toEqual([
+  it('lists Organizing, Attending, then Past, each under its heading', () => {
+    expect(keys(switcherRows(groups, { eventId: 'a' }, loaded))).toEqual([
       'organising',
       'event-a',
       'event-b',
       'attending',
       'ticket-t1',
       'past',
+      'event-old',
+      'ticket-t2',
     ]);
   });
 
-  it('lists the Past cards while open or searching', () => {
-    const open = keys(switcherRows(groups, {}, { ...closed, pastOpen: true }));
-    expect(open.slice(-3)).toEqual(['past', 'event-old', 'ticket-t2']);
-    const searching = switcherRows(groups, {}, { ...closed, searching: true });
-    expect(keys(searching)).toContain('event-old');
-    expect(searching.find((row) => row.kind === 'past')).toMatchObject({ open: true, toggleable: false });
+  it('marks ended events as past', () => {
+    const past = switcherRows(groups, {}, loaded)
+      .filter((row) => (row.kind === 'event' || row.kind === 'ticket') && row.past)
+      .map((row) => row.key);
+    expect(past).toEqual(['event-old', 'ticket-t2']);
   });
 
   it('marks the event as current, or the ticket when opened from a pass', () => {
-    const fromEvent = switcherRows(groups, { eventId: 'c' }, closed);
+    const fromEvent = switcherRows(groups, { eventId: 'c' }, loaded);
     expect(currentRowIndex(fromEvent)).toBe(-1);
-    const fromPass = switcherRows(groups, { eventId: 'c', ticketId: 't1' }, closed);
+    const fromPass = switcherRows(groups, { eventId: 'c', ticketId: 't1' }, loaded);
     expect(fromPass[currentRowIndex(fromPass)].key).toBe('ticket-t1');
   });
 
   it('shows placeholders only while nothing has loaded', () => {
     const empty: SwitcherGroups = { organising: [], attending: [], past: [] };
-    expect(switcherRows(empty, {}, { ...closed, loading: true }).every((row) => row.kind === 'placeholder')).toBe(true);
-    expect(switcherRows(groups, {}, { ...closed, loading: true })[0].kind).toBe('header');
-  });
-});
-
-describe('currentIsPast', () => {
-  it('is true for an ended event or ticket that is current', () => {
-    expect(currentIsPast(groups, { eventId: 'old' })).toBe(true);
-    expect(currentIsPast(groups, { ticketId: 't2' })).toBe(true);
-    expect(currentIsPast(groups, { eventId: 'a' })).toBe(false);
+    expect(switcherRows(empty, {}, { loading: true }).every((row) => row.kind === 'placeholder')).toBe(true);
+    expect(switcherRows(groups, {}, { loading: true })[0].kind).toBe('header');
   });
 });
 
 describe('rowOffsets and contentHeight', () => {
-  it('stacks the fixed heights after the top padding', () => {
-    const rows = switcherRows(groups, {}, { pastOpen: false, searching: false, loading: false });
-    // header, card, card, header, card, past toggle
-    expect(rowOffsets(rows, metrics)).toEqual([8, 48, 158, 268, 308, 418]);
-    expect(contentHeight(rows, metrics)).toBe(8 + 40 + 110 + 110 + 40 + 110 + 50 + 20);
+  it('stacks the fixed heights after the top padding, past cards shorter', () => {
+    const rows = switcherRows(groups, {}, loaded);
+    // header, card, card, header, card, header, past card, past card
+    expect(rowOffsets(rows, metrics)).toEqual([8, 48, 158, 268, 308, 418, 458, 528]);
+    expect(contentHeight(rows, metrics)).toBe(8 + 40 + 110 * 2 + 40 + 110 + 40 + 70 * 2 + 20);
+  });
+
+  it('keeps a current past card full height', () => {
+    const rows = switcherRows(groups, { eventId: 'old' }, loaded);
+    expect(cardHeightOf(rows[6], metrics)).toBe(metrics.cardHeight);
+    expect(cardHeightOf(rows[7], metrics)).toBe(metrics.pastCardHeight);
   });
 });
 
@@ -102,13 +103,29 @@ describe('initialScrollOffset', () => {
   });
 });
 
-describe('bannerTargetTop', () => {
-  it('centres the card on the banner, relative to the viewport', () => {
-    // Banner 0–300 (centre 150), card 100 tall, viewport from 80.
-    expect(bannerTargetTop({ bannerTop: 0, bannerBottom: 300, viewportTop: 80 }, 100)).toBe(20);
+describe('centredPaddingTop', () => {
+  const rows = switcherRows(groups, {}, loaded);
+  const content = contentHeight(rows, metrics);
+
+  it('centres a list shorter than the viewport', () => {
+    expect(centredPaddingTop(rows, metrics, content + 200)).toBe(metrics.paddingTop + 100);
   });
 
-  it('can be above the viewport when the banner is', () => {
-    expect(bannerTargetTop({ bannerTop: -200, bannerBottom: 100, viewportTop: 136 }, 100)).toBeLessThan(0);
+  it('keeps the usual padding when the list fills the viewport', () => {
+    expect(centredPaddingTop(rows, metrics, content - 50)).toBe(metrics.paddingTop);
+  });
+});
+
+describe('centreTargetTop', () => {
+  it('puts the card in the middle of the viewport', () => {
+    expect(centreTargetTop(800, 200)).toBe(300);
+  });
+});
+
+describe('card size', () => {
+  it('is the banner photo scaled to the card width', () => {
+    // 412 wide: a 232 photo, scaled by 380 / 412.
+    expect(switcherCardScale(412)).toBeCloseTo(380 / 412);
+    expect(switcherCardHeight(412)).toBe(Math.round(232 * (380 / 412)));
   });
 });

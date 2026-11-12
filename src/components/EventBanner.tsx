@@ -3,18 +3,22 @@ import { Pressable, StyleSheet, Text, View, useWindowDimensions, type StyleProp,
 import { Image } from 'expo-image';
 import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
-import { useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, { useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import {
   SWITCHER_FLICK_VELOCITY,
   SWITCHER_OPEN_THRESHOLD,
   SWITCHER_PULL_DISTANCE,
+  SWITCHER_CLOSE_TIMING,
   SWITCHER_SPRING,
+  closeSwitcherOverlay,
+  rubberBand,
   switcherOverlay,
   switcherProgress,
+  switcherPullTick,
+  switcherStretch,
   type SwitcherBanner,
 } from '../navigation/switcherOverlay';
-import { haptics } from '../services/haptics';
 import type { SwitcherCurrent } from '../services/switcherLayout';
 import { useEventPassColor } from '../hooks/useEventPassColor';
 import { Badge, Icon, OverlayIconButton, PressableSurface, pressedStyle, ripple, type BadgeColor, type IconName } from './ui';
@@ -53,10 +57,35 @@ export function BannerBlend({ into, height = BLEND_HEIGHT }: { into: string; hei
  * The fill behind an event's name: its banner image when it has one, else its
  * logo's colour, else Hack Club red, under faint diagonal stripes.
  */
-export function EventCover({ event, children }: { event: Event; children?: ReactNode }) {
+export function EventCover({
+  event,
+  children,
+  transition = 150,
+  onReady,
+}: {
+  event: Event;
+  children?: ReactNode;
+  /**
+   * The photo's fade-in. 0 where covers mount mid-animation (the switcher):
+   * the fade shows the fill colour under the photo for a moment.
+   */
+  transition?: number;
+  /** Once it's drawn: the photo is on screen, or there's no photo. */
+  onReady?: () => void;
+}) {
   const { tokens } = useTheme();
   const logoColor = useEventPassColor(event.logo_url, !event.banner_url && !!event.logo_url);
-  const fill = event.logo_url ? logoColor ?? tokens.brand : tokens.brand;
+  // Under a photo, a dark fill: it shows for a frame or two while the photo
+  // decodes, and red there flashed.
+  const fill = event.banner_url
+    ? overlayTokens.cameraStage
+    : event.logo_url
+      ? logoColor ?? tokens.brand
+      : tokens.brand;
+  const hasPhoto = !!event.banner_url;
+  useEffect(() => {
+    if (!hasPhoto) onReady?.();
+  }, [hasPhoto, onReady]);
   const patternId = `stripes-${event.id}`;
 
   return (
@@ -67,7 +96,8 @@ export function EventCover({ event, children }: { event: Event; children?: React
             source={{ uri: event.banner_url }}
             style={StyleSheet.absoluteFill}
             contentFit="cover"
-            transition={150}
+            transition={transition}
+            onDisplay={onReady}
             accessible={false}
           />
           {/* Keeps white type legible on any photo. */}
@@ -119,6 +149,8 @@ interface EventBannerProps {
    * registers with the overlay either way, so a switch can land on it.
    */
   switcher?: BannerSwitcher;
+  /** Its screen's `useSwitcherPull(switcher)`, which makes it pullable. */
+  pull?: ReturnType<typeof useSwitcherPull>;
   /** Space above the content for the status bar and a top tab bar. */
   topInset?: number;
   /** Top-right slot, e.g. the account avatar. Sits outside the pressable area. */
@@ -133,6 +165,15 @@ interface EventBannerProps {
   style?: StyleProp<ViewStyle>;
 }
 
+/** The round chevron after the banner's name, the sign it opens the switcher. */
+export function BannerChevron({ style }: { style?: React.ComponentProps<typeof Animated.View>['style'] }) {
+  return (
+    <Animated.View style={[styles.chevron, style]}>
+      <Icon name="chevron-down" size={16} color={ON_BANNER} />
+    </Animated.View>
+  );
+}
+
 /** The banner's eyebrow, name and meta, pinned to the bottom of what holds it. */
 export function BannerText({
   name,
@@ -145,7 +186,8 @@ export function BannerText({
   eyebrow?: string | null;
   eyebrowIcon?: IconName;
   meta?: string | null;
-  chevron?: boolean;
+  /** True for the plain chevron, or one to show instead (e.g. fading). */
+  chevron?: boolean | ReactNode;
 }) {
   const { type } = useTheme();
   return (
@@ -162,11 +204,7 @@ export function BannerText({
         <Text style={[styles.heroName, styles.onBanner]} numberOfLines={2} accessibilityRole="header">
           {name}
         </Text>
-        {chevron ? (
-          <View style={styles.chevron}>
-            <Icon name="chevron-down" size={16} color={ON_BANNER} />
-          </View>
-        ) : null}
+        {chevron === true ? <BannerChevron /> : chevron || null}
       </View>
       {meta ? (
         <Text style={[type.body, styles.onBanner, styles.meta]} maxFontSizeMultiplier={CHROME_MAX_FONT_SCALE}>
@@ -174,6 +212,47 @@ export function BannerText({
         </Text>
       ) : null}
     </>
+  );
+}
+
+/**
+ * A banner's picture: the cover with the text pinned to its bottom, `height`
+ * tall (status bar space included). The switcher's cards are this, scaled.
+ */
+export function BannerFace({
+  event,
+  height,
+  topInset,
+  eyebrow,
+  eyebrowIcon,
+  meta,
+  chevron,
+  children,
+  transition,
+  onReady,
+}: {
+  event: Event;
+  height: number;
+  topInset: number;
+  eyebrow?: string | null;
+  eyebrowIcon?: IconName;
+  meta?: string | null;
+  chevron?: boolean | ReactNode;
+  /** Drawn between the cover and the text, e.g. the dark-mode fade. */
+  children?: ReactNode;
+  /** See EventCover. */
+  transition?: number;
+  /** See EventCover. */
+  onReady?: () => void;
+}) {
+  return (
+    <View style={{ height }}>
+      <EventCover event={event} transition={transition} onReady={onReady} />
+      {children}
+      <View style={[styles.heroContent, { minHeight: height, paddingTop: topInset + 56 }]}>
+        <BannerText name={event.name} eyebrow={eyebrow} eyebrowIcon={eyebrowIcon} meta={meta} chevron={chevron} />
+      </View>
+    </View>
   );
 }
 
@@ -188,6 +267,7 @@ export function EventBanner({
   eyebrowIcon = 'calendar',
   meta,
   switcher,
+  pull,
   topInset = 0,
   accessory,
   onBack,
@@ -204,9 +284,9 @@ export function EventBanner({
 
   // Registered while mounted, so the overlay can grow out of it, or land on
   // it after a switch. The latest props are read through a ref.
-  const latest = useRef({ event, eyebrow, eyebrowIcon, meta, topInset, blendInto, switcher });
+  const latest = useRef({ event, eyebrow, eyebrowIcon, meta, topInset, blendInto, accessory, switcher });
   useLayoutEffect(() => {
-    latest.current = { event, eyebrow, eyebrowIcon, meta, topInset, blendInto, switcher };
+    latest.current = { event, eyebrow, eyebrowIcon, meta, topInset, blendInto, accessory, switcher };
   });
   const key = switcher?.key;
   useEffect(() => {
@@ -220,6 +300,7 @@ export function EventBanner({
       get meta() { return read().meta ?? undefined; },
       get topInset() { return read().topInset; },
       get blendInto() { return read().blendInto; },
+      get accessory() { return read().accessory; },
       get current() { return read().switcher?.current ?? {}; },
       switchTo: (home, before) => read().switcher?.switchTo(home, before),
       measure: () =>
@@ -231,87 +312,110 @@ export function EventBanner({
     });
   }, [key]);
 
-  const openFromPull = useCallback(() => {
-    if (key) void switcherOverlay.open(key, false);
-  }, [key]);
-  const pull = useBannerPull(canSwitch, openFromPull);
+  const face = (
+    <BannerFace
+      event={event}
+      height={height}
+      topInset={topInset}
+      eyebrow={eyebrow}
+      eyebrowIcon={eyebrowIcon}
+      meta={meta}
+      chevron={canSwitch}
+    >
+      {blendInto ? <BannerBlend into={blendInto} /> : null}
+    </BannerFace>
+  );
 
-  const content = (
-    <View style={[styles.heroContent, { minHeight: height, paddingTop: topInset + 56 }]}>
-      <BannerText name={event.name} eyebrow={eyebrow} eyebrowIcon={eyebrowIcon} meta={meta} chevron={canSwitch} />
+  const banner = (
+    <View ref={viewRef} collapsable={false} style={[styles.hero, style]}>
+      {canSwitch && key ? (
+        <Pressable
+          onPress={() => void switcherOverlay.open(key, true)}
+          android_ripple={ripple(withAlpha(overlayTokens.on, 0.18), { foreground: true })}
+          style={({ pressed }) => pressedStyle(pressed, 0.8)}
+          accessibilityRole="button"
+          accessibilityLabel="Switch event"
+          accessibilityValue={{ text: label }}
+        >
+          {face}
+        </Pressable>
+      ) : (
+        <View accessible accessibilityLabel={label}>{face}</View>
+      )}
+      {onBack ? (
+        <OverlayIconButton
+          icon="back"
+          accessibilityLabel="Back"
+          onPress={onBack}
+          hitSlop={4}
+          style={[styles.back, { top: topInset + 8 }]}
+        />
+      ) : null}
+      {accessory ? <View style={[styles.accessory, { top: topInset + 8 }]}>{accessory}</View> : null}
     </View>
   );
 
-  return (
-    <GestureDetector gesture={pull}>
-      <View ref={viewRef} collapsable={false} style={[styles.hero, style]}>
-        <EventCover event={event} />
-        {blendInto ? <BannerBlend into={blendInto} /> : null}
-        {canSwitch && key ? (
-          <Pressable
-            onPress={() => void switcherOverlay.open(key, true)}
-            android_ripple={ripple(withAlpha(overlayTokens.on, 0.18))}
-            style={({ pressed }) => pressedStyle(pressed, 0.8)}
-            accessibilityRole="button"
-            accessibilityLabel="Switch event"
-            accessibilityValue={{ text: label }}
-          >
-            {content}
-          </Pressable>
-        ) : (
-          <View accessible accessibilityLabel={label}>{content}</View>
-        )}
-        {onBack ? (
-          <OverlayIconButton
-            icon="back"
-            accessibilityLabel="Back"
-            onPress={onBack}
-            hitSlop={4}
-            style={[styles.back, { top: topInset + 8 }]}
-          />
-        ) : null}
-        {accessory ? <View style={[styles.accessory, { top: topInset + 8 }]}>{accessory}</View> : null}
-      </View>
-    </GestureDetector>
-  );
+  return pull ? <GestureDetector gesture={pull}>{banner}</GestureDetector> : banner;
 }
 
 /**
- * Pulling the banner down: the switcher follows the finger
- * (`switcherProgress`), with a tick as the pull passes the point where
- * letting go opens it. Let go past it (or flicked) it springs open, short of
- * it back. Only downward pulls: a tap, or an upward drag that scrolls the
- * page, never starts it.
+ * Pulling a banner down to open the switcher, for its screen to hold: the
+ * screen's ScrollView and RefreshControl wait for it (`requireToFail`), so a
+ * pull that starts on the banner opens the switcher rather than scrolling or
+ * refreshing. It follows the finger (`switcherProgress`), with a tick as it
+ * passes the point where letting go opens it; let go past it (or flicked)
+ * it springs open, short of it back. Only downward: a tap, or an upward drag
+ * that scrolls the page, never starts it.
  */
-function useBannerPull(enabled: boolean, onStart: () => void) {
+export function useSwitcherPull(switcher: BannerSwitcher | undefined) {
+  const key = switcher?.key;
   const past = useSharedValue(false);
+  const openFromPull = useCallback(() => {
+    if (key) void switcherOverlay.open(key, false);
+  }, [key]);
+  const active = useSharedValue(false);
+  const velocity = useSharedValue(0);
   return usePanGesture({
-    enabled,
-    activeOffsetY: 8,
-    failOffsetY: -8,
-    failOffsetX: [-24, 24],
+    enabled: !!switcher?.enabled,
+    // Before the page's ScrollView would claim the drag (its touch slop is
+    // 8dp, and once dragging it stops anything else taking the touch).
+    activeOffsetY: 3,
+    failOffsetY: -3,
+    failOffsetX: [-16, 16],
     onActivate: () => {
       'worklet';
+      active.value = true;
       past.value = false;
-      scheduleOnRN(onStart);
+      scheduleOnRN(openFromPull);
     },
     onUpdate: (e) => {
       'worklet';
+      velocity.value = e.velocityY;
       const progress = Math.min(1, Math.max(0, e.translationY / SWITCHER_PULL_DISTANCE));
       switcherProgress.value = progress;
+      // Past fully open, the list stretches on down after the finger.
+      switcherStretch.value = rubberBand(e.translationY - SWITCHER_PULL_DISTANCE);
       const isPast = progress >= SWITCHER_OPEN_THRESHOLD;
       if (isPast !== past.value) {
         past.value = isPast;
-        if (isPast) scheduleOnRN(haptics.selection);
+        if (isPast) scheduleOnRN(switcherPullTick);
       }
     },
-    onDeactivate: (e) => {
+    // On release or cancel alike (onFinalize runs for both), so a pull
+    // the system took over never leaves the overlay half open.
+    onFinalize: (e) => {
       'worklet';
-      if (switcherProgress.value >= SWITCHER_OPEN_THRESHOLD || e.velocityY > SWITCHER_FLICK_VELOCITY) {
+      if (!active.value) return;
+      active.value = false;
+      switcherStretch.value = withSpring(0, SWITCHER_SPRING);
+      const opening =
+        !e.canceled &&
+        (switcherProgress.value >= SWITCHER_OPEN_THRESHOLD || velocity.value > SWITCHER_FLICK_VELOCITY);
+      if (opening) {
         switcherProgress.value = withSpring(1, SWITCHER_SPRING);
       } else {
-        switcherProgress.value = withSpring(0, SWITCHER_SPRING, (finished) => {
-          if (finished) scheduleOnRN(switcherOverlay.closed);
+        switcherProgress.value = withTiming(0, SWITCHER_CLOSE_TIMING, (finished) => {
+          if (finished) scheduleOnRN(closeSwitcherOverlay);
         });
       }
     },

@@ -3,7 +3,6 @@ import {
   Alert,
   Linking,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -14,13 +13,14 @@ import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BottomTabBarHeightContext } from 'react-native-bottom-tabs';
 import { AccountButton } from '../components/AccountSheet';
-import { EventBanner, eventBannerText } from '../components/EventBanner';
+import { EventBanner, eventBannerText, useSwitcherPull } from '../components/EventBanner';
 import { EventStatusCard } from '../components/EventStatusCard';
 import { TicketPass } from '../components/TicketPass';
 import { WalletButtons } from '../components/WalletButtons';
 import { resetRoot, rootNavigation } from '../navigation/rootNavigation';
 import type { PartialState } from '../navigation/routes';
 import { bannerKey } from '../navigation/switcherOverlay';
+import { ScrollView } from 'react-native-gesture-handler';
 import {
   startTicketActivity,
   stopTicketActivity,
@@ -126,7 +126,9 @@ export function TicketDetailScreen() {
       },
     }),
     [canSwitch, navigation, ticket]
-  );
+  );  // A pull on the banner opens the switcher; the page's scroll waits for it.
+  const pull = useSwitcherPull(bannerSwitcher);
+
 
   // Live Activity: let confirmed attendees pin their pass to the Lock Screen.
   // iOS: a Live Activity. Android: an ongoing notification (a Live Update on
@@ -190,6 +192,7 @@ export function TicketDetailScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: tokens.shaded }]}>
       <ScrollView
+        requireToFail={pull}
         contentContainerStyle={{ paddingBottom: bottomInset + spacing.xxl }}
         onScroll={bannerStatusBar.onScroll}
         scrollEventThrottle={32}
@@ -203,6 +206,7 @@ export function TicketDetailScreen() {
           blendInto={tokens.shaded}
           onBack={canGoBack ? () => navigation.goBack() : undefined}
           switcher={bannerSwitcher}
+          pull={pull}
           accessory={canGoBack ? undefined : <AccountButton onBanner />}
         />
 

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -8,7 +7,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, type NavigationProp } from '@react-navigation/native';
 import { AccountButton } from '../components/AccountSheet';
-import { EventBanner, eventBannerText } from '../components/EventBanner';
+import { EventBanner, eventBannerText, useSwitcherPull } from '../components/EventBanner';
 import { RoleRestricted, roleRestrictedMessage } from '../components/RoleRestricted';
 import {
   Avatar,
@@ -59,6 +58,7 @@ import { SwitchEventList } from '../components/EventSwitcher';
 import { resetRoot } from '../navigation/rootNavigation';
 import type { PartialState } from '../navigation/routes';
 import { bannerKey } from '../navigation/switcherOverlay';
+import { ScrollView } from 'react-native-gesture-handler';
 
 type Navigation = NavigationProp<AppStackParamList & MainTabParamList>;
 
@@ -143,7 +143,9 @@ function Overview({
       },
     }),
     [canSwitch, event, navigation]
-  );
+  );  // A pull on the banner opens the switcher; the page's scroll waits for it.
+  const pull = useSwitcherPull(bannerSwitcher);
+
 
   const participants = state.participants;
   const stats = useMemo(() => computeEventStats(participants, contexts), [participants, contexts]);
@@ -386,11 +388,13 @@ function Overview({
   return (
     <View style={[styles.screen, { backgroundColor: tokens.bg }]}>
       <ScrollView
+        requireToFail={pull}
         contentContainerStyle={{ paddingBottom: tabBarInset + spacing.xxl }}
         onScroll={bannerStatusBar.onScroll}
         scrollEventThrottle={32}
         refreshControl={
           <RefreshControl
+            requireToFail={pull}
             refreshing={isRefreshing}
             onRefresh={handleRefresh}
             // The spinner shows on the page above the banner, not on the
@@ -410,6 +414,7 @@ function Overview({
           topInset={insets.top + topTabInset}
           blendInto={tokens.bg}
           switcher={bannerSwitcher}
+          pull={pull}
           accessory={<AccountButton onBanner />}
         />
 

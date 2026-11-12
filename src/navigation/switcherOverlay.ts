@@ -1,4 +1,6 @@
-import { makeMutable } from 'react-native-reanimated';
+import { Easing, makeMutable } from 'react-native-reanimated';
+import { haptics } from '../services/haptics';
+import type { ReactNode } from 'react';
 import type { IconName } from '../components/ui/Icon';
 import type { SwitcherCurrent } from '../services/switcherLayout';
 import type { Event, Ticket } from '../types';
@@ -28,6 +30,8 @@ export interface SwitcherBanner {
   topInset: number;
   /** The page colour under it (its dark-mode fade). */
   blendInto?: string;
+  /** Its top-right control (the account avatar), faded out by the hero. */
+  accessory?: ReactNode;
   /** Its rect in the window, now. */
   measure: () => Promise<Rect | null>;
   /** Its screen's root reset, run under the overlay when switching. */
@@ -43,6 +47,20 @@ export const bannerKey = {
 
 /** 0: the banner; 1: the list, fully open. Driven by gestures and springs. */
 export const switcherProgress = makeMutable(0);
+/**
+ * Points the list is pulled down past where it rests: a pull that goes on
+ * after the overlay has fully opened, or one that starts on the list to
+ * close it. Rubber-banded (`rubberBand`), and sprung back to 0 on release.
+ */
+export const switcherStretch = makeMutable(0);
+
+/** A pull of `distance` points, resisted more the further it goes. */
+export function rubberBand(distance: number): number {
+  'worklet';
+  if (distance <= 0) return 0;
+  const limit = 220;
+  return (distance * 0.55 * limit) / (limit + distance * 0.55);
+}
 
 export type OverlayState =
   | { status: 'closed' }
@@ -112,13 +130,21 @@ export const switcherOverlay = {
     emit();
   },
 
-  /** Unmounts it, once it has animated away. */
+  /**
+   * Unmounts it, once it has animated away: a frame later, so the
+   * animation's last frame is on screen before the views go (unmounting
+   * under a frame still being drawn could leave them there, untouchable).
+   */
   closed() {
     generation += 1;
     if (state.status === 'closed') return;
     state = { status: 'closed' };
-    switcherProgress.value = 0;
-    emit();
+    requestAnimationFrame(() => {
+      if (state.status !== 'closed') return;
+      switcherProgress.value = 0;
+      switcherStretch.value = 0;
+      emit();
+    });
   },
 };
 
@@ -129,3 +155,18 @@ export const SWITCHER_OPEN_THRESHOLD = 0.35;
 /** A flick this fast (points/s) opens or closes it whatever the distance. */
 export const SWITCHER_FLICK_VELOCITY = 800;
 export const SWITCHER_SPRING = { damping: 26, stiffness: 260, mass: 1 };
+/**
+ * Closing and landing: a fixed-length ease rather than a spring, whose long
+ * settle kept the overlay mounted (and the banner unable to reopen it) for
+ * a while after it looked done.
+ */
+export const SWITCHER_CLOSE_TIMING = { duration: 340, easing: Easing.bezier(0.2, 0, 0, 1) };
+
+// Plain functions for worklets to call back with scheduleOnRN, rather than
+// methods on the store object, which a worklet would have to copy over.
+export function closeSwitcherOverlay(): void {
+  switcherOverlay.closed();
+}
+export function switcherPullTick(): void {
+  haptics.selection();
+}
