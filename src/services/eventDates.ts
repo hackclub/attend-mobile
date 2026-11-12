@@ -98,3 +98,18 @@ export function formatEventDateRange(event: Pick<Event, 'starts_at' | 'ends_at' 
   }
   return `${a.weekday} ${a.day} ${a.month} – ${b.weekday} ${b.day} ${b.month}`;
 }
+
+/**
+ * Formats a calendar date the API sends without a time ("2010-05-14": a date
+ * of birth, a check-in day) in the device's locale. `new Date("2010-05-14")`
+ * reads it as UTC midnight, which is the day before anywhere west of UTC, so
+ * the parts are taken as a local date instead. Anything else is formatted as
+ * a timestamp, and an unparseable value is shown as sent.
+ */
+export function formatDateOnly(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  const date = match
+    ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+    : new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
+}

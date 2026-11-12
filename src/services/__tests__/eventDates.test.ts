@@ -1,4 +1,4 @@
-import { eventPhaseLabel, formatEventDateRange, isPastEvent } from '../eventDates';
+import { eventPhaseLabel, formatDateOnly, formatEventDateRange, isPastEvent } from '../eventDates';
 
 const tz = 'Australia/Sydney';
 // 9 Nov 2026, 10:00 in Sydney.
@@ -53,5 +53,23 @@ describe('formatEventDateRange', () => {
   it('shows one day for a single-day event', () => {
     expect(formatEventDateRange({ starts_at: '2026-11-14T09:00:00+11:00', ends_at: '2026-11-14T17:00:00+11:00', timezone: tz }))
       .toBe('Sat 14 Nov');
+  });
+});
+
+describe('formatDateOnly', () => {
+  // Jest can't switch the zone mid-run, so this checks the local-day reading
+  // directly; in any zone west of UTC, `new Date('2010-05-14')` would be the
+  // 13th.
+  it('formats the calendar day as a local date', () => {
+    expect(formatDateOnly('2010-05-14')).toBe(new Date(2010, 4, 14).toLocaleDateString());
+  });
+
+  it('formats a full timestamp as a timestamp', () => {
+    const value = '2026-11-14T09:00:00Z';
+    expect(formatDateOnly(value)).toBe(new Date(value).toLocaleDateString());
+  });
+
+  it('shows an unparseable value as sent', () => {
+    expect(formatDateOnly('sometime')).toBe('sometime');
   });
 });

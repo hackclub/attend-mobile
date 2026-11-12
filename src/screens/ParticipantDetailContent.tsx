@@ -41,6 +41,7 @@ import { haptics } from '../services/haptics';
 import { api } from '../services/api';
 import { buildPhoneActions } from '../services/contactLinks';
 import { checkInDetail, participantDetailLine } from '../services/participantCheckIn';
+import { formatDateOnly } from '../services/eventDates';
 import { isWithdrawn } from '../services/participantStatus';
 import { travelDayTime } from '../services/travelTimes';
 import { useTheme } from '../theme';
@@ -833,7 +834,7 @@ function PersonalSection({
       {personal.date_of_birth ? (
         <InfoRow
           label="Date of Birth"
-          value={`${new Date(personal.date_of_birth).toLocaleDateString()}${personal.age != null ? ` (age ${personal.age})` : ''}`}
+          value={`${formatDateOnly(personal.date_of_birth)}${personal.age != null ? ` (age ${personal.age})` : ''}`}
         />
       ) : personal.age != null ? (
         <InfoRow label="Age" value={`${personal.age}`} />
@@ -861,8 +862,8 @@ function AccommodationSection({ accommodation: a }: { accommodation: Accommodati
       {a.venue_name && <InfoRow label="Venue" value={a.venue_name} />}
       {a.assigned_room && <InfoRow label="Room" value={a.assigned_room} />}
       {a.rooming_exempt && <InfoRow label="Rooming exempt" value="Yes" />}
-      {a.check_in_date && <InfoRow label="Check-in" value={new Date(a.check_in_date).toLocaleDateString()} />}
-      {a.check_out_date && <InfoRow label="Check-out" value={new Date(a.check_out_date).toLocaleDateString()} />}
+      {a.check_in_date && <InfoRow label="Check-in" value={formatDateOnly(a.check_in_date)} />}
+      {a.check_out_date && <InfoRow label="Check-out" value={formatDateOnly(a.check_out_date)} />}
       {a.gender_identity && <InfoRow label="Gender identity" value={a.gender_identity_other || a.gender_identity.replace(/_/g, ' ')} />}
       {a.preferred_roommate_genders?.length ? (
         <InfoRow label="Preferred roommate genders" value={a.preferred_roommate_genders.join(', ').replace(/_/g, ' ')} />
