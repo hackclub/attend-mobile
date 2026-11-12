@@ -148,6 +148,15 @@ export class SameCodeGate {
     return wasAbsentLongEnough;
   }
 
+  /**
+   * Note that the last code is still in view without accepting it. Used
+   * while a request is running, so the suppression window counts from the
+   * moment that code was last seen rather than from its first frame.
+   */
+  touch(code: string, now = Date.now()): void {
+    if (code === this.lastCode) this.lastSeenAt = now;
+  }
+
   reset(): void {
     this.lastCode = null;
     this.lastSeenAt = 0;

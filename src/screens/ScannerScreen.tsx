@@ -174,9 +174,10 @@ export function ScannerScreen() {
 
   const handleBarcodeScanned = useCallback(async (result: BarcodeScanningResult) => {
     recordScannerActivity();
-    if (isProcessing) return;
+    // useScanner ignores frames while a scan is running, but still needs to
+    // see them to know the code is still in front of the camera.
     await handleScan(result.data, 'qr');
-  }, [handleScan, isProcessing, recordScannerActivity]);
+  }, [handleScan, recordScannerActivity]);
   const barcodeHandlerRef = useRef(handleBarcodeScanned);
   useLayoutEffect(() => {
     barcodeHandlerRef.current = handleBarcodeScanned;

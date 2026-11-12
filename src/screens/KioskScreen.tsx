@@ -58,7 +58,6 @@ export function KioskScreen() {
   const scanSize = Math.min(windowWidth - 48, windowHeight * 0.42, windowWidth >= 600 ? 420 : 280);
   const {
     handleScan,
-    isProcessing,
     lastScan,
     hideLastScan,
     scanContexts,
@@ -134,7 +133,8 @@ export function KioskScreen() {
 
   const onBarcode = async (r: BarcodeScanningResult) => {
     recordScannerActivity();
-    if (isProcessing) return;
+    // useScanner ignores frames while a scan is running, but still needs to
+    // see them to know the code is still in front of the camera.
     await handleScan(r.data, 'qr');
   };
 

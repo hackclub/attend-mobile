@@ -54,6 +54,16 @@ describe('parseQRCode', () => {
 });
 
 describe('SameCodeGate', () => {
+  it('touch keeps a code suppressed while it stays in view, and ignores other codes', () => {
+    const gate = new SameCodeGate(3000);
+    expect(gate.accept('A', 0)).toBe(true);
+    gate.touch('A', 2500);
+    gate.touch('B', 2600);
+    expect(gate.accept('A', 4000)).toBe(false);
+    expect(gate.accept('A', 8000)).toBe(true);
+    expect(gate.accept('B', 8100)).toBe(true);
+  });
+
   it('suppresses the same camera frame but accepts a different attendee immediately', () => {
     const gate = new SameCodeGate(3000);
 

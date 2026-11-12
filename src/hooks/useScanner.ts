@@ -32,6 +32,12 @@ interface ScanRequest {
   startedAt?: string;
 }
 
+// The same-code gate keys NFC reads apart from camera frames, so a badge tap
+// and a QR code with the same text don't suppress each other.
+function gateKey(source: ScanSource, data: string): string {
+  return source === 'nfc' ? `nfc:${data}` : data;
+}
+
 export function useScanner(options: {
   lockedContextId?: string;
 } = {}) {
@@ -274,6 +280,10 @@ export function useScanner(options: {
     } finally {
       if (requestAbortRef.current === requestController) {
         requestAbortRef.current = null;
+        // Start the same-code window again from now: a request slower than
+        // the window would otherwise let the code still in front of the
+        // camera (or on the reader) straight back in.
+        codeGateRef.current.touch(gateKey(request.source, request.rawData));
         processingRef.current = false;
         setIsProcessing(false);
       }
@@ -297,11 +307,11 @@ export function useScanner(options: {
     data: string,
     source: ScanSource = 'qr'
   ): Promise<ScannerResult | null> => {
-    if (
-      processingRef.current ||
-      !contextsReady ||
-      !codeGateRef.current.accept(data)
-    ) return null;
+    if (processingRef.current) {
+      codeGateRef.current.touch(gateKey(source, data));
+      return null;
+    }
+    if (!contextsReady || !codeGateRef.current.accept(gateKey(source, data))) return null;
 
     const parsed = parseQRCode(data);
     if (!parsed) {
@@ -329,7 +339,7 @@ export function useScanner(options: {
     payload: string,
     isBadgeToken: boolean
   ): Promise<ScannerResult | null> => {
-    if (!codeGateRef.current.accept(`nfc:${payload}`)) return null;
+    if (!codeGateRef.current.accept(gateKey('nfc', payload))) return null;
 
     const target = nfcScanTarget(payload, isBadgeToken);
     if (!target) {
@@ -415,7 +425,12 @@ export function useScanner(options: {
     isBadge = false
   ): Promise<ScannerResult | null> => {
     const payload = token.trim();
-    if (!payload || processingRef.current || !contextsReady) return null;
+    if (!payload) return null;
+    if (processingRef.current) {
+      codeGateRef.current.touch(gateKey('nfc', payload));
+      return null;
+    }
+    if (!contextsReady) return null;
     if (needsContext) return contextRequiredResult('nfc');
     return scanNfcPayload(payload, isBadge);
   }, [contextRequiredResult, contextsReady, needsContext, scanNfcPayload]);
