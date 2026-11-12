@@ -70,9 +70,9 @@ const SIDE = SWITCHER_CARD_INSET;
 const CARD_SLIDE = 56;
 /** How long a switch waits for the new screen's banner before just fading. */
 const LANDING_WAIT_MS = 1500;
-/** How long it waits for the picked event's photo before growing anyway. */
-const PHOTO_WAIT_MS = 300;
 const FADE_MS = 220;
+/** The longest a switch waits for the picked event's photo before growing. */
+const PHOTO_WAIT_MS = 150;
 /** A pull on the list this far (before resistance) closes the overlay. */
 const LIST_CLOSE_DISTANCE = 110;
 /** How much a full stretch fades the overlay, as a hint it's closing. */
@@ -249,6 +249,9 @@ function SwitcherOverlay({
   // A switch's ends: the new banner (cropped as the hero is) and the card.
   const landingFrom = useSharedValue<Rect | null>(null);
   const landingCard = useSharedValue<Rect | null>(null);
+  // Keeps the backdrop opaque while a switch waits for the new screen.
+  const backdropHold = useSharedValue(0);
+  // Resolves once the hero's photo is drawn (see pick).
   const heroReadyWaiter = useRef<(() => void) | null>(null);
   const onHeroReady = useCallback(() => {
     heroReady.set(1);
@@ -271,6 +274,7 @@ function SwitcherOverlay({
     setPickedKey(null);
     landingFrom.set(null);
     landingCard.set(null);
+    backdropHold.set(0);
     heroOn.set(reduceMotion || currentIndex < 0 ? 0 : 1);
     setHero((was) => {
       const next = heroFor(source, width, currentCardHeight, cardWidth, false);
@@ -281,7 +285,7 @@ function SwitcherOverlay({
     scrollY.set(targetOffset);
     listRef.current?.scrollToOffset({ offset: targetOffset, animated: false });
   }, [
-    cardWidth, currentCardHeight, currentIndex, heroOn, heroReady, landingCard, landingFrom, open,
+    backdropHold, cardWidth, currentCardHeight, currentIndex, heroOn, heroReady, landingCard, landingFrom, open,
     reduceMotion, scrollY, source, targetOffset, width,
   ]);
 
@@ -338,8 +342,11 @@ function SwitcherOverlay({
   }, [close, open]);
 
   /**
-   * Switches under the overlay, then grows the picked card into the new
-   * screen's banner (or fades, if that banner doesn't turn up).
+   * Grows the picked card straight away into where the new screen's banner
+   * will be (both homes put it at the top, the size of this one), while the
+   * screens switch under the overlay; the target is corrected if the new
+   * banner, once measured, sits elsewhere. The backdrop holds until that
+   * banner is there, so the old screen never shows through.
    */
   const pick = useCallback(
     async (row: SwitcherRow, index: number) => {
@@ -358,11 +365,65 @@ function SwitcherOverlay({
         width: cardWidth,
         height: pickedHeight,
       };
+      const event = row.kind === 'event' ? row.event : row.ticket.event;
+      const text = eventBannerText(event, row.kind === 'event' ? eventRoleLabel(event.role) : 'Attendee');
+      const predicted = heroFor(
+        { ...source, event, eyebrow: text.eyebrow ?? undefined, eyebrowIcon: text.eyebrowIcon, meta: text.meta ?? undefined },
+        width,
+        pickedHeight,
+        cardWidth,
+        row.past
+      );
+      const cropped = (rect: Rect, crop: number): Rect => ({
+        x: rect.x,
+        y: rect.y + crop,
+        width: rect.width,
+        height: rect.height - crop,
+      });
+
+      // Landing: the card in front, the backdrop held until the new screen
+      // is there; it closes once both have happened.
+      let grown = false;
+      let landed = false;
+      const finishIfDone = () => {
+        if (grown && landed) closeSwitcherOverlay();
+      };
+      const markGrown = () => {
+        grown = true;
+        finishIfDone();
+      };
+      backdropHold.set(1);
       setPickedKey(row.key);
-      // Fully covered while the screens change under it.
-      progress.set(1);
       stretch.set(0);
       overpull.set(0);
+      if (reduceMotion) {
+        heroOn.set(0);
+        progress.set(1);
+        grown = true;
+      } else {
+        // The hero shows the picked event; it grows as soon as its photo is
+        // drawn (a frame or two, it's cached), so it's seen from the start.
+        const samePhoto = hero.event.id === event.id && hero.event.banner_url === event.banner_url;
+        const photoReady = samePhoto
+          ? Promise.resolve()
+          : new Promise<void>((resolve) => {
+              heroReady.set(0);
+              heroReadyWaiter.current = resolve;
+              setTimeout(resolve, PHOTO_WAIT_MS);
+            });
+        setHero(predicted);
+        landingFrom.set(cropped({ x: 0, y: 0, width, height: source.height }, predicted.crop));
+        landingCard.set(cardRect);
+        heroOn.set(1);
+        progress.set(1);
+        void photoReady.then(() =>
+          progress.set(
+            withTiming(0, SWITCHER_CLOSE_TIMING, (finished) => {
+              if (finished) scheduleOnRN(markGrown);
+            })
+          )
+        );
+      }
 
       if (row.kind === 'event') source.switchTo(eventHomeState(), () => void selectEvent(row.event));
       else source.switchTo(passHomeState(row.ticket));
@@ -372,38 +433,31 @@ function SwitcherOverlay({
 
       const key = row.kind === 'event' ? bannerKey.event(row.event) : bannerKey.ticket(row.ticket);
       const target = await switcherOverlay.waitForBanner(key, LANDING_WAIT_MS);
-      const targetRect = target && !reduceMotion ? await target.measure() : null;
-      const finish = (finished?: boolean) => {
-        'worklet';
-        if (finished) scheduleOnRN(closeSwitcherOverlay);
-      };
-      if (!target || !targetRect) {
-        heroOn.set(0);
-        progress.set(withTiming(0, { duration: FADE_MS }, finish));
-        return;
+      const targetRect = target ? await target.measure() : null;
+      if (targetRect && !reduceMotion) {
+        // Only if it's not where it was expected: the grow carries on to it.
+        const off = Math.abs(targetRect.y) > 1 || Math.abs(targetRect.height - source.height) > 1;
+        if (off) landingFrom.set(cropped(targetRect, Math.min(target!.topInset, targetRect.height)));
       }
-      const next = heroFor({ ...target, height: targetRect.height }, width, pickedHeight, cardWidth, row.past);
-      // The new face mounts hidden; it grows once its photo is drawn.
-      heroReady.set(0);
-      const ready = new Promise<void>((resolve) => {
-        heroReadyWaiter.current = resolve;
-        setTimeout(resolve, PHOTO_WAIT_MS);
-      });
-      setHero(next);
-      landingFrom.set({
-        x: targetRect.x,
-        y: targetRect.y + next.crop,
-        width: targetRect.width,
-        height: targetRect.height - next.crop,
-      });
-      landingCard.set(cardRect);
-      heroOn.set(1);
-      await ready;
-      requestAnimationFrame(() => progress.set(withTiming(0, SWITCHER_CLOSE_TIMING, finish)));
+      // The new screen is there (or isn't coming): let the backdrop go.
+      backdropHold.set(
+        withTiming(0, { duration: FADE_MS }, (finished) => {
+          if (finished) scheduleOnRN(() => {
+            landed = true;
+            if (reduceMotion) {
+              progress.set(withTiming(0, { duration: FADE_MS }, (done) => {
+                if (done) scheduleOnRN(closeSwitcherOverlay);
+              }));
+              return;
+            }
+            finishIfDone();
+          });
+        })
+      );
     },
     [
-      barStyle, cardWidth, close, heroOn, heroReady, landingCard, landingFrom, metrics, offsets, progress,
-      overpull, reduceMotion, scrollY, selectEvent, source, stretch, viewportTop, width,
+      backdropHold, barStyle, cardWidth, close, hero, heroOn, heroReady, landingCard, landingFrom, metrics, offsets,
+      progress, overpull, reduceMotion, scrollY, selectEvent, source, stretch, viewportTop, width,
     ]
   );
 
@@ -545,14 +599,23 @@ function SwitcherOverlay({
     return 1 - STRETCH_FADE * Math.min(1, Math.abs(stretch.value) / followPull(LIST_CLOSE_DISTANCE * 2));
   };
   const backdropStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0, 0.6], [0, 1], Extrapolation.CLAMP) * stretchFade(),
+    opacity: Math.max(
+      interpolate(progress.value, [0, 0.6], [0, 1], Extrapolation.CLAMP) * stretchFade(),
+      backdropHold.value
+    ),
   }));
+  // A switch clears the list and header out of the way early, so only the
+  // growing card and the new screen are left.
+  const switchFade = () => {
+    'worklet';
+    return landingCard.value ? interpolate(progress.value, [0.7, 1], [0, 1], Extrapolation.CLAMP) : 1;
+  };
   const chromeStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0.3, 1], [0, 1], Extrapolation.CLAMP) * stretchFade(),
+    opacity: interpolate(progress.value, [0.3, 1], [0, 1], Extrapolation.CLAMP) * stretchFade() * switchFade(),
   }));
   // With the hero off (reduced motion, a fade) the list fades as a whole.
   const listStyle = useAnimatedStyle(() => ({
-    opacity: heroOn.value ? 1 : interpolate(progress.value, [0, 0.8], [0, 1], Extrapolation.CLAMP),
+    opacity: (heroOn.value ? 1 : interpolate(progress.value, [0, 0.8], [0, 1], Extrapolation.CLAMP)) * switchFade(),
     // A pull past fully open moves it too, without the fade.
     transform: [{ translateY: stretch.value + overpull.value }],
   }));
@@ -576,6 +639,7 @@ function SwitcherOverlay({
         face={face}
         progress={progress}
         heroOn={heroOn}
+        heroReady={heroReady}
         slide={reduceMotion ? 0 : slide * CARD_SLIDE}
         // The card the hero stands in for stays hidden while it does.
         isHeroCard={item.key === pickedKey || (pickedKey === null && item.kind !== 'placeholder' && item.current)}
@@ -729,6 +793,7 @@ function CardRow({
   face,
   progress,
   heroOn,
+  heroReady,
   slide,
   isHeroCard,
   onPress,
@@ -739,12 +804,14 @@ function CardRow({
   face: FaceSize;
   progress: SharedValue<number>;
   heroOn: SharedValue<number>;
+  heroReady: SharedValue<number>;
   slide: number;
   isHeroCard: boolean;
   onPress: () => void;
 }) {
   const animated = useAnimatedStyle(() => {
-    const moving = heroOn.value === 1 && progress.value < 0.999;
+    // Hidden only once the hero standing in for it is drawn.
+    const moving = heroOn.value === 1 && heroReady.value === 1 && progress.value < 0.999;
     if (isHeroCard) return { opacity: moving ? 0 : 1, transform: [{ translateY: 0 }] };
     if (!heroOn.value) return { opacity: 1, transform: [{ translateY: 0 }] };
     return {
