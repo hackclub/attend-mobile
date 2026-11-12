@@ -440,18 +440,23 @@ function SwitcherOverlay({
         if (off) landingFrom.set(cropped(targetRect, Math.min(target!.topInset, targetRect.height)));
       }
       // The new screen is there (or isn't coming): let the backdrop go.
+      // (Defined here, on the JS side: a worklet can only hand back a
+      // function that already exists there.)
+      const markLanded = () => {
+        landed = true;
+        if (reduceMotion) {
+          progress.set(
+            withTiming(0, { duration: FADE_MS }, (done) => {
+              if (done) scheduleOnRN(closeSwitcherOverlay);
+            })
+          );
+          return;
+        }
+        finishIfDone();
+      };
       backdropHold.set(
         withTiming(0, { duration: FADE_MS }, (finished) => {
-          if (finished) scheduleOnRN(() => {
-            landed = true;
-            if (reduceMotion) {
-              progress.set(withTiming(0, { duration: FADE_MS }, (done) => {
-                if (done) scheduleOnRN(closeSwitcherOverlay);
-              }));
-              return;
-            }
-            finishIfDone();
-          });
+          if (finished) scheduleOnRN(markLanded);
         })
       );
     },
