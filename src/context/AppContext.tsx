@@ -549,9 +549,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!state.currentEvent) return;
     const eventId = state.currentEvent.id;
     const generation = eventSelectionGenerationRef.current;
-    const participants = await syncService.refreshParticipants(eventId, generation, {
-      probeForbidden: true,
-    });
+    // The sync service checks its own cache generation (bumped on sign-out),
+    // not this screen's selection counter: passing the latter made every
+    // refresh discard the fetched page, or come back empty offline.
+    const participants = await syncService.refreshParticipants(
+      eventId,
+      syncService.getCacheGeneration(),
+      { probeForbidden: true }
+    );
     if (
       eventSelectionGenerationRef.current === generation
       && currentEventIdRef.current === eventId
