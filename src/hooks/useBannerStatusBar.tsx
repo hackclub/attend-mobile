@@ -9,6 +9,8 @@ import { useReduceMotion } from './useReduceMotion';
 export interface BannerStatusBar {
   /** On the ScrollView (with a scrollEventThrottle). */
   onScroll: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  /** The same, given the scroll offset (e.g. from a Reanimated scroll handler). */
+  onScrollY: (y: number) => void;
   /** Render after the ScrollView, inside a container that fills the screen. */
   scrim: ReactNode;
 }
@@ -27,10 +29,14 @@ export function useBannerStatusBar(pageColor: string): BannerStatusBar {
   const reduceMotion = useReduceMotion();
   const [scrolled, setScrolled] = useState(false);
 
-  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const past = e.nativeEvent.contentOffset.y > SCROLLED_AFTER;
+  const onScrollY = useCallback((y: number) => {
+    const past = y > SCROLLED_AFTER;
     setScrolled((prev) => (prev === past ? prev : past));
   }, []);
+  const onScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => onScrollY(e.nativeEvent.contentOffset.y),
+    [onScrollY]
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -65,7 +71,7 @@ export function useBannerStatusBar(pageColor: string): BannerStatusBar {
     />
   );
 
-  return { onScroll, scrim };
+  return { onScroll, onScrollY, scrim };
 }
 
 /** How far the page scrolls, in pt, before the scrim shows. */

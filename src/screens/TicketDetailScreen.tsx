@@ -13,14 +13,14 @@ import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BottomTabBarHeightContext } from 'react-native-bottom-tabs';
 import { AccountButton } from '../components/AccountSheet';
-import { EventBanner, eventBannerText, useBannerHeldScrollProps, useSwitcherPull } from '../components/EventBanner';
+import { eventBannerText } from '../components/EventBanner';
+import { BannerScrollView } from '../components/BannerScrollView';
 import { EventStatusCard } from '../components/EventStatusCard';
 import { TicketPass } from '../components/TicketPass';
 import { WalletButtons } from '../components/WalletButtons';
 import { resetRoot, rootNavigation } from '../navigation/rootNavigation';
 import type { PartialState } from '../navigation/routes';
 import { bannerKey } from '../navigation/switcherOverlay';
-import Animated from 'react-native-reanimated';
 import {
   startTicketActivity,
   stopTicketActivity,
@@ -126,10 +126,7 @@ export function TicketDetailScreen() {
       },
     }),
     [canSwitch, navigation, ticket]
-  );  // A pull on the banner opens the switcher; the page's scroll waits for it.
-  const pull = useSwitcherPull(bannerSwitcher);
-  const heldScrollProps = useBannerHeldScrollProps();
-
+  );
 
   // Live Activity: let confirmed attendees pin their pass to the Lock Screen.
   // iOS: a Live Activity. Android: an ongoing notification (a Live Update on
@@ -192,25 +189,21 @@ export function TicketDetailScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: tokens.shaded }]}>
-      <Animated.ScrollView
-        animatedProps={heldScrollProps}
+      <BannerScrollView
+        banner={{
+          event: event,
+          eyebrow: banner.eyebrow,
+          eyebrowIcon: banner.eyebrowIcon,
+          meta: banner.meta,
+          topInset: insets.top,
+          blendInto: tokens.shaded,
+          onBack: canGoBack ? () => navigation.goBack() : undefined,
+          switcher: bannerSwitcher,
+          accessory: canGoBack ? undefined : <AccountButton onBanner />,
+        }}
+        onScrollY={bannerStatusBar.onScrollY}
         contentContainerStyle={{ paddingBottom: bottomInset + spacing.xxl }}
-        onScroll={bannerStatusBar.onScroll}
-        scrollEventThrottle={32}
       >
-        <EventBanner
-          event={event}
-          eyebrow={banner.eyebrow}
-          eyebrowIcon={banner.eyebrowIcon}
-          meta={banner.meta}
-          topInset={insets.top}
-          blendInto={tokens.shaded}
-          onBack={canGoBack ? () => navigation.goBack() : undefined}
-          switcher={bannerSwitcher}
-          pull={pull}
-          accessory={canGoBack ? undefined : <AccountButton onBanner />}
-        />
-
         <View style={[{ padding: spacing.lg, gap: spacing.lg }]}>
           <TicketPass ticket={ticket} pageColor={tokens.shaded} />
           {ticket.confirmed ? <WalletButtons ticket={ticket} /> : null}
@@ -269,7 +262,7 @@ export function TicketDetailScreen() {
             />
           </Container>
         </View>
-      </Animated.ScrollView>
+      </BannerScrollView>
       {bannerStatusBar.scrim}
     </View>
   );

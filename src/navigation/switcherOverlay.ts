@@ -66,14 +66,6 @@ export const switcherStretch = makeMutable(0);
  * down, rubber-banded, without the stretch's fade (it isn't closing).
  */
 export const switcherOverpull = makeMutable(0);
-/**
- * True while a finger is down on a switchable banner. The banner's screen
- * turns its scrolling and pull-to-refresh off meanwhile (on the UI thread,
- * at once), so they can't claim a pull before the switcher does; a drag
- * upward fails the pull and turns them back on mid-drag.
- */
-export const switcherBannerHeld = makeMutable(false);
-
 /** A pull of `distance` points, resisted more the further it goes. */
 export function rubberBand(distance: number): number {
   'worklet';

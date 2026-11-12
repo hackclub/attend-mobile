@@ -4,12 +4,16 @@ import { Image } from 'expo-image';
 import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
 import Animated, {
+  cancelAnimation,
   measure,
-  useAnimatedProps,
+  scrollTo,
   useAnimatedRef,
   useSharedValue,
+  withDecay,
   withSpring,
   withTiming,
+  type AnimatedRef,
+  type SharedValue,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import {
@@ -21,7 +25,6 @@ import {
   closeSwitcherOverlay,
   openSwitcherFromPull,
   rubberBand,
-  switcherBannerHeld,
   switcherOverlay,
   switcherOverpull,
   switcherProgress,
@@ -393,49 +396,73 @@ export function EventBanner({
   return pull ? <GestureDetector gesture={pull.gesture}>{banner}</GestureDetector> : banner;
 }
 
+/** The page a banner sits over (see BannerScrollView), for its pull to scroll. */
+export interface BannerPage {
+  scrollRef: AnimatedRef<Animated.ScrollView>;
+  /** Its scroll offset, kept by its scroll handler. */
+  scrollY: SharedValue<number>;
+  /** How far it can scroll. */
+  maxScroll: SharedValue<number>;
+  /** A fling started from the banner, decaying; the page's own drag stops it. */
+  fling: SharedValue<number>;
+}
+
 /**
- * Pulling a banner down to open the switcher, for its screen to hold (and
- * pass to the banner as `pull`). As the finger goes down the page's scroll
- * and refresh hold still (`switcherBannerHeld`) and the banner is measured on
- * the UI thread; the overlay, already mounted unseen, then follows the
- * finger (`switcherProgress`) both ways, with a tick as it passes the point
- * where letting go opens it. Let go past it (or flicked down) it springs
- * open; short of it, or dragged back, it springs back. A tap, or a drag
- * upward that scrolls the page, never starts it.
+ * Every vertical drag that starts on a banner, for the screen that holds it
+ * (BannerScrollView). The banner sits over its page rather than in it, so
+ * the page's scroll view never sees these touches and can't take them from
+ * the switcher. The drag scrolls the page itself, flinging on release like a
+ * scroll; once the page is at its top, pulling on down opens the switcher,
+ * following the finger both ways (`switcherProgress`), with a tick as it
+ * passes the point where letting go opens it. Let go past it (or flicked
+ * down) it springs open; short of it, or dragged back, it springs back.
  */
-export function useSwitcherPull(switcher: BannerSwitcher | undefined) {
+export function useSwitcherPull(switcher: BannerSwitcher | undefined, page: BannerPage) {
   const key = switcher?.key;
+  const canSwitch = !!switcher?.enabled;
   const bannerRef = useAnimatedRef<Animated.View>();
+  const { scrollRef, scrollY, maxScroll, fling } = page;
   const past = useSharedValue(false);
   const active = useSharedValue(false);
+  const opened = useSharedValue(false);
+  const startScroll = useSharedValue(0);
   const velocity = useSharedValue(0);
   const markOpen = useCallback(() => {
     if (key) openSwitcherFromPull(key);
   }, [key]);
   const gesture = usePanGesture({
-    enabled: !!switcher?.enabled,
-    activeOffsetY: 3,
-    failOffsetY: -3,
+    // Vertical either way: down opens (or scrolls back up the page), up scrolls.
+    activeOffsetY: [-3, 3],
     failOffsetX: [-16, 16],
     onBegin: () => {
       'worklet';
-      switcherBannerHeld.value = true;
+      cancelAnimation(fling);
       const m = measure(bannerRef);
       if (m) switcherSourceRect.value = { x: m.pageX, y: m.pageY, width: m.width, height: m.height };
     },
     onActivate: () => {
       'worklet';
       active.value = true;
+      opened.value = false;
       past.value = false;
-      scheduleOnRN(markOpen);
+      startScroll.value = scrollY.value;
     },
     onUpdate: (e) => {
       'worklet';
       velocity.value = e.velocityY;
-      const progress = Math.min(1, Math.max(0, e.translationY / SWITCHER_PULL_DISTANCE));
+      // The page takes the drag until it's at its top; past that, the pull.
+      const target = startScroll.value - e.translationY;
+      scrollTo(scrollRef, 0, Math.min(Math.max(0, target), Math.max(maxScroll.value, 0)), false);
+      if (!canSwitch) return;
+      const pulled = Math.max(0, -target);
+      if (pulled > 0 && !opened.value) {
+        opened.value = true;
+        scheduleOnRN(markOpen);
+      }
+      const progress = Math.min(1, pulled / SWITCHER_PULL_DISTANCE);
       switcherProgress.value = progress;
       // Past fully open, the list stretches on down after the finger.
-      switcherOverpull.value = rubberBand(e.translationY - SWITCHER_PULL_DISTANCE);
+      switcherOverpull.value = rubberBand(pulled - SWITCHER_PULL_DISTANCE);
       const isPast = progress >= SWITCHER_OPEN_THRESHOLD;
       if (isPast !== past.value) {
         past.value = isPast;
@@ -445,9 +472,17 @@ export function useSwitcherPull(switcher: BannerSwitcher | undefined) {
     // On release, cancel or failure alike (onFinalize runs for all of them).
     onFinalize: () => {
       'worklet';
-      switcherBannerHeld.value = false;
       if (!active.value) return;
       active.value = false;
+      if (!opened.value) {
+        // A scroll: carried on with the finger's speed, as the page would.
+        if (Math.abs(velocity.value) > 50) {
+          fling.value = scrollY.value;
+          fling.value = withDecay({ velocity: -velocity.value, clamp: [0, Math.max(maxScroll.value, 0)] });
+        }
+        return;
+      }
+      opened.value = false;
       switcherOverpull.value = withSpring(0, SWITCHER_SPRING);
       // By where the finger left it, cancelled or not (the system can cancel
       // the pull as the overlay appears over the banner): dragged back short
@@ -464,15 +499,6 @@ export function useSwitcherPull(switcher: BannerSwitcher | undefined) {
     },
   });
   return { gesture, bannerRef };
-}
-
-/**
- * The banner's screen's ScrollView props that keep it still while a finger
- * is down on the banner (see `switcherBannerHeld`). For an Animated
- * (Reanimated) ScrollView's `animatedProps`.
- */
-export function useBannerHeldScrollProps() {
-  return useAnimatedProps(() => ({ scrollEnabled: !switcherBannerHeld.value }));
 }
 
 interface EventCardProps {

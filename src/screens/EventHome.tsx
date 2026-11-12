@@ -7,7 +7,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, type NavigationProp } from '@react-navigation/native';
 import { AccountButton } from '../components/AccountSheet';
-import { EventBanner, eventBannerText, useBannerHeldScrollProps, useSwitcherPull } from '../components/EventBanner';
+import { eventBannerText } from '../components/EventBanner';
+import { BannerScrollView } from '../components/BannerScrollView';
 import { RoleRestricted, roleRestrictedMessage } from '../components/RoleRestricted';
 import {
   Avatar,
@@ -57,8 +58,7 @@ import type { Event, MainTabParamList, AppStackParamList, TravelCalendarEntry } 
 import { SwitchEventList } from '../components/EventSwitcher';
 import { resetRoot } from '../navigation/rootNavigation';
 import type { PartialState } from '../navigation/routes';
-import { bannerKey, switcherBannerHeld } from '../navigation/switcherOverlay';
-import Animated from 'react-native-reanimated';
+import { bannerKey } from '../navigation/switcherOverlay';
 
 type Navigation = NavigationProp<AppStackParamList & MainTabParamList>;
 
@@ -143,10 +143,7 @@ function Overview({
       },
     }),
     [canSwitch, event, navigation]
-  );  // A pull on the banner opens the switcher; the page's scroll waits for it.
-  const pull = useSwitcherPull(bannerSwitcher);
-  const heldScrollProps = useBannerHeldScrollProps();
-
+  );
 
   const participants = state.participants;
   const stats = useMemo(() => computeEventStats(participants, contexts), [participants, contexts]);
@@ -388,37 +385,29 @@ function Overview({
 
   return (
     <View style={[styles.screen, { backgroundColor: tokens.bg }]}>
-      <Animated.ScrollView
-        animatedProps={heldScrollProps}
-        contentContainerStyle={{ paddingBottom: tabBarInset + spacing.xxl }}
-        onScroll={bannerStatusBar.onScroll}
-        scrollEventThrottle={32}
+      <BannerScrollView
+        banner={{
+          event: event,
+          eyebrow: banner.eyebrow,
+          eyebrowIcon: banner.eyebrowIcon,
+          meta: banner.meta,
+          topInset: insets.top + topTabInset,
+          blendInto: tokens.bg,
+          switcher: bannerSwitcher,
+          accessory: <AccountButton onBanner />,
+        }}
         refreshControl={
           <RefreshControl
-            heldBy={switcherBannerHeld}
             refreshing={isRefreshing}
             onRefresh={handleRefresh}
-            // The spinner shows on the page above the banner, not on the
-            // banner, so white vanished in light mode.
             tintColor={tokens.accent}
             colors={[tokens.accent]}
             progressBackgroundColor={tokens.bg}
-            progressViewOffset={insets.top + topTabInset}
           />
         }
+        onScrollY={bannerStatusBar.onScrollY}
+        contentContainerStyle={{ paddingBottom: tabBarInset + spacing.xxl }}
       >
-        <EventBanner
-          event={event}
-          eyebrow={banner.eyebrow}
-          eyebrowIcon={banner.eyebrowIcon}
-          meta={banner.meta}
-          topInset={insets.top + topTabInset}
-          blendInto={tokens.bg}
-          switcher={bannerSwitcher}
-          pull={pull}
-          accessory={<AccountButton onBanner />}
-        />
-
         <View
           style={[
             styles.body,
@@ -444,7 +433,7 @@ function Overview({
 
           <LiveActivityRow key={event.id} />
         </View>
-      </Animated.ScrollView>
+      </BannerScrollView>
       {bannerStatusBar.scrim}
     </View>
   );
