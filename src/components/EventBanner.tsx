@@ -22,6 +22,7 @@ import {
   SWITCHER_OPEN_THRESHOLD,
   SWITCHER_PULL_DISTANCE,
   SWITCHER_SPRING,
+  DEBUG_SWITCHER,
   closeSwitcherOverlay,
   openSwitcherFromPull,
   rubberBand,
@@ -444,6 +445,7 @@ export function useSwitcherPull(switcher: BannerSwitcher | undefined, page: Bann
       past.value = false;
       full.value = false;
       startScroll.value = scrollY.value;
+      if (DEBUG_SWITCHER) console.log('[sw] pull activate', 'scrollY', scrollY.value, 'progress', switcherProgress.value);
     },
     onUpdate: (e: PanGestureActiveEvent) => {
       'worklet';
@@ -475,6 +477,7 @@ export function useSwitcherPull(switcher: BannerSwitcher | undefined, page: Bann
     // On release, cancel or failure alike (onFinalize runs for all of them).
     onFinalize: () => {
       'worklet';
+      if (DEBUG_SWITCHER) console.log('[sw] pull finalize active', active.value, 'opened', opened.value, 'progress', switcherProgress.value, 'vy', velocity.value);
       if (!active.value) return;
       active.value = false;
       if (!opened.value) {

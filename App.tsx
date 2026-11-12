@@ -14,7 +14,9 @@ import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { SwitcherOverlayHost, useSwitcherOverlayOpen } from './src/components/SwitcherOverlay';
+import { SWITCHER_APP_RADIUS, SWITCHER_APP_SCALE_OUT, switcherProgress } from './src/navigation/switcherOverlay';
 import { StatusBar } from 'expo-status-bar';
 import * as Linking from 'expo-linking';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -32,7 +34,7 @@ import { SearchScreen } from './src/screens/SearchScreen';
 import { ParticipantDetailScreen } from './src/screens/ParticipantDetailScreen';
 import { MyTicketsScreen } from './src/screens/MyTicketsScreen';
 import { TicketDetailScreen } from './src/screens/TicketDetailScreen';
-import { ThemeProvider, useTheme, useThemedStyles, withAlpha, type Theme } from './src/theme';
+import { ThemeProvider, overlayTokens, useTheme, useThemedStyles, withAlpha, type Theme } from './src/theme';
 import type {
   MainTabParamList,
   OverviewStackParamList,
@@ -538,18 +540,28 @@ const makeStyles = ({ tokens }: Theme) => StyleSheet.create({
 /** The app, hidden from screen readers while the event switcher covers it. */
 function AppUnderOverlay({ children }: { children: React.ReactNode }) {
   const overlayOpen = useSwitcherOverlayOpen();
+  // Scales out behind the event switcher as it opens, following it.
+  const scaled = useAnimatedStyle(() => {
+    const p = Math.min(1, Math.max(0, switcherProgress.value));
+    return {
+      transform: [{ scale: 1 - SWITCHER_APP_SCALE_OUT * p }],
+      borderRadius: SWITCHER_APP_RADIUS * p,
+    };
+  });
   return (
-    <View
-      style={rootStyles.fill}
+    <Animated.View
+      style={[rootStyles.fill, rootStyles.scaled, scaled]}
       importantForAccessibility={overlayOpen ? 'no-hide-descendants' : 'auto'}
       accessibilityElementsHidden={overlayOpen}
     >
       {children}
-    </View>
+    </Animated.View>
   );
 }
 
 const rootStyles = StyleSheet.create({
-  gestureRoot: { flex: 1 },
+  // Black around the app as it scales out behind the event switcher.
+  gestureRoot: { flex: 1, backgroundColor: overlayTokens.cameraStage },
+  scaled: { overflow: 'hidden' },
   fill: { flex: 1 },
 });

@@ -23,6 +23,8 @@ import { useReduceMotion } from '../hooks/useReduceMotion';
 import { useSwitcherEvents } from '../hooks/useSwitcherEvents';
 import { eventHomeState, passHomeState } from '../navigation/routes';
 import {
+  DEBUG_SWITCHER,
+  SWITCHER_APP_SCALE_OUT,
   SWITCHER_CLOSE_TIMING,
   SWITCHER_FLICK_VELOCITY,
   SWITCHER_OPEN_THRESHOLD,
@@ -294,6 +296,7 @@ function SwitcherOverlay({
   // Safety net: fully open but not marked open (it then takes no touches,
   // so it couldn't be closed or used) marks itself open, however it got there.
   const ensureOpen = useCallback(() => {
+    if (DEBUG_SWITCHER) console.log('[sw] safety net, open', switcherOverlay.get().open);
     if (!switcherOverlay.get().open) void switcherOverlay.open(source.key, false);
   }, [source.key]);
   useAnimatedReaction(
@@ -303,6 +306,11 @@ function SwitcherOverlay({
     },
     [open, ensureOpen]
   );
+
+  // Every open starts free: nothing from the last one can leave it busy.
+  useEffect(() => {
+    if (open) busy.current = false;
+  }, [open, openCount]);
 
   // A tap plays the opening by itself; a pull is already driving it.
   useEffect(() => {
@@ -334,7 +342,10 @@ function SwitcherOverlay({
 
   /** Back into the banner, or a fade when the current card is off-screen. */
   const close = useCallback(() => {
-    if (busy.current) return;
+    if (DEBUG_SWITCHER) console.log('[sw] overlay close, busy', busy.current, 'progress', progress.get());
+    // A late close (e.g. a pull let go as it was closing anyway) of an
+    // overlay that's already closed would leave it busy for its next open.
+    if (busy.current || !switcherOverlay.get().open) return;
     busy.current = true;
     const morph = !reduceMotion && isCurrentOnScreen();
     heroOn.set(morph ? 1 : 0);
@@ -460,9 +471,20 @@ function SwitcherOverlay({
       const target = await switcherOverlay.waitForBanner(key, LANDING_WAIT_MS);
       const targetRect = target ? await target.measure() : null;
       if (targetRect && !reduceMotion) {
+        // Measured in the app as it's scaled out behind the overlay: back to
+        // its place at full size, about the window's centre.
+        const appScale = 1 - SWITCHER_APP_SCALE_OUT * Math.min(1, Math.max(0, progress.get()));
+        const cx = width / 2;
+        const cy = height / 2;
+        const rect: Rect = {
+          x: cx + (targetRect.x - cx) / appScale,
+          y: cy + (targetRect.y - cy) / appScale,
+          width: targetRect.width / appScale,
+          height: targetRect.height / appScale,
+        };
         // Only if it's not where it was expected: the grow carries on to it.
-        const off = Math.abs(targetRect.y) > 1 || Math.abs(targetRect.height - source.height) > 1;
-        if (off) landingFrom.set(cropped(targetRect, Math.min(target!.topInset, targetRect.height)));
+        const off = Math.abs(rect.y) > 1 || Math.abs(rect.height - source.height) > 1;
+        if (off) landingFrom.set(cropped(rect, Math.min(target!.topInset, rect.height)));
       }
       // The new screen is there (or isn't coming): let the backdrop go.
       // (Defined here, on the JS side: a worklet can only hand back a
@@ -486,7 +508,7 @@ function SwitcherOverlay({
       );
     },
     [
-      backdropHold, barStyle, cardWidth, close, hero, heroOn, heroReady, landingCard, landingFrom, metrics, offsets,
+      backdropHold, barStyle, cardWidth, close, height, hero, heroOn, heroReady, landingCard, landingFrom, metrics, offsets,
       progress, overpull, reduceMotion, scrollY, selectEvent, source, stretch, viewportTop, width,
     ]
   );
@@ -523,6 +545,7 @@ function SwitcherOverlay({
     },
     onFinalize: (e) => {
       'worklet';
+      if (DEBUG_SWITCHER) console.log('[sw] header release active', headerActive.value, 'progress', progress.value);
       if (!headerActive.value) return;
       headerActive.value = false;
       const closing =
@@ -558,6 +581,7 @@ function SwitcherOverlay({
   };
   const listRelease = (canceled: boolean) => {
     'worklet';
+    if (DEBUG_SWITCHER) console.log('[sw] list release active', listActive.value, 'canceled', canceled, 'stretch', stretch.value);
     if (!listActive.value) return;
     listActive.value = false;
     const pulled = Math.abs(stretch.value);

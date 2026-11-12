@@ -86,6 +86,9 @@ export function followPull(distance: number): number {
   return (distance * 0.7 * limit) / (limit + distance * 0.7);
 }
 
+/** Switcher diagnostics in the log, for a build with EXPO_PUBLIC_DEBUG_SWITCHER=1. */
+export const DEBUG_SWITCHER = process.env.EXPO_PUBLIC_DEBUG_SWITCHER === '1';
+
 export interface OverlayState {
   /** The banner it's mounted over (unseen until opened), if any. */
   source: SwitcherBanner | null;
@@ -168,6 +171,7 @@ export const switcherOverlay = {
   async open(key: string, animateIn: boolean): Promise<void> {
     if (state.open) return;
     const source = banners.find((b) => b.key === key);
+    if (DEBUG_SWITCHER) console.log('[sw] open requested', key, 'found', !!source, 'alreadyOpen', state.open);
     if (!source) return;
     if (animateIn) {
       const rect = await source.measure();
@@ -175,11 +179,13 @@ export const switcherOverlay = {
       switcherSourceRect.value = rect;
     }
     state = { source, open: true, animateIn, openCount: state.openCount + 1 };
+    if (DEBUG_SWITCHER) console.log('[sw] open', key, animateIn, 'progress', switcherProgress.value);
     emit();
   },
 
   /** Closed: unseen again, over the latest switchable banner. */
   closed() {
+    if (DEBUG_SWITCHER) console.log('[sw] closed, was open', state.open, 'progress', switcherProgress.value);
     if (!state.open) return;
     switcherProgress.value = 0;
     switcherStretch.value = 0;
@@ -189,6 +195,11 @@ export const switcherOverlay = {
     updateSource();
   },
 };
+
+/** How much the app behind the switcher shrinks once it's open (from its centre). */
+export const SWITCHER_APP_SCALE_OUT = 0.08;
+/** The corner radius of the app behind the switcher once it's open. */
+export const SWITCHER_APP_RADIUS = 28;
 
 /** How far a pull goes to open the switcher fully. */
 export const SWITCHER_PULL_DISTANCE = 260;
