@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { AccessibilityInfo, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
 import type { Participant } from '../types';
-import { useThemedStyles, type Theme, type ThemeColors } from '../theme';
+import { overlayTokens, useThemedStyles, withAlpha, type Theme } from '../theme';
 
 interface ParticipantAvatarProps {
   participant?: Participant;
@@ -21,20 +21,10 @@ export function ParticipantAvatar({ participant, size = 84 }: ParticipantAvatarP
   const uri = participant?.headshot_url;
   const styles = useThemedStyles(makeStyles);
   const [imageFailed, setImageFailed] = useState(false);
-  const [reduceMotion, setReduceMotion] = useState(false);
 
   useEffect(() => {
     setImageFailed(false);
   }, [uri]);
-
-  useEffect(() => {
-    void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
-    const subscription = AccessibilityInfo.addEventListener(
-      'reduceMotionChanged',
-      setReduceMotion
-    );
-    return () => subscription.remove();
-  }, []);
 
   const sharedStyle = {
     width: size,
@@ -50,7 +40,6 @@ export function ParticipantAvatar({ participant, size = 84 }: ParticipantAvatarP
         cachePolicy="memory-disk"
         contentFit="cover"
         recyclingKey={participant?.participant_event_id}
-        transition={reduceMotion ? 0 : 120}
         accessible
         accessibilityRole="image"
         accessibilityLabel={`Photo of ${name}`}
@@ -73,20 +62,20 @@ export function ParticipantAvatar({ participant, size = 84 }: ParticipantAvatarP
   );
 }
 
-const makeStyles = (colors: ThemeColors, { isDark }: Theme) => StyleSheet.create({
+const makeStyles = ({ isDark, tokens, type }: Theme) => StyleSheet.create({
   avatar: {
     borderWidth: 2,
-    borderColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.72)',
+    borderColor: withAlpha(overlayTokens.on, isDark ? 0.18 : 0.72),
     overflow: 'hidden',
   },
   fallback: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: isDark ? colors.gray[300] : colors.gray[700],
+    backgroundColor: isDark ? tokens.div : tokens.text2,
   },
   initials: {
-    color: colors.white,
-    fontWeight: '800',
+    color: overlayTokens.on,
+    fontWeight: type.label.fontWeight,
     letterSpacing: -0.5,
   },
 });

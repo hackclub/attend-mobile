@@ -3,48 +3,74 @@ import {
   View,
   Text,
   StyleSheet,
-  TextInput,
-  FlatList,
-  TouchableOpacity,
-  Keyboard,
   ActivityIndicator,
-  RefreshControl,
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
 import { useEventAccess } from '../hooks/useEventAccess';
 import { useParticipants } from '../hooks/useParticipants';
 import { useParticipantViews } from '../hooks/useParticipantViews';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { ParticipantRow } from '../components/ParticipantRow';
 import { SplitView } from '../components/SplitView';
-import { FilterSheet } from '../components/FilterSheet';
+import { filterSheet } from '../navigation/sheetData';
+import { useOpenSheet } from '../navigation/sheetPresenter';
 import { ParticipantDetailContent } from './ParticipantDetailContent';
 import { api } from '../services/api';
-import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
-import { ScreenHeader, SearchField, useUiStyles } from '../components/ui';
+import { radii, useTheme } from '../theme';
 import {
+  Icon,
+  TextField,
+  PressableSurface,
+  type IconName,
+  RefreshControl,
+} from '../components/ui';
+import { CHROME_MAX_FONT_SCALE } from '../components/ui/fontScale';
+import {
+  applyBasic,
   applyFilters,
   applySort,
+  basicFilterCount,
+  BASIC_TOGGLES,
+  DEFAULT_SORT,
+  EMPTY_BASIC,
   getField,
+  getQuickFilter,
   getSortField,
+  QUICK_FILTERS,
+  quickFilterCounts,
   ruleIsComplete,
   operatorNeedsValue,
   OPERATOR_LABELS,
+  searchRoster,
+  sectionLetter,
   type FilterContext,
-  type SavedView,
 } from '../services/participantFilters';
-import type { RootStackParamList, Participant, ScanContext } from '../types';
+import { PARTICIPANT_STATE_LABELS } from '../services/participantStatus';
+import type { AppStackParamList, Participant, ScanContext } from '../types';
+import { useTabBarInset } from '../hooks/useTabBarInset';
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+type NavigationProp = NativeStackNavigationProp<AppStackParamList>;
+
+// The list's rows, with a letter header before each run of names when it's
+// sorted by name.
+type ListItem =
+  | { kind: 'header'; key: string; letter: string }
+  | { kind: 'row'; key: string; participant: Participant; first: boolean; last: boolean };
+
+function participantKey(p: Participant, index: number): string {
+  return p.participant_event_id || p.participant_id || `item-${index}`;
+}
 
 export function SearchScreen() {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
+  const { tokens, type } = useTheme();
+  // Zero once the native bar is laid out as a side rail — see useTabBarInset.
+  const tabBarInset = useTabBarInset();
   const navigation = useNavigation<NavigationProp>();
+  const openSheet = useOpenSheet();
   const { useSplitView } = useResponsiveLayout();
   const { canViewParticipantRecords, roleLabel } = useEventAccess();
   const {
@@ -54,6 +80,7 @@ export function SearchScreen() {
     searchResults,
     isSearching,
     currentEvent,
+    participants,
     activeParticipants,
     isRefreshing,
     refresh,
@@ -65,16 +92,19 @@ export function SearchScreen() {
     setConjunction,
     sort,
     setSort,
+    quick,
+    setQuick,
+    basic,
+    setBasic,
     savedViews,
-    allViews,
     activeViewId,
     applyView,
     saveView,
     deleteView,
+    clearFilters,
   } = useParticipantViews(currentEvent?.id);
   const [inputValue, setInputValue] = useState('');
   const [scanContexts, setScanContexts] = useState<ScanContext[]>([]);
-  const [isFilterSheetVisible, setIsFilterSheetVisible] = useState(false);
   const [selectedParticipant, setSelectedParticipant] = useState<Participant | null>(null);
 
   useEffect(() => {
@@ -103,32 +133,34 @@ export function SearchScreen() {
 
   const handleSearch = useCallback((text: string) => {
     setInputValue(text);
-    if (text.length >= 2) {
-      search(text);
-    } else if (text.length === 0) {
+    if (text.trim().length > 0) {
+      void search(text);
+    } else {
       clearSearch();
     }
   }, [search, clearSearch]);
 
-  const handleClear = useCallback(() => {
-    setInputValue('');
-    clearSearch();
-    Keyboard.dismiss();
-  }, [clearSearch]);
-
-  const handleParticipantPress = (participant: Participant) => {
+  const handleParticipantPress = useCallback((participant: Participant) => {
     if (useSplitView) {
       setSelectedParticipant(participant);
     } else {
       navigation.navigate('ParticipantDetail', { participant });
     }
-  };
+  }, [useSplitView, navigation]);
 
-  // Browsing shows only people who are still attending. Server search results
-  // can still surface withdrawn registrations, which the row flags with a badge.
-  const baseParticipants = searchResults ?? activeParticipants;
+  // One pipeline, so every number agrees with the list: search (the whole
+  // roster, withdrawn people included), then the sheet's filters, then the
+  // chip. The chips' counts are taken just before the chip applies.
+  // Matches come from the live roster, so a check-in made elsewhere shows
+  // in rows already on screen; Attend's results stand in only when nobody
+  // on the phone matches.
+  const searched = useMemo(() => {
+    if (!searchQuery.trim()) return participants;
+    const local = searchRoster(participants, searchQuery);
+    return local.length > 0 ? local : searchResults ?? [];
+  }, [searchQuery, searchResults, participants]);
 
-  // Options (status, diet, etc.) derive from the full active roster, not the current search subset
+  // Options (diet, scan contexts, etc.) come from the full active roster, not the current search subset
   const filterContext = useMemo<FilterContext>(
     () => ({ scanContexts, participants: activeParticipants }),
     [scanContexts, activeParticipants],
@@ -136,35 +168,84 @@ export function SearchScreen() {
 
   const activeRules = useMemo(() => rules.filter(ruleIsComplete), [rules]);
 
-  // Match the old behavior: filtering to checked-in sorts newest check-in first unless
-  // the user picked an explicit sort
-  const effectiveSort = useMemo(() => {
-    if (sort) return sort;
-    const filtersToCheckedIn = activeRules.some(
-      r => r.field === 'checked_in' && r.operator === 'is_true',
-    );
-    return filtersToCheckedIn ? { field: 'checked_in_at', direction: 'desc' as const } : null;
-  }, [sort, activeRules]);
+  const narrowed = useMemo(
+    () => applyBasic(applyFilters(searched, rules, conjunction, filterContext), basic),
+    [searched, rules, conjunction, filterContext, basic],
+  );
+  const quickCounts = useMemo(() => quickFilterCounts(narrowed), [narrowed]);
+  const quickFilter = getQuickFilter(quick);
 
-  const filteredParticipants = useMemo(
-    () => applySort(applyFilters(baseParticipants, rules, conjunction, filterContext), effectiveSort),
-    [baseParticipants, rules, conjunction, effectiveSort, filterContext],
+  const listed = useMemo(
+    () => applySort(narrowed.filter(quickFilter.test), sort),
+    [narrowed, quickFilter, sort],
   );
 
-  const viewCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const view of allViews) {
-      counts[view.id] = applyFilters(baseParticipants, view.rules, view.conjunction, filterContext).length;
-    }
-    return counts;
-  }, [allViews, baseParticipants, filterContext]);
+  // Sorted by name, the list runs in lettered sections (sticky headers), and
+  // the rows of each draw their own bordered group.
+  const byName = (sort ?? DEFAULT_SORT).field === 'name';
+  const { items, stickyHeaderIndices } = useMemo(() => {
+    const out: ListItem[] = [];
+    const sticky: number[] = [];
+    let letter: string | null = null;
+    listed.forEach((participant, index) => {
+      const next = byName ? sectionLetter(participant) : null;
+      const startsSection = index === 0 || (byName && next !== letter);
+      if (byName && next !== letter) {
+        sticky.push(out.length);
+        out.push({ kind: 'header', key: `header-${next}`, letter: next! });
+        letter = next;
+      }
+      const following = listed[index + 1];
+      const endsSection = !following || (byName && sectionLetter(following) !== letter);
+      out.push({
+        kind: 'row',
+        key: participantKey(participant, index),
+        participant,
+        first: startsSection,
+        last: endsSection,
+      });
+    });
+    return { items: out, stickyHeaderIndices: sticky };
+  }, [listed, byName]);
 
-  const handleViewPress = useCallback(
-    (view: SavedView) => {
-      applyView(view);
-    },
-    [applyView],
+  // One stable renderItem and callback, so the memoised rows only re-render
+  // when their own selection or position changes.
+  const selectedId = useSplitView ? selectedParticipant?.participant_event_id ?? null : null;
+  const renderItem = useCallback(
+    ({ item }: ListRenderItemInfo<ListItem>) => item.kind === 'header' ? (
+      <SectionHeader letter={item.letter} />
+    ) : (
+      <ParticipantRow
+        participant={item.participant}
+        onPress={handleParticipantPress}
+        selected={selectedId !== null && selectedId === item.participant.participant_event_id}
+        first={item.first}
+        last={item.last}
+      />
+    ),
+    [handleParticipantPress, selectedId],
   );
+
+  const claimFilterSheet = filterSheet.useOpener({
+    rules,
+    onRulesChange: setRules,
+    conjunction,
+    onConjunctionChange: setConjunction,
+    sort,
+    onSortChange: setSort,
+    basic,
+    onBasicChange: setBasic,
+    onClearAll: clearFilters,
+    resultCount: listed.length,
+    savedViews,
+    onSaveView: saveView,
+    onDeleteView: deleteView,
+    filterContext,
+  });
+  const openFilterSheet = useCallback(() => {
+    claimFilterSheet();
+    openSheet('FilterSheet');
+  }, [claimFilterSheet, openSheet]);
 
   const removeRule = useCallback(
     (ruleId: string) => {
@@ -175,11 +256,11 @@ export function SearchScreen() {
 
   if (!currentEvent) {
     return (
-      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={[styles.container, { backgroundColor: tokens.bg }]} edges={['top', 'left', 'right']}>
         <View style={styles.centered}>
-          <Text style={styles.emptyTitle}>No Event Selected</Text>
-          <Text style={styles.emptyText}>
-            Please select an event from the Events tab.
+          <Text style={[type.h2, { color: tokens.textH }]}>No event selected</Text>
+          <Text style={[type.body, styles.centeredText, { color: tokens.text2 }]}>
+            Please select an event from the Overview tab.
           </Text>
         </View>
       </SafeAreaView>
@@ -191,17 +272,19 @@ export function SearchScreen() {
   // an empty roster that pull-to-refresh will never fill.
   if (!canViewParticipantRecords) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <ScreenHeader title="Participants" subtitle={currentEvent.name} />
+      <SafeAreaView style={[styles.container, { backgroundColor: tokens.bg }]} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={[type.h1, { color: tokens.textH }]} accessibilityRole="header">Participants</Text>
+        </View>
         <View style={styles.centered}>
-          <Ionicons name="lock-closed-outline" size={42} color={colors.gray[400]} />
-          <Text style={styles.emptyTitle}>Participant records unavailable</Text>
-          <Text style={styles.emptyText}>
+          <Icon name="lock-closed" size={40} color={tokens.muted} />
+          <Text style={[type.h2, { color: tokens.textH }]}>Participant records unavailable</Text>
+          <Text style={[type.body, styles.centeredText, { color: tokens.text2 }]}>
             {roleLabel
               ? `Your role on this event (${roleLabel}) doesn't include participant records.`
               : "Your role on this event doesn't include participant records."}
           </Text>
-          <Text style={styles.emptyText}>
+          <Text style={[type.body, styles.centeredText, { color: tokens.text2 }]}>
             You can still scan attendees in and use the travel calendar.
           </Text>
         </View>
@@ -209,173 +292,207 @@ export function SearchScreen() {
     );
   }
 
-  const hasActiveFilters = activeRules.length > 0 || sort !== null;
+  const sortField = sort ? getSortField(sort.field) : undefined;
+  // A saved view is already shown by its chip, so its filters and sort don't
+  // get chips of their own.
+  const viewActive = activeViewId !== null;
+  const customRules = viewActive ? [] : activeRules;
+  const customSort = viewActive ? null : sort;
+  const customBasic = viewActive ? EMPTY_BASIC : basic;
+  const advancedCount = activeRules.length + basicFilterCount(basic) + (sort ? 1 : 0);
+  // Only what's in force shows as chips (tap one to remove it); everything
+  // else is behind the header's filter button.
+  const hasToolbar = customRules.length > 0 || Boolean(customSort) || basicFilterCount(customBasic) > 0;
+
+  const query = searchQuery.trim();
+  const emptyState = isSearching ? (
+    { title: null, text: 'Searching Attend…' }
+  ) : query && searched.length === 0 ? (
+    { title: 'No results', text: `No participants found matching "${query}"` }
+  ) : narrowed.length === 0 && searched.length > 0 ? (
+    { title: 'No participants', text: 'No participants match the current filters' }
+  ) : participants.length === 0 ? (
+    { title: 'No participants', text: 'Pull to refresh or search by name/email' }
+  ) : query || advancedCount > 0 ? (
+    { title: `Nobody ${quickFilter.key === 'all' ? 'here' : `under ${quickFilter.label}`}`, text: 'Try another chip, or clear the search or filters.' }
+  ) : (
+    { title: null, text: quickFilter.empty }
+  );
 
   const sidebar = (
-    <View style={styles.container}>
-      <ScreenHeader title="Participants" subtitle={currentEvent.name} />
+    <View style={[styles.container, { backgroundColor: tokens.bg }]}>
+      <View style={styles.header}>
+        <View style={styles.titleRow}>
+          <Text style={[type.h1, styles.title, { color: tokens.textH }]} accessibilityRole="header" numberOfLines={1}>
+            Participants
+          </Text>
+          <FilterButton activeCount={advancedCount} onOpenSheet={openFilterSheet} />
+        </View>
 
-      <SearchField
-        value={inputValue}
-        onChangeText={handleSearch}
-        onClear={handleClear}
-        placeholder="Search by name or email"
-      />
+        <TextField
+          icon="search"
+          value={inputValue}
+          onChangeText={handleSearch}
+          clearable
+          placeholder="Search by name or email"
+          accessibilityLabel="Search participants"
+          autoCapitalize="none"
+          autoCorrect={false}
+          returnKeyType="search"
+        />
+      </View>
 
-      <View style={styles.filtersContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersScroll}>
-          {allViews.map(view => (
-            <ViewChip
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.toolbar}
+        contentContainerStyle={styles.toolbarContent}
+        keyboardShouldPersistTaps="handled"
+        accessibilityRole="tablist"
+      >
+        {QUICK_FILTERS.map(filter => {
+          const selected = quickFilter.key === filter.key;
+          const count = quickCounts[filter.key];
+          return (
+            <ToolChip
+              key={filter.key}
+              label={`${filter.label} ${count}`}
+              icon={filter.key === 'attention' && count > 0 ? 'exclamation' : undefined}
+              iconColor={filter.key === 'attention' && count > 0 ? tokens.error : undefined}
+              active={selected}
+              role="tab"
+              onPress={() => setQuick(filter.key)}
+              accessibilityLabel={`${filter.label}, ${count}`}
+            />
+          );
+        })}
+        {savedViews.map(view => {
+          const selected = activeViewId === view.id;
+          return (
+            <ToolChip
               key={view.id}
               label={view.name}
-              count={viewCounts[view.id] ?? 0}
-              isActive={activeViewId === view.id}
-              isSaved={savedViews.some(v => v.id === view.id)}
-              onPress={() => handleViewPress(view)}
+              icon="clipboard-list"
+              active={selected}
+              // A second tap on the view in force takes it off.
+              onPress={() => (selected ? clearFilters() : applyView(view))}
+              accessibilityLabel={`Saved view: ${view.name}`}
             />
-          ))}
-        </ScrollView>
+          );
+        })}
+      </ScrollView>
 
-        <View style={styles.filterSpacer} />
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersScroll}>
-          <TouchableOpacity
-            style={[styles.toolButton, hasActiveFilters && styles.toolButtonActive]}
-            onPress={() => setIsFilterSheetVisible(true)}
-          >
-            <Ionicons
-              name="funnel-outline"
-              size={15}
-              color={hasActiveFilters ? colors.red : colors.text.secondary}
+      {hasToolbar && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.toolbar}
+          contentContainerStyle={styles.toolbarContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          {customSort && (
+            <ToolChip
+              label={`${sortField?.label ?? 'Sort'} ${customSort.direction === 'asc' ? '↑' : '↓'}`}
+              trailingIcon="x"
+              active
+              onPress={() => setSort(null)}
+              accessibilityLabel={`Sorted by ${sortField?.label ?? 'field'}, ${customSort.direction === 'asc' ? 'ascending' : 'descending'}. Remove to sort by name`}
             />
-            <Text style={[styles.toolButtonText, hasActiveFilters && styles.toolButtonTextActive]}>
-              Filter{activeRules.length > 0 ? ` · ${activeRules.length}` : ''}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.toolButton, sort && styles.toolButtonActive]}
-            onPress={() => setIsFilterSheetVisible(true)}
-          >
-            <Ionicons
-              name="swap-vertical"
-              size={15}
-              color={sort ? colors.red : colors.text.secondary}
+          )}
+          {customBasic.states.length > 0 && (
+            <ToolChip
+              label={customBasic.states.map(state => PARTICIPANT_STATE_LABELS[state]).join(', ')}
+              trailingIcon="x"
+              active
+              onPress={() => setBasic({ ...basic, states: [] })}
+              accessibilityLabel={`Remove filter: ${customBasic.states.map(state => PARTICIPANT_STATE_LABELS[state]).join(', ')}`}
             />
-            <Text style={[styles.toolButtonText, sort && styles.toolButtonTextActive]}>
-              {sort
-                ? `${getSortField(sort.field)?.label ?? 'Sort'} ${sort.direction === 'asc' ? '↑' : '↓'}`
-                : 'Sort'}
-            </Text>
-          </TouchableOpacity>
-
-          {activeRules.map(rule => {
+          )}
+          {BASIC_TOGGLES.filter(toggle => customBasic[toggle.key] !== undefined).map(toggle => {
+            const label = `${toggle.label}: ${customBasic[toggle.key] ? 'Yes' : 'No'}`;
+            return (
+              <ToolChip
+                key={toggle.key}
+                label={label}
+                trailingIcon="x"
+                active
+                onPress={() => setBasic({ ...basic, [toggle.key]: undefined })}
+                accessibilityLabel={`Remove filter: ${label}`}
+              />
+            );
+          })}
+          {customRules.map(rule => {
             const field = getField(rule.field);
             if (!field) return null;
             const valueLabel = operatorNeedsValue(rule.operator)
               ? field.getOptions?.(filterContext).find(o => o.value === rule.value)?.label ?? rule.value
               : null;
+            const label = `${field.label} ${OPERATOR_LABELS[rule.operator]}${valueLabel ? ` ${valueLabel}` : ''}`;
             return (
-              <TouchableOpacity
+              <ToolChip
                 key={rule.id}
-                style={styles.ruleChip}
+                label={label}
+                trailingIcon="x"
+                active
                 onPress={() => removeRule(rule.id)}
-              >
-                <Text style={styles.ruleChipText} numberOfLines={1}>
-                  {field.label} {OPERATOR_LABELS[rule.operator]}
-                  {valueLabel ? ` ${valueLabel}` : ''}
-                </Text>
-                <Ionicons name="close" size={14} color={colors.text.accent} />
-              </TouchableOpacity>
+                accessibilityLabel={`Remove filter: ${label}`}
+              />
             );
           })}
         </ScrollView>
-      </View>
+      )}
 
       {isSearching && (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator color={colors.text.accent} />
+          <ActivityIndicator color={tokens.accent} />
         </View>
       )}
 
-      <FlatList
-        data={filteredParticipants}
-        renderItem={({ item }) => (
-          <ParticipantRow
-            participant={item}
-            onPress={() => handleParticipantPress(item)}
-            selected={useSplitView && selectedParticipant?.participant_event_id === item.participant_event_id}
-          />
-        )}
-        keyExtractor={(item, index) => item.participant_id || item.participant_event_id || `item-${index}`}
+      <FlashList
+        data={items}
+        renderItem={renderItem}
+        extraData={selectedId}
+        keyExtractor={item => item.key}
+        getItemType={item => item.kind}
+        stickyHeaderIndices={stickyHeaderIndices}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={refresh}
-            tintColor={colors.text.accent}
+            tintColor={tokens.accent}
+            colors={[tokens.accent]}
+            progressBackgroundColor={tokens.bg}
           />
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            {searchQuery.length >= 2 ? (
-              <>
-                <Text style={styles.emptyTitle}>No Results</Text>
-                <Text style={styles.emptyText}>
-                  No participants found matching &quot;{searchQuery}&quot;
-                </Text>
-              </>
-            ) : searchQuery.length > 0 ? (
-              <Text style={styles.emptyText}>
-                Type at least 2 characters to search
-              </Text>
-            ) : activeRules.length > 0 ? (
-              <>
-                <Text style={styles.emptyTitle}>No Participants</Text>
-                <Text style={styles.emptyText}>
-                  No participants match the current filters
-                </Text>
-              </>
-            ) : (
-              <>
-                <Text style={styles.emptyTitle}>No Participants</Text>
-                <Text style={styles.emptyText}>
-                  Pull to refresh or search by name/email
-                </Text>
-              </>
-            )}
+            {emptyState.title ? (
+              <Text style={[type.h2, { color: tokens.textH }]}>{emptyState.title}</Text>
+            ) : null}
+            <Text style={[type.body, styles.centeredText, { color: tokens.text2 }]}>{emptyState.text}</Text>
           </View>
         }
-        contentContainerStyle={filteredParticipants.length === 0 ? styles.emptyList : styles.listContent}
+        contentContainerStyle={{ paddingBottom: tabBarInset + 24 }}
       />
 
-      <FilterSheet
-        visible={isFilterSheetVisible}
-        onClose={() => setIsFilterSheetVisible(false)}
-        rules={rules}
-        onRulesChange={setRules}
-        conjunction={conjunction}
-        onConjunctionChange={setConjunction}
-        sort={sort}
-        onSortChange={setSort}
-        savedViews={savedViews}
-        onSaveView={saveView}
-        onDeleteView={deleteView}
-        filterContext={filterContext}
-      />
     </View>
   );
 
   if (useSplitView) {
     return (
-      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={[styles.container, { backgroundColor: tokens.bg }]} edges={['top', 'left', 'right']}>
         <SplitView
           sidebar={sidebar}
           detail={selectedParticipant ? (
             <ParticipantDetailContent
+              // A new participant gets a fresh gate: it re-checks the unlock
+              // and starts the detail state over.
+              key={selectedParticipant.participant_event_id}
               participant={selectedParticipant}
               topInset={16}
-              bottomInset={100}
+              bottomInset={tabBarInset + 24}
             />
           ) : null}
         />
@@ -384,97 +501,170 @@ export function SearchScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: tokens.bg }]} edges={['top', 'left', 'right']}>
       {sidebar}
     </SafeAreaView>
   );
 }
 
-interface ViewChipProps {
-  label: string;
-  count: number;
-  isActive: boolean;
-  isSaved: boolean;
-  onPress: () => void;
-}
-
-function ViewChip({ label, count, isActive, isSaved, onPress }: ViewChipProps) {
-  const { colors } = useTheme();
-  const ui = useUiStyles();
+/**
+ * The header's filter button: opens the filter sheet (saved views are chips
+ * in the row under the search). Tinted when a filter or sort is in force.
+ */
+function FilterButton({
+  activeCount,
+  onOpenSheet,
+}: {
+  activeCount: number;
+  onOpenSheet: () => void;
+}) {
+  const { tokens, hitTarget } = useTheme();
+  const active = activeCount > 0;
+  const color = active ? tokens.accent : tokens.text;
+  const label = active ? `Filter and sort, ${activeCount} active` : 'Filter and sort';
   return (
-    <TouchableOpacity
-      style={[ui.chip, isActive && ui.chipActive]}
-      onPress={onPress}
-      activeOpacity={0.7}
+    <PressableSurface
+      onPress={onOpenSheet}
+      rippleColor={tokens.text}
+      rippleAlpha={0.1}
+      style={styles.filterSurface}
       accessibilityRole="button"
-      accessibilityState={{ selected: isActive }}
+      accessibilityLabel={label}
     >
-      {isSaved && (
-        <Ionicons name="bookmark" size={12} color={isActive ? colors.text.inverse : colors.gray[400]} />
-      )}
-      <Text style={[ui.chipText, isActive && ui.chipTextActive]}>{label}</Text>
-      <View style={[ui.chipBadge, isActive && ui.chipBadgeActive]}>
-        <Text style={[ui.chipBadgeText, isActive && ui.chipBadgeTextActive]}>{count}</Text>
+      <View style={[styles.filterButton, { width: hitTarget, height: hitTarget }]}>
+        <Icon name="filter" size={22} color={color} />
+        {active ? <View style={[styles.filterDot, { backgroundColor: tokens.accent, borderColor: tokens.bg }]} /> : null}
       </View>
-    </TouchableOpacity>
+    </PressableSurface>
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+/** A name-sorted list's letter, pinned to the top while its names scroll by. */
+function SectionHeader({ letter }: { letter: string }) {
+  const { tokens, type } = useTheme();
+  return (
+    <View style={[styles.sectionHeader, { backgroundColor: tokens.bg }]}>
+      <Text
+        style={[type.label, { color: tokens.text2 }]}
+        accessibilityRole="header"
+        maxFontSizeMultiplier={CHROME_MAX_FONT_SCALE}
+      >
+        {letter}
+      </Text>
+    </View>
+  );
+}
+
+interface ToolChipProps {
+  label: string;
+  icon?: IconName;
+  /** The leading icon's colour, when it isn't the label's. */
+  iconColor?: string;
+  trailingIcon?: IconName;
+  active?: boolean;
+  /** A tab in a single-choice row; otherwise a button. */
+  role?: 'tab' | 'button';
+  onPress: () => void;
+  accessibilityLabel?: string;
+}
+
+/** A compact outlined chip for the filter toolbar (Material filter-chip shape). */
+function ToolChip({
+  label,
+  icon,
+  iconColor,
+  trailingIcon,
+  active = false,
+  role = 'button',
+  onPress,
+  accessibilityLabel,
+}: ToolChipProps) {
+  const { tokens, type, radii } = useTheme();
+  const color = active ? tokens.accent : tokens.text;
+  return (
+    <PressableSurface
+      onPress={onPress}
+      accessibilityRole={role}
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityState={{ selected: active }}
+      rippleColor={color}
+      hitSlop={{ top: 6, bottom: 6 }}
+      style={[
+        styles.chip,
+        {
+          borderRadius: radii.item,
+          borderColor: active ? tokens.accent : tokens.input,
+          backgroundColor: active ? tokens.selected : tokens.bg,
+        },
+      ]}
+      contentStyle={styles.chipContent}
+    >
+      {icon ? <Icon name={icon} size={16} color={iconColor ?? color} /> : null}
+      <Text
+        style={[type.label, styles.chipText, { color }]}
+        numberOfLines={1}
+        maxFontSizeMultiplier={CHROME_MAX_FONT_SCALE}
+      >
+        {label}
+      </Text>
+      {trailingIcon ? <Icon name={trailingIcon} size={14} color={color} /> : null}
+    </PressableSurface>
+  );
+}
+
+const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
-  filtersContainer: {
+  header: {
+    paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 4,
+    paddingBottom: 12,
+    gap: 12,
   },
-  filtersScroll: {
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  title: {
+    flex: 1,
+  },
+  toolbar: {
+    flexGrow: 0,
+    marginBottom: 12,
+  },
+  toolbarContent: {
     paddingHorizontal: 16,
     gap: 8,
   },
-  filterSpacer: {
-    height: 8,
+  filterSurface: { borderRadius: radii.pill },
+  filterButton: { alignItems: 'center', justifyContent: 'center' },
+  filterDot: {
+    position: 'absolute',
+    top: 9,
+    right: 8,
+    width: 10,
+    height: 10,
+    borderRadius: radii.pill,
+    borderWidth: 2,
   },
-  toolButton: {
-    minHeight: 36,
+  chip: { borderWidth: 1, maxWidth: 260 },
+  chipContent: {
+    // 32 including the 1px border.
+    minHeight: 30,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.gray[300],
-    backgroundColor: colors.surface,
+    gap: 6,
+    paddingHorizontal: 12,
   },
-  toolButtonActive: {
-    borderColor: colors.red,
-    backgroundColor: colors.red + '10',
+  chipText: {
+    flexShrink: 1,
   },
-  toolButtonText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.gray[600],
-  },
-  toolButtonTextActive: {
-    color: colors.text.accent,
-  },
-  ruleChip: {
-    minHeight: 36,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.red + '55',
-    backgroundColor: colors.red + '10',
-    maxWidth: 240,
-  },
-  ruleChipText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.text.accent,
+  sectionHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 6,
   },
   loadingContainer: {
     padding: 16,
@@ -487,30 +677,15 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
     padding: 32,
     gap: 10,
   },
+  centeredText: {
+    textAlign: 'center',
+    maxWidth: 300,
+  },
   emptyContainer: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
     padding: 32,
     paddingTop: 64,
-  },
-  emptyList: {
-    flexGrow: 1,
-  },
-  listContent: {
-    paddingBottom: 100,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text.primary,
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    textAlign: 'center',
-    maxWidth: 300,
-    lineHeight: 20,
+    gap: 8,
   },
 });

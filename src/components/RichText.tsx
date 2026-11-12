@@ -1,9 +1,13 @@
 import React, { useMemo, useState } from 'react';
-import { Linking, Modal, StyleSheet, Text, TouchableOpacity, View, type TextStyle } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Platform, StyleSheet, Text, View, type TextStyle } from 'react-native';
+import { PressableSurface } from './ui/PressableSurface';
+import { Icon, type IconName } from './ui/Icon';
 import { parseHtml, type Block, type Inline } from '../services/richText';
-import { Button, TextField } from './forms';
-import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
+import { TextField } from './forms';
+import { linkSheet } from '../navigation/sheetData';
+import { useOpenSheet } from '../navigation/sheetPresenter';
+import { useOpenLink } from '../hooks/useOpenLink';
+import { useTheme, useThemedStyles, type Theme } from '../theme';
 
 /** Renders a message body's HTML natively. */
 export function RichText({ html, size = 15 }: { html: string | null | undefined; size?: number }) {
@@ -60,6 +64,7 @@ function BlockView({ block, size }: { block: Block; size: number }) {
 
 function InlineText({ inlines, style }: { inlines: Inline[]; style: TextStyle | TextStyle[] }) {
   const styles = useThemedStyles(makeStyles);
+  const openLink = useOpenLink();
   return (
     <Text style={style}>
       {inlines.map((inline, i) => {
@@ -77,7 +82,7 @@ function InlineText({ inlines, style }: { inlines: Inline[]; style: TextStyle | 
           <Text
             key={i}
             style={marks}
-            onPress={inline.href ? () => Linking.openURL(inline.href!).catch(() => {}) : undefined}
+            onPress={inline.href ? () => openLink(inline.href!) : undefined}
             accessibilityRole={inline.href ? 'link' : undefined}
           >
             {inline.text}
@@ -104,11 +109,10 @@ export function MarkupEditor({
   onChangeText: (text: string) => void;
   placeholder?: string;
 }) {
-  const { colors } = useTheme();
+  const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const [selection, setSelection] = useState<Selection>({ start: value.length, end: value.length });
-  const [linkOpen, setLinkOpen] = useState(false);
-  const [linkUrl, setLinkUrl] = useState('https://');
+  const openSheet = useOpenSheet();
 
   const wrap = (marker: string, fallback: string) => {
     const { start, end } = selection;
@@ -126,39 +130,43 @@ export function MarkupEditor({
     onChangeText(`${value.slice(0, lineStart)}${lines.join('\n')}${value.slice(lineEnd)}`);
   };
 
-  const insertLink = () => {
-    const url = linkUrl.trim();
-    setLinkOpen(false);
+  const insertLink = (url: string) => {
     if (!/^(https?:|mailto:|tel:)/i.test(url)) return;
     const { start, end } = selection;
     const label = value.slice(start, end) || url;
     onChangeText(`${value.slice(0, start)}[${label}](${url})${value.slice(end)}`);
-    setLinkUrl('https://');
+  };
+  const claimLinkSheet = linkSheet.useOpener({ onSubmit: insertLink });
+  const openLinkSheet = () => {
+    claimLinkSheet();
+    openSheet('LinkSheet');
   };
 
-  const tools: { icon: keyof typeof Ionicons.glyphMap | null; label: string; text?: string; onPress: () => void }[] = [
+  const tools: { icon: IconName | null; label: string; text?: string; onPress: () => void }[] = [
     { icon: null, text: 'B', label: 'Bold', onPress: () => wrap('**', 'bold text') },
     { icon: null, text: 'I', label: 'Italic', onPress: () => wrap('_', 'italic text') },
     { icon: null, text: 'S', label: 'Strikethrough', onPress: () => wrap('~~', 'struck text') },
-    { icon: 'link', label: 'Link', onPress: () => setLinkOpen(true) },
-    { icon: 'list', label: 'Bulleted list', onPress: () => prefixLines(() => '- ') },
-    { icon: 'list-circle-outline', label: 'Numbered list', onPress: () => prefixLines(i => `${i + 1}. `) },
-    { icon: 'chatbox-ellipses-outline', label: 'Quote', onPress: () => prefixLines(() => '> ') },
+    { icon: 'link', label: 'Link', onPress: openLinkSheet },
+    { icon: 'bulleted-list', label: 'Bulleted list', onPress: () => prefixLines(() => '- ') },
+    { icon: 'numbered-list', label: 'Numbered list', onPress: () => prefixLines(i => `${i + 1}. `) },
+    { icon: 'quote', label: 'Quote', onPress: () => prefixLines(() => '> ') },
   ];
 
   return (
     <View style={styles.editor}>
       <View style={styles.toolbar}>
         {tools.map(tool => (
-          <TouchableOpacity
+          <PressableSurface
             key={tool.label}
             style={styles.tool}
+            contentStyle={styles.toolContent}
+            rippleColor={tokens.text}
             onPress={tool.onPress}
             accessibilityRole="button"
             accessibilityLabel={tool.label}
           >
             {tool.icon ? (
-              <Ionicons name={tool.icon} size={18} color={colors.gray[700]} />
+              <Icon name={tool.icon} size={18} color={tokens.text2} />
             ) : (
               <Text
                 style={[
@@ -170,7 +178,7 @@ export function MarkupEditor({
                 {tool.text}
               </Text>
             )}
-          </TouchableOpacity>
+          </PressableSurface>
         ))}
       </View>
       <TextField
@@ -182,58 +190,36 @@ export function MarkupEditor({
         style={styles.editorInput}
         autoCapitalize="sentences"
       />
-      <Modal visible={linkOpen} transparent animationType="fade" onRequestClose={() => setLinkOpen(false)}>
-        <View style={styles.backdrop}>
-          <View style={styles.dialog}>
-            <Text style={styles.dialogTitle}>Add a link</Text>
-            <TextField
-              value={linkUrl}
-              onChangeText={setLinkUrl}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-              autoFocus
-            />
-            <View style={styles.dialogActions}>
-              <Button title="Cancel" variant="link" onPress={() => setLinkOpen(false)} />
-              <Button title="Add link" variant="primary" onPress={insertLink} />
-            </View>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+const makeStyles = ({ tokens, type, radii }: Theme) => StyleSheet.create({
   flex: { flex: 1 },
   blocks: { gap: 10 },
-  text: { color: colors.gray[800] },
-  heading: { fontWeight: '700', color: colors.gray[900] },
-  bold: { fontWeight: '700' },
+  text: { color: tokens.text },
+  heading: { fontWeight: type.label.fontWeight, color: tokens.textH },
+  bold: { fontWeight: type.label.fontWeight },
   italic: { fontStyle: 'italic' },
-  mono: { fontFamily: 'Menlo', backgroundColor: colors.gray[100] },
-  link: { color: colors.text.accent },
+  mono: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', backgroundColor: tokens.shaded },
+  link: { color: tokens.accent, textDecorationLine: 'underline' },
   list: { gap: 4 },
   listItem: { flexDirection: 'row', gap: 8 },
-  marker: { minWidth: 16, color: colors.gray[600] },
-  quote: { borderLeftWidth: 3, borderLeftColor: colors.gray[300], paddingLeft: 12, gap: 8 },
-  pre: { backgroundColor: colors.gray[100], borderRadius: 8, padding: 10 },
-  rule: { height: StyleSheet.hairlineWidth, backgroundColor: colors.gray[300] },
+  marker: { minWidth: 16, color: tokens.muted },
+  quote: { borderLeftWidth: 3, borderLeftColor: tokens.div, paddingLeft: 12, gap: 8 },
+  pre: { backgroundColor: tokens.shaded, borderRadius: radii.item, padding: 10 },
+  rule: { height: 1, backgroundColor: tokens.div2 },
   editor: { gap: 8 },
   toolbar: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   tool: {
     width: 38,
     height: 34,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.gray[100],
+    borderRadius: radii.item,
+    borderWidth: 1,
+    borderColor: tokens.input,
+    backgroundColor: tokens.bg,
   },
-  toolText: { fontSize: 16, fontWeight: '800', color: colors.gray[700] },
+  toolContent: { alignItems: 'center', justifyContent: 'center' },
+  toolText: { ...type.h3, color: tokens.text2 },
   editorInput: { minHeight: 180 },
-  backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 },
-  dialog: { backgroundColor: colors.surface, borderRadius: 16, padding: 18, gap: 12 },
-  dialogTitle: { fontSize: 17, fontWeight: '700', color: colors.gray[900] },
-  dialogActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
 });

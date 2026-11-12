@@ -1,53 +1,108 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   Linking,
-  TouchableOpacity,
   Alert,
   ActivityIndicator,
-  RefreshControl,
-  TextInput,
-  Image,
   ActionSheetIOS,
   Platform,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { AlertBadge } from '../components/AlertBadge';
-import { StatusBadge } from '../components/StatusBadge';
 import { EmergencyContactCard } from '../components/EmergencyContactCard';
+import { ParticipantWebLink } from '../components/ParticipantWebLink';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Container,
+  Divider,
+  Flashbar,
+  Icon,
+  KeyValue,
+  PressableSurface,
+  RefreshControl,
+  StatusGlyph,
+  TextField,
+  type BadgeColor,
+  type IconName,
+  type StatusType,
+} from '../components/ui';
 import { useApp } from '../context/AppContext';
 import { useEventAccess } from '../hooks/useEventAccess';
+import { useFlash } from '../hooks/useFlash';
 import { useNFC } from '../hooks/useNFC';
+import { haptics } from '../services/haptics';
 import { api } from '../services/api';
 import { buildPhoneActions } from '../services/contactLinks';
-import { isWithdrawn } from '../services/participantStatus';
-import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
-import type { RootStackParamList, Participant, ParticipantNote, Travel, Guardian, Consent, Accommodation, AccessibilityDetail, PersonalDetails } from '../types';
+import { checkInDetail, participantDetailLine } from '../services/participantCheckIn';
+import { formatDateOnly } from '../services/eventDates';
+import { PARTICIPANT_STATE_LABELS, participantState } from '../services/participantStatus';
+import { travelDayTime } from '../services/travelTimes';
+import { useTheme } from '../theme';
+import { BiometricGate } from '../components/BiometricGate';
+import { optionsSheet } from '../navigation/sheetData';
+import { useOpenSheet } from '../navigation/sheetPresenter';
+import type { AppStackParamList, Participant, ParticipantNote, Travel, Guardian, Consent, Accommodation, AccessibilityDetail, PersonalDetails, ScanByContext } from '../types';
 
 interface ParticipantDetailContentProps {
   participant: Participant;
   topInset?: number;
   bottomInset?: number;
+  /**
+   * The screen sits under a translucent native header (iOS): the scroll view
+   * insets itself to clear it, with topInset as the gap below.
+   */
+  underHeader?: boolean;
+  /** Extra styles for the scrolling column, e.g. a pushed screen's max width. */
+  contentContainerStyle?: StyleProp<ViewStyle>;
+  /**
+   * Show the "View on attend.hackclub.com" icon beside the name. A pushed
+   * screen turns it off and puts it in its header instead.
+   */
+  webLink?: boolean;
 }
 
-export function ParticipantDetailContent({ participant, topInset = 100, bottomInset = 32 }: ParticipantDetailContentProps) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
+/**
+ * Full participant details, always behind the biometric gate. This is the
+ * only export, so nothing can render the details without it: the pushed
+ * screen, the iPad split pane and anything added later all get the gate,
+ * which locks again when the app is backgrounded or the user signs out.
+ */
+export function ParticipantDetailContent(props: ParticipantDetailContentProps) {
+  return (
+    <BiometricGate>
+      <ParticipantDetailBody {...props} />
+    </BiometricGate>
+  );
+}
+
+function ParticipantDetailBody({
+  participant,
+  topInset = 16,
+  bottomInset = 32,
+  underHeader = false,
+  contentContainerStyle,
+  webLink = true,
+}: ParticipantDetailContentProps) {
+  const { tokens, type } = useTheme();
   const { state, updateParticipant } = useApp();
   const { canViewParticipantRecords, canViewParticipantPii, roleLabel } = useEventAccess();
   const { isSupported: nfcSupported, writeTag } = useNFC();
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
+  const openSheet = useOpenSheet();
   // On-device passport/ID card check: global admins only (the server refuses
   // anyone else too), and only on an iPhone with an NFC reader to read the
   // document's chip — iPads and simulators have none.
   const canVerifyId = !!state.auth.user?.global_admin && Platform.OS === 'ios' && nfcSupported;
   const [isUndoing, setIsUndoing] = useState(false);
   const [isWritingBadge, setIsWritingBadge] = useState(false);
+  const { flash, show: showFlash, dismiss: dismissFlash } = useFlash();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [currentParticipant, setCurrentParticipant] = useState<Participant>(participant);
   const [notes, setNotes] = useState<ParticipantNote[]>([]);
@@ -56,30 +111,40 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
   const [isSubmittingNote, setIsSubmittingNote] = useState(false);
   const [notesSupported, setNotesSupported] = useState(true);
 
+  // Which participant is on screen right now. Notes requests check it when
+  // they come back, so a slow answer for the previous person in split view
+  // can't land under the next one.
+  const shownIdRef = useRef(participant.participant_event_id);
+  shownIdRef.current = participant.participant_event_id;
+
   // Reset state when the participant prop changes (split view selection)
   useEffect(() => {
     setCurrentParticipant(participant);
     setNewNoteText('');
+    setNotes([]);
+    setNotesSupported(true);
+    setIsLoadingNotes(false);
   }, [participant.participant_event_id]);
 
   const loadNotes = useCallback(async () => {
     if (!state.currentEvent) return;
+    const participantId = currentParticipant.participant_event_id;
+    if (participantId !== shownIdRef.current) return;
     setIsLoadingNotes(true);
     try {
-      const fetchedNotes = await api.getParticipantNotes(
-        state.currentEvent.id,
-        currentParticipant.participant_event_id
-      );
+      const fetchedNotes = await api.getParticipantNotes(state.currentEvent.id, participantId);
+      if (participantId !== shownIdRef.current) return;
       setNotes(fetchedNotes);
       setNotesSupported(true);
     } catch (error: any) {
+      if (participantId !== shownIdRef.current) return;
       if (error?.status === 404) {
         setNotesSupported(false);
       } else {
         console.error('Failed to load notes:', error);
       }
     } finally {
-      setIsLoadingNotes(false);
+      if (participantId === shownIdRef.current) setIsLoadingNotes(false);
     }
   }, [state.currentEvent, currentParticipant.participant_event_id]);
 
@@ -111,15 +176,20 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
   const handleSubmitNote = async () => {
     if (!newNoteText.trim() || !state.currentEvent || isSubmittingNote) return;
 
+    const participantId = currentParticipant.participant_event_id;
+    if (participantId !== shownIdRef.current) return;
     setIsSubmittingNote(true);
     try {
       const newNote = await api.createParticipantNote(
         state.currentEvent.id,
-        currentParticipant.participant_event_id,
+        participantId,
         newNoteText.trim()
       );
-      setNotes(prev => [newNote, ...prev]);
-      setNewNoteText('');
+      // Saved either way; only show it if that person is still on screen.
+      if (participantId === shownIdRef.current) {
+        setNotes(prev => [newNote, ...prev]);
+        setNewNoteText('');
+      }
     } catch (error) {
       Alert.alert('Error', 'Failed to add note. Please try again.');
     } finally {
@@ -230,25 +300,46 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
       const message = contextName
         ? `Scan at "${contextName}" has been undone`
         : 'All scans have been undone';
-      Alert.alert('Success', message);
+      showFlash('success', message);
     } catch (error) {
+      haptics.error();
       Alert.alert('Error', 'Failed to undo check-in');
     } finally {
       setIsUndoing(false);
     }
   };
 
+  // Android has no action sheet, and Alert keeps three buttons, so the
+  // contexts to undo go in the options sheet there.
+  const undoScans = currentParticipant.scans_by_context || [];
+  const claimUndoSheet = optionsSheet.useOpener({
+    title: 'Choose a context to undo',
+    subtitle: `${currentParticipant.display_name || currentParticipant.full_name} has been scanned at multiple locations. Which would you like to undo?`,
+    options: [
+      ...undoScans.map(scan => ({ value: scan.scan_context_id, label: undoContextLabel(scan) })),
+      { value: UNDO_ALL, label: 'Undo all scans', destructive: true },
+    ],
+    onSelect: value => {
+      if (value === UNDO_ALL) {
+        void performUndo();
+        return;
+      }
+      const scan = undoScans.find(s => s.scan_context_id === value);
+      if (scan) void performUndo(scan.scan_context_id, scan.scan_context_name);
+    },
+  });
+
   const handleUndoCheckIn = () => {
     const scans = currentParticipant.scans_by_context || [];
 
     if (scans.length === 0) {
       Alert.alert(
-        'Undo Check-In',
+        'Undo check-in',
         `Are you sure you want to undo the check-in for ${currentParticipant.display_name || currentParticipant.full_name}?`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Undo All',
+            text: 'Undo all',
             style: 'destructive',
             onPress: () => performUndo(),
           },
@@ -260,7 +351,7 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
     if (scans.length === 1) {
       const scan = scans[0];
       Alert.alert(
-        'Undo Check-In',
+        'Undo check-in',
         `Undo scan at "${scan.scan_context_name}" for ${currentParticipant.display_name || currentParticipant.full_name}?`,
         [
           { text: 'Cancel', style: 'cancel' },
@@ -274,37 +365,40 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
       return;
     }
 
-    const buttons: any[] = scans.map(scan => ({
-      text: `${scan.is_airport ? '✈️ ' : ''}${scan.scan_context_name} (${scan.scan_count} scan${scan.scan_count === 1 ? '' : 's'})`,
-      onPress: () => performUndo(scan.scan_context_id, scan.scan_context_name),
-    }));
+    const name = currentParticipant.display_name || currentParticipant.full_name;
+    const message = `${name} has been scanned at multiple locations. Which would you like to undo?`;
 
-    buttons.push({
-      text: 'Undo All Scans',
-      style: 'destructive',
-      onPress: () => performUndo(),
-    });
+    // Alert keeps at most three buttons on Android, so a list of contexts
+    // goes in an action sheet on iOS and a bottom sheet on Android.
+    if (Platform.OS === 'ios') {
+      const options = [...scans.map(undoContextLabel), 'Undo all scans', 'Cancel'];
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: 'Choose a context to undo',
+          message,
+          options,
+          destructiveButtonIndex: scans.length,
+          cancelButtonIndex: scans.length + 1,
+        },
+        buttonIndex => {
+          if (buttonIndex < scans.length) {
+            const scan = scans[buttonIndex];
+            performUndo(scan.scan_context_id, scan.scan_context_name);
+          } else if (buttonIndex === scans.length) {
+            performUndo();
+          }
+        }
+      );
+      return;
+    }
 
-    buttons.push({ text: 'Cancel', style: 'cancel' });
-
-    Alert.alert(
-      'Select Context to Undo',
-      `${currentParticipant.display_name || currentParticipant.full_name} has been scanned at multiple locations. Which would you like to undo?`,
-      buttons
-    );
+    claimUndoSheet();
+    openSheet('OptionsSheet');
   };
 
   const handleVerifyId = () => {
     if (!state.currentEvent) return;
     navigation.navigate('IdCheck', { participant: currentParticipant, eventId: state.currentEvent.id });
-  };
-
-  const handleOpenInBrowser = () => {
-    if (!state.currentEvent) return;
-    const url = `https://attend.hackclub.com/admin/events/${state.currentEvent.slug}/participants/${currentParticipant.participant_event_id}`;
-    Linking.openURL(url).catch(() => {
-      Alert.alert('Error', 'Unable to open browser');
-    });
   };
 
   const handleWriteBadge = async () => {
@@ -328,358 +422,393 @@ export function ParticipantDetailContent({ participant, topInset = 100, bottomIn
       });
 
       if (result.success) {
-        Alert.alert('Success', 'Badge written successfully');
+        // useNFC has already played the haptic.
+        showFlash('success', 'Badge written successfully', { silent: true });
       } else if (result.error !== 'Cancelled') {
         Alert.alert('Error', result.error || 'Failed to write badge');
       }
     } catch (error) {
+      haptics.error();
       Alert.alert('Error', 'Failed to write badge');
     } finally {
       setIsWritingBadge(false);
     }
   };
 
+
+  const name = currentParticipant.full_name || currentParticipant.display_name;
+  const checkIn = checkInDetail(currentParticipant);
+  const registration = participantState(currentParticipant);
+  const status: { glyph: StatusType; text: string; color: string } = registration === 'withdrawn' || registration === 'rejected'
+    ? { glyph: 'stopped', text: PARTICIPANT_STATE_LABELS[registration], color: tokens.error }
+    : checkIn
+      ? { glyph: 'success', text: `Checked in ${checkIn}`, color: tokens.success }
+      : { glyph: 'pending', text: participantDetailLine(currentParticipant), color: tokens.text2 };
+  const safetyItems = buildSafetyItems(currentParticipant, tokens);
+  const noteTypeLabels: Record<string, string> = { ops: 'Ops', safeguarding: 'Safeguarding', logistical: 'Logistical' };
+
   return (
-    <ScrollView
-      contentContainerStyle={[styles.content, { paddingTop: topInset, paddingBottom: bottomInset }]}
-      scrollIndicatorInsets={{ top: topInset }}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={handleRefresh}
-          tintColor={colors.text.accent}
-          progressViewOffset={topInset}
-        />
-      }
-    >
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          {currentParticipant.headshot_url ? (
-            <Image
-              source={{ uri: currentParticipant.headshot_url }}
-              style={styles.headshot}
-            />
-          ) : (
-            <View style={styles.headshotPlaceholder}>
-              <Ionicons name="person" size={40} color={colors.gray[400]} />
-            </View>
-          )}
+    <>
+      <ScrollView
+        style={{ backgroundColor: tokens.bg }}
+        contentContainerStyle={[
+          styles.content,
+          { paddingTop: topInset, paddingBottom: bottomInset },
+          contentContainerStyle,
+        ]}
+        contentInsetAdjustmentBehavior={underHeader ? 'automatic' : 'never'}
+        scrollIndicatorInsets={underHeader ? undefined : { top: topInset }}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={tokens.accent}
+            colors={[tokens.accent]}
+            progressBackgroundColor={tokens.bg}
+            progressViewOffset={topInset}
+          />
+        }
+      >
+        <View style={styles.header}>
+          <Avatar name={name} uri={currentParticipant.headshot_url} size={72} />
           <View style={styles.headerInfo}>
-            <Text style={styles.name}>{currentParticipant.full_name}</Text>
-            {currentParticipant.pronouns && (
-              <Text style={styles.pronouns}>({currentParticipant.pronouns})</Text>
-            )}
-            <View style={styles.statusRow}>
-              <StatusBadge status={isWithdrawn(currentParticipant) ? 'withdrawn' : currentParticipant.checked_in_at ? 'checkedIn' : 'pending'} />
-              {currentParticipant.checked_in_at && (
-                <Text style={styles.checkedInTime}>
-                  {formatDateTime(currentParticipant.checked_in_at)}
-                </Text>
-              )}
+            <Text style={[type.h1, { color: tokens.textH }]} accessibilityRole="header" selectable>
+              {name}
+            </Text>
+            {currentParticipant.pronouns ? (
+              <Text style={[type.body, { color: tokens.text2 }]}>{currentParticipant.pronouns}</Text>
+            ) : null}
+            <View style={styles.statusLine} accessible accessibilityLabel={status.text}>
+              <StatusGlyph type={status.glyph} color={status.color} />
+              <Text style={[type.body, styles.statusText, { color: status.color }]}>{status.text}</Text>
             </View>
           </View>
+          {webLink && <ParticipantWebLink participantEventId={currentParticipant.participant_event_id} />}
         </View>
-      </View>
 
-      {(currentParticipant.has_anaphylaxis_risk || currentParticipant.high_support_flag) && (
-        <View style={styles.alertsSection}>
-          {currentParticipant.has_anaphylaxis_risk && (
-            <AlertBadge type="anaphylaxis" label="⚠️ Anaphylaxis Risk" />
+        {safetyItems.length > 0 && (
+          <Container title="Safety" bodyStyle={styles.safetyBody}>
+            {safetyItems.map((item) => (
+              <View key={item.title} style={styles.safetyItem} accessible accessibilityLabel={[item.title, item.detail].filter(Boolean).join(': ')}>
+                <Icon name={item.icon} size={20} color={item.color} />
+                <View style={styles.safetyText}>
+                  <Text style={[type.label, { color: tokens.textH }]}>{item.title}</Text>
+                  {item.detail ? (
+                    <Text style={[type.body, { color: tokens.text2 }]}>{item.detail}</Text>
+                  ) : null}
+                </View>
+              </View>
+            ))}
+          </Container>
+        )}
+
+        {flash ? <Flashbar type={flash.type} message={flash.message} onDismiss={dismissFlash} /> : null}
+
+        <View style={styles.actions}>
+          {currentParticipant.checked_in_at && (
+            <Button
+              title="Undo check-in"
+              icon="refresh"
+              onPress={handleUndoCheckIn}
+              loading={isUndoing}
+              style={styles.actionButton}
+            />
           )}
-          {currentParticipant.high_support_flag && (
-            <AlertBadge type="highSupport" label="⚠️ High Support Needs" />
+          {nfcSupported && (
+            <Button
+              title="Write to NFC badge"
+              icon="nfc"
+              onPress={handleWriteBadge}
+              loading={isWritingBadge}
+              style={styles.actionButton}
+            />
+          )}
+          {canVerifyId && (
+            <Button
+              title="Verify ID"
+              icon="identification"
+              onPress={handleVerifyId}
+              style={styles.actionButton}
+            />
           )}
         </View>
-      )}
 
-      <Section title="Contact Information">
-        <InfoRow label="Email" value={currentParticipant.email} onPress={() => handleEmail(currentParticipant.email)} selectable accessibilityHint="Opens the default email app" />
-        {currentParticipant.phone && (
-          <InfoRow label="Phone" value={currentParticipant.phone} onPress={() => handleCall(currentParticipant.phone!)} selectable accessibilityHint="Shows calling options" />
-        )}
-        {currentParticipant.personal?.secondary_email && (
-          <InfoRow label="Secondary Email" value={currentParticipant.personal.secondary_email} onPress={() => handleEmail(currentParticipant.personal!.secondary_email!)} selectable accessibilityHint="Opens the default email app" />
-        )}
-      </Section>
-
-      {currentParticipant.personal && (
-        <PersonalSection
-          personal={currentParticipant.personal}
-          canViewPii={canViewParticipantPii}
-          roleLabel={roleLabel}
-        />
-      )}
-
-      {currentParticipant.accommodation && (
-        <AccommodationSection accommodation={currentParticipant.accommodation} />
-      )}
-
-      {(currentParticipant.allergies || currentParticipant.medical_conditions || currentParticipant.medications || currentParticipant.medical_detail) && (
-        <Section title="Medical Information">
-          {currentParticipant.allergies && (
-            <InfoRow label="Allergies" value={currentParticipant.allergies} highlight />
+        <Section title="Contact information">
+          <InfoRow label="Email" value={currentParticipant.email} onPress={() => handleEmail(currentParticipant.email)} selectable accessibilityHint="Opens the default email app" />
+          {currentParticipant.phone && (
+            <InfoRow label="Phone" value={currentParticipant.phone} onPress={() => handleCall(currentParticipant.phone!)} selectable accessibilityHint="Shows calling options" />
           )}
-          {currentParticipant.medical_detail?.allergy_severity && (
-            <InfoRow label="Allergy Severity" value={currentParticipant.medical_detail.allergy_severity} highlight />
-          )}
-          {currentParticipant.medical_conditions && (
-            <InfoRow label="Medical Conditions" value={currentParticipant.medical_conditions} highlight />
-          )}
-          {currentParticipant.medications && (
-            <InfoRow label="Medications" value={currentParticipant.medications} />
-          )}
-          {currentParticipant.requires_refrigeration && (
-            <InfoRow label="Refrigeration Required" value="Yes" highlight />
-          )}
-          {currentParticipant.medical_detail?.emergency_action_plan && (
-            <InfoRow label="Emergency Action Plan" value={currentParticipant.medical_detail.emergency_action_plan} highlight />
-          )}
-          {currentParticipant.medical_detail?.additional_notes && (
-            <InfoRow label="Additional Notes" value={currentParticipant.medical_detail.additional_notes} />
+          {currentParticipant.personal?.secondary_email && (
+            <InfoRow label="Secondary email" value={currentParticipant.personal.secondary_email} onPress={() => handleEmail(currentParticipant.personal!.secondary_email!)} selectable accessibilityHint="Opens the default email app" />
           )}
         </Section>
-      )}
 
-      {(currentParticipant.diet_type || currentParticipant.life_threatening_allergies || currentParticipant.dietary_detail) && (
-        <Section title="Dietary Requirements">
-          {currentParticipant.diet_type && (
-            <InfoRow label="Diet Type" value={currentParticipant.diet_type} />
-          )}
-          {currentParticipant.life_threatening_allergies && (
-            <InfoRow label="Life-Threatening Allergies" value={currentParticipant.life_threatening_allergies} highlight />
-          )}
-          {currentParticipant.cross_contamination_risk && (
-            <InfoRow label="Cross Contamination Risk" value="Yes" highlight />
-          )}
-          {currentParticipant.dietary_detail?.intolerances && (
-            <InfoRow label="Intolerances" value={currentParticipant.dietary_detail.intolerances} />
-          )}
-          {currentParticipant.dietary_detail?.notes && (
-            <InfoRow label="Notes" value={currentParticipant.dietary_detail.notes} />
-          )}
-        </Section>
-      )}
-
-      {currentParticipant.accessibility && (
-        <AccessibilitySection a={currentParticipant.accessibility} />
-      )}
-
-      <Section title="Safeguarding">
-        {/* Only sent to roles that see sensitive data; absent isn't "unsigned". */}
-        {currentParticipant.freedom_waiver_granted !== undefined && (
-          <View style={styles.safeguardingRow}>
-            <Text style={styles.safeguardingLabel}>Freedom Waiver</Text>
-            <StatusBadge status={currentParticipant.freedom_waiver_granted ? 'signed' : 'unsigned'} />
-          </View>
+        {currentParticipant.personal && (
+          <PersonalSection
+            personal={currentParticipant.personal}
+            canViewPii={canViewParticipantPii}
+            roleLabel={roleLabel}
+          />
         )}
-        <View style={styles.safeguardingRow}>
-          <Text style={styles.safeguardingLabel}>High Support Needs</Text>
-          <Text style={styles.safeguardingValue}>
-            {currentParticipant.high_support_flag ? 'Yes' : 'No'}
-          </Text>
-        </View>
-        <View style={styles.safeguardingRow}>
-          <Text style={styles.safeguardingLabel}>Can Leave Unaccompanied</Text>
-          <Text style={styles.safeguardingValue}>
-            {currentParticipant.can_leave_unaccompanied ? 'Yes' : 'No'}
-          </Text>
-        </View>
-        {currentParticipant.safeguarding_detail?.high_support_notes && (
-          <InfoRow label="High Support Notes" value={currentParticipant.safeguarding_detail.high_support_notes} highlight />
-        )}
-        {currentParticipant.safeguarding_detail?.authorized_pickup_adults && (
-          <InfoRow label="Authorized for Pickup" value={currentParticipant.safeguarding_detail.authorized_pickup_adults} />
-        )}
-        {currentParticipant.safeguarding_detail?.other_instructions && (
-          <InfoRow label="Other Instructions" value={currentParticipant.safeguarding_detail.other_instructions} />
-        )}
-      </Section>
 
-      <Section title="Waiver Status">
-        <View style={styles.safeguardingRow}>
-          <Text style={styles.safeguardingLabel}>Waiver Signed</Text>
-          <StatusBadge status={currentParticipant.waiver_signed ? 'signed' : 'unsigned'} />
-        </View>
-      </Section>
+        {(currentParticipant.allergies || currentParticipant.medical_conditions || currentParticipant.medications || currentParticipant.medical_detail) && (
+          <Section title="Medical information">
+            {currentParticipant.allergies && (
+              <InfoRow label="Allergies" value={currentParticipant.allergies} />
+            )}
+            {currentParticipant.medical_detail?.allergy_severity && (
+              <InfoRow label="Allergy severity" value={currentParticipant.medical_detail.allergy_severity} />
+            )}
+            {currentParticipant.medical_conditions && (
+              <InfoRow label="Medical conditions" value={currentParticipant.medical_conditions} />
+            )}
+            {currentParticipant.medications && (
+              <InfoRow label="Medications" value={currentParticipant.medications} />
+            )}
+            {currentParticipant.requires_refrigeration && (
+              <InfoRow label="Refrigeration required" value="Yes" />
+            )}
+            {currentParticipant.medical_detail?.emergency_action_plan && (
+              <InfoRow label="Emergency action plan" value={currentParticipant.medical_detail.emergency_action_plan} />
+            )}
+            {currentParticipant.medical_detail?.additional_notes && (
+              <InfoRow label="Additional notes" value={currentParticipant.medical_detail.additional_notes} />
+            )}
+          </Section>
+        )}
 
-      {currentParticipant.consents && currentParticipant.consents.length > 0 && (
-        <ConsentsSection consents={currentParticipant.consents} />
-      )}
+        {(currentParticipant.diet_type || currentParticipant.life_threatening_allergies || currentParticipant.dietary_detail) && (
+          <Section title="Dietary requirements">
+            {currentParticipant.diet_type && (
+              <InfoRow label="Diet type" value={currentParticipant.diet_type} />
+            )}
+            {currentParticipant.life_threatening_allergies && (
+              <InfoRow label="Life-Threatening Allergies" value={currentParticipant.life_threatening_allergies} />
+            )}
+            {currentParticipant.cross_contamination_risk && (
+              <InfoRow label="Cross contamination risk" value="Yes" />
+            )}
+            {currentParticipant.dietary_detail?.intolerances && (
+              <InfoRow label="Intolerances" value={currentParticipant.dietary_detail.intolerances} />
+            )}
+            {currentParticipant.dietary_detail?.notes && (
+              <InfoRow label="Notes" value={currentParticipant.dietary_detail.notes} />
+            )}
+          </Section>
+        )}
 
-      {currentParticipant.guardians && currentParticipant.guardians.length > 0 ? (
-        <GuardiansSection
-          guardians={currentParticipant.guardians}
-          onCall={handleCall}
-          onEmail={handleEmail}
-        />
-      ) : currentParticipant.parent_guardian_name ? (
-        <Section title="Parent/Guardian">
-          <InfoRow label="Name" value={currentParticipant.parent_guardian_name} />
-          {currentParticipant.parent_guardian_phone && (
+        {currentParticipant.accessibility && (
+          <AccessibilitySection a={currentParticipant.accessibility} />
+        )}
+
+        <Section title="Safeguarding">
+          {/* Only sent to roles that see sensitive data; absent isn't "unsigned". */}
+          {currentParticipant.freedom_waiver_granted !== undefined && (
             <InfoRow
-              label="Phone"
-              value={currentParticipant.parent_guardian_phone}
-              onPress={() => handleCall(currentParticipant.parent_guardian_phone!)}
-              selectable
-              accessibilityHint="Shows calling options"
+              label="Freedom waiver"
+              value={currentParticipant.freedom_waiver_granted ? 'Signed' : 'Not signed'}
+              valueColor={currentParticipant.freedom_waiver_granted ? tokens.success : tokens.warning}
             />
           )}
-          {currentParticipant.parent_guardian_email && (
-            <InfoRow
-              label="Email"
-              value={currentParticipant.parent_guardian_email}
-              onPress={() => handleEmail(currentParticipant.parent_guardian_email!)}
-              selectable
-              accessibilityHint="Opens the default email app"
-            />
+          <InfoRow label="High support needs" value={currentParticipant.high_support_flag ? 'Yes' : 'No'} />
+          <InfoRow label="Can leave unaccompanied" value={currentParticipant.can_leave_unaccompanied ? 'Yes' : 'No'} />
+          {currentParticipant.safeguarding_detail?.high_support_notes && (
+            <InfoRow label="High support notes" value={currentParticipant.safeguarding_detail.high_support_notes} />
+          )}
+          {currentParticipant.safeguarding_detail?.authorized_pickup_adults && (
+            <InfoRow label="Authorized for Pickup" value={currentParticipant.safeguarding_detail.authorized_pickup_adults} />
+          )}
+          {currentParticipant.safeguarding_detail?.other_instructions && (
+            <InfoRow label="Other instructions" value={currentParticipant.safeguarding_detail.other_instructions} />
           )}
         </Section>
-      ) : null}
 
-      {!currentParticipant.guardians?.length && currentParticipant.emergency_contacts && currentParticipant.emergency_contacts.length > 0 && (
-        <Section title="Emergency Contacts">
-          {currentParticipant.emergency_contacts.map((contact, index) => (
-            <EmergencyContactCard
-              key={contact.id || `contact-${index}`}
-              contact={contact}
-              onCall={handleCall}
-              onEmail={handleEmail}
-            />
-          ))}
+        <Section title="Waiver status">
+          <InfoRow
+            label="Waiver signed"
+            value={currentParticipant.waiver_signed ? 'Signed' : 'Not signed'}
+            valueColor={currentParticipant.waiver_signed ? tokens.success : tokens.warning}
+          />
         </Section>
-      )}
 
-      {(currentParticipant.travel_inbound || currentParticipant.travel_outbound) && (
-        <>
-          {currentParticipant.travel_inbound && (
-            <TravelSection
-              title="Inbound Travel"
-              travel={currentParticipant.travel_inbound}
-              canViewPii={canViewParticipantPii}
-            />
-          )}
-          {currentParticipant.travel_outbound && (
-            <TravelSection
-              title="Outbound Travel"
-              travel={currentParticipant.travel_outbound}
-              canViewPii={canViewParticipantPii}
-            />
-          )}
-        </>
-      )}
+        {currentParticipant.consents && currentParticipant.consents.length > 0 && (
+          <ConsentsSection consents={currentParticipant.consents} />
+        )}
 
-      {notesSupported && (
-        <Section title={`Notes${notes.length > 0 ? ` (${notes.length})` : ''}`}>
-          <View style={styles.noteInputContainer}>
-            <TextInput
-              style={styles.noteInput}
+        {currentParticipant.guardians && currentParticipant.guardians.length > 0 ? (
+          <GuardiansSection
+            guardians={currentParticipant.guardians}
+            onCall={handleCall}
+            onEmail={handleEmail}
+          />
+        ) : currentParticipant.parent_guardian_name ? (
+          <Section title="Parent/Guardian">
+            <InfoRow label="Name" value={currentParticipant.parent_guardian_name} />
+            {currentParticipant.parent_guardian_phone && (
+              <InfoRow
+                label="Phone"
+                value={currentParticipant.parent_guardian_phone}
+                onPress={() => handleCall(currentParticipant.parent_guardian_phone!)}
+                selectable
+                accessibilityHint="Shows calling options"
+              />
+            )}
+            {currentParticipant.parent_guardian_email && (
+              <InfoRow
+                label="Email"
+                value={currentParticipant.parent_guardian_email}
+                onPress={() => handleEmail(currentParticipant.parent_guardian_email!)}
+                selectable
+                accessibilityHint="Opens the default email app"
+              />
+            )}
+          </Section>
+        ) : null}
+
+        {!currentParticipant.guardians?.length && currentParticipant.emergency_contacts && currentParticipant.emergency_contacts.length > 0 && (
+          <Section title="Emergency contacts">
+            {currentParticipant.emergency_contacts.map((contact, index) => (
+              <React.Fragment key={contact.id || `contact-${index}`}>
+                {index > 0 && <Divider style={styles.itemDivider} />}
+                <EmergencyContactCard
+                  contact={contact}
+                  onCall={handleCall}
+                  onEmail={handleEmail}
+                />
+              </React.Fragment>
+            ))}
+          </Section>
+        )}
+
+        {currentParticipant.travel_inbound && (
+          <TravelSection
+            title="Inbound travel"
+            travel={currentParticipant.travel_inbound}
+            canViewPii={canViewParticipantPii}
+            timeZone={state.currentEvent?.timezone}
+          />
+        )}
+        {currentParticipant.travel_outbound && (
+          <TravelSection
+            title="Outbound travel"
+            travel={currentParticipant.travel_outbound}
+            canViewPii={canViewParticipantPii}
+            timeZone={state.currentEvent?.timezone}
+          />
+        )}
+
+        {currentParticipant.accommodation && (
+          <AccommodationSection accommodation={currentParticipant.accommodation} />
+        )}
+
+        {notesSupported && (
+          <Container title={`Notes${notes.length > 0 ? ` (${notes.length})` : ''}`} bodyStyle={styles.notesBody}>
+            {isLoadingNotes ? (
+              <ActivityIndicator size="small" color={tokens.accent} style={styles.notesLoading} />
+            ) : notes.length === 0 ? (
+              <Text style={[type.body, { color: tokens.text2 }]}>No notes yet</Text>
+            ) : (
+              notes.map((note) => {
+                const authorEmailOnly = !note.author?.name && note.author?.email;
+                return (
+                  <View key={note.id} style={styles.note}>
+                    <Text style={[type.body, { color: tokens.text }]} selectable>{note.content}</Text>
+                    <View style={styles.noteMeta}>
+                      <Text style={[type.body, styles.noteMetaText, { color: tokens.muted }]}>
+                        {note.note_type && noteTypeLabels[note.note_type] ? `${noteTypeLabels[note.note_type]} · ` : ''}
+                        <Text
+                          style={authorEmailOnly ? { color: tokens.accent } : undefined}
+                          selectable={Boolean(authorEmailOnly)}
+                          onPress={authorEmailOnly ? () => handleEmail(note.author.email) : undefined}
+                          accessibilityRole={authorEmailOnly ? 'link' : undefined}
+                        >
+                          {note.author?.name || note.author?.email || 'Unknown'}
+                        </Text>
+                        {` · ${formatDateTime(note.created_at)}`}
+                      </Text>
+                      {note.sensitivity === 'restricted' && <Badge label="Restricted" color="red" />}
+                    </View>
+                  </View>
+                );
+              })
+            )}
+
+            <TextField
               placeholder="Add a note..."
-              placeholderTextColor={colors.text.muted}
+              accessibilityLabel="Add a note"
               value={newNoteText}
               onChangeText={setNewNoteText}
               multiline
               maxLength={1000}
             />
-            <TouchableOpacity
-              style={[styles.noteSubmitButton, (!newNoteText.trim() || isSubmittingNote) && styles.noteSubmitButtonDisabled]}
+            <Button
+              title="Add note"
               onPress={handleSubmitNote}
-              disabled={!newNoteText.trim() || isSubmittingNote}
-            >
-              {isSubmittingNote ? (
-                <ActivityIndicator size="small" color={colors.white} />
-              ) : (
-                <Ionicons name="send" size={18} color={colors.white} />
-              )}
-            </TouchableOpacity>
-          </View>
-
-          {isLoadingNotes ? (
-            <View style={styles.notesLoading}>
-              <ActivityIndicator size="small" color={colors.text.accent} />
-            </View>
-          ) : notes.length === 0 ? (
-            <Text style={styles.noNotesText}>No notes yet</Text>
-          ) : (
-            notes.map((note) => (
-              <View key={note.id} style={[styles.noteCard, note.sensitivity === 'restricted' && styles.noteCardRestricted]}>
-                <View style={styles.noteHeader}>
-                  <View style={styles.noteAuthorRow}>
-                    <Text
-                      style={styles.noteAuthor}
-                      selectable={Boolean(!note.author?.name && note.author?.email)}
-                      onPress={!note.author?.name && note.author?.email ? () => handleEmail(note.author.email) : undefined}
-                      accessibilityRole={!note.author?.name && note.author?.email ? 'link' : undefined}
-                    >
-                      {note.author?.name || note.author?.email || 'Unknown'}
-                    </Text>
-                    {note.sensitivity === 'restricted' && (
-                      <View style={styles.restrictedBadge}>
-                        <Ionicons name="lock-closed" size={10} color={colors.white} />
-                        <Text style={styles.restrictedBadgeText}>Restricted</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={styles.noteTime}>{formatDateTime(note.created_at)}</Text>
-                </View>
-                <Text style={styles.noteContent}>{note.content}</Text>
-              </View>
-            ))
-          )}
-        </Section>
-      )}
-
-      <View style={styles.actionButtons}>
-        {nfcSupported && (
-          <TouchableOpacity
-            style={[styles.writeBadgeButton, isWritingBadge && styles.writeBadgeButtonDisabled]}
-            onPress={handleWriteBadge}
-            disabled={isWritingBadge}
-          >
-            {isWritingBadge ? (
-              <ActivityIndicator color={colors.white} size="small" />
-            ) : (
-              <>
-                <Ionicons name="radio-outline" size={20} color={colors.white} />
-                <Text style={styles.writeBadgeButtonText}>Write to NFC Badge</Text>
-              </>
-            )}
-          </TouchableOpacity>
+              loading={isSubmittingNote}
+              disabled={!newNoteText.trim()}
+              style={styles.addNoteButton}
+            />
+          </Container>
         )}
-
-        {canVerifyId && (
-          <TouchableOpacity style={styles.openInBrowserButton} onPress={handleVerifyId}>
-            <Ionicons name="id-card-outline" size={20} color={colors.status.info} />
-            <Text style={styles.openInBrowserText}>Verify ID</Text>
-          </TouchableOpacity>
-        )}
-
-        <TouchableOpacity
-          style={styles.openInBrowserButton}
-          onPress={handleOpenInBrowser}
-        >
-          <Ionicons name="open-outline" size={20} color={colors.status.info} />
-          <Text style={styles.openInBrowserText}>View on attend.hackclub.com</Text>
-        </TouchableOpacity>
-
-        {currentParticipant.checked_in_at && (
-          <TouchableOpacity
-            style={styles.undoButton}
-            onPress={handleUndoCheckIn}
-            disabled={isUndoing}
-          >
-            {isUndoing ? (
-              <ActivityIndicator color={colors.white} size="small" />
-            ) : (
-              <>
-                <Ionicons name="arrow-undo" size={20} color={colors.white} />
-                <Text style={styles.undoButtonText}>Undo Check-In</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        )}
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </>
   );
+}
+
+const UNDO_ALL = '__all__';
+
+function undoContextLabel(scan: ScanByContext): string {
+  return `${scan.is_airport ? '✈️ ' : ''}${scan.scan_context_name} (${scan.scan_count} scan${scan.scan_count === 1 ? '' : 's'})`;
+}
+
+type Tokens = ReturnType<typeof useTheme>['tokens'];
+
+interface SafetyItem {
+  title: string;
+  detail?: string;
+  icon: IconName;
+  color: string;
+}
+
+// The flags staff need before anything else, from fields the record already has.
+function buildSafetyItems(p: Participant, tokens: Tokens): SafetyItem[] {
+  const items: SafetyItem[] = [];
+  if (p.has_anaphylaxis_risk) {
+    const allergies = p.life_threatening_allergies || p.allergies;
+    const severity = p.medical_detail?.allergy_severity;
+    items.push({
+      title: 'Anaphylaxis risk',
+      detail: [allergies, severity ? `(${severity})` : null].filter(Boolean).join(' ') || undefined,
+      icon: 'exclamation-circle',
+      color: tokens.error,
+    });
+  }
+  if (p.high_support_flag) {
+    items.push({
+      title: 'High support needs',
+      detail: p.safeguarding_detail?.high_support_notes || undefined,
+      icon: 'shield-exclamation',
+      color: tokens.warning,
+    });
+  }
+  if (p.requires_refrigeration) {
+    items.push({
+      title: 'Refrigeration required',
+      detail: p.medications || undefined,
+      icon: 'information-circle',
+      color: tokens.info,
+    });
+  }
+  if (p.cross_contamination_risk) {
+    items.push({
+      title: 'Cross contamination risk',
+      detail: p.diet_type || undefined,
+      icon: 'exclamation',
+      color: tokens.warning,
+    });
+  }
+  return items;
 }
 
 function PersonalSection({
@@ -715,20 +844,20 @@ function PersonalSection({
   if (!hasContent) return null;
   const hiddenValue = roleLabel ? `Hidden for your role (${roleLabel})` : 'Hidden for your role';
   return (
-    <Section title="Personal Details">
-      {fullLegalName && <InfoRow label="Legal Name" value={fullLegalName} />}
-      {personal.preferred_name && <InfoRow label="Preferred Name" value={personal.preferred_name} />}
+    <Section title="Personal details">
+      {fullLegalName && <InfoRow label="Legal name" value={fullLegalName} />}
+      {personal.preferred_name && <InfoRow label="Preferred name" value={personal.preferred_name} />}
       {personal.date_of_birth ? (
         <InfoRow
           label="Date of Birth"
-          value={`${new Date(personal.date_of_birth).toLocaleDateString()}${personal.age != null ? ` (age ${personal.age})` : ''}`}
+          value={`${formatDateOnly(personal.date_of_birth)}${personal.age != null ? ` (age ${personal.age})` : ''}`}
         />
       ) : personal.age != null ? (
         <InfoRow label="Age" value={`${personal.age}`} />
       ) : null}
       {personal.tshirt_size && <InfoRow label="T-Shirt Size" value={personal.tshirt_size} />}
       {personal.engagement_preference && <InfoRow label="Engagement" value={personal.engagement_preference.replace(/_/g, ' ')} />}
-      {personal.engagement_notes && <InfoRow label="Engagement Notes" value={personal.engagement_notes} />}
+      {personal.engagement_notes && <InfoRow label="Engagement notes" value={personal.engagement_notes} />}
       {addressLines
         ? <InfoRow label="Address" value={addressLines} />
         : !canViewPii
@@ -747,19 +876,19 @@ function AccommodationSection({ accommodation: a }: { accommodation: Accommodati
   return (
     <Section title="Accommodation">
       {a.venue_name && <InfoRow label="Venue" value={a.venue_name} />}
-      {a.assigned_room && <InfoRow label="Room" value={a.assigned_room} highlight />}
-      {a.rooming_exempt && <InfoRow label="Rooming Exempt" value="Yes" />}
-      {a.check_in_date && <InfoRow label="Check-in" value={new Date(a.check_in_date).toLocaleDateString()} />}
-      {a.check_out_date && <InfoRow label="Check-out" value={new Date(a.check_out_date).toLocaleDateString()} />}
-      {a.gender_identity && <InfoRow label="Gender Identity" value={a.gender_identity_other || a.gender_identity.replace(/_/g, ' ')} />}
+      {a.assigned_room && <InfoRow label="Room" value={a.assigned_room} />}
+      {a.rooming_exempt && <InfoRow label="Rooming exempt" value="Yes" />}
+      {a.check_in_date && <InfoRow label="Check-in" value={formatDateOnly(a.check_in_date)} />}
+      {a.check_out_date && <InfoRow label="Check-out" value={formatDateOnly(a.check_out_date)} />}
+      {a.gender_identity && <InfoRow label="Gender identity" value={a.gender_identity_other || a.gender_identity.replace(/_/g, ' ')} />}
       {a.preferred_roommate_genders?.length ? (
-        <InfoRow label="Preferred Roommate Genders" value={a.preferred_roommate_genders.join(', ').replace(/_/g, ' ')} />
+        <InfoRow label="Preferred roommate genders" value={a.preferred_roommate_genders.join(', ').replace(/_/g, ' ')} />
       ) : null}
-      {a.roommate_preferences && <InfoRow label="Roommate Preferences" value={a.roommate_preferences} />}
-      {a.roommate_exclusions && <InfoRow label="Roommate Exclusions" value={a.roommate_exclusions} highlight />}
-      {a.room_type_preference && <InfoRow label="Room Type" value={a.room_type_preference} />}
-      {a.quiet_room_preference && <InfoRow label="Quiet Room" value="Yes" />}
-      {a.accessibility_needs && <InfoRow label="Accessibility Needs" value={a.accessibility_needs} />}
+      {a.roommate_preferences && <InfoRow label="Roommate preferences" value={a.roommate_preferences} />}
+      {a.roommate_exclusions && <InfoRow label="Roommate exclusions" value={a.roommate_exclusions} />}
+      {a.room_type_preference && <InfoRow label="Room type" value={a.room_type_preference} />}
+      {a.quiet_room_preference && <InfoRow label="Quiet room" value="Yes" />}
+      {a.accessibility_needs && <InfoRow label="Accessibility needs" value={a.accessibility_needs} />}
       {a.notes && <InfoRow label="Notes" value={a.notes} />}
     </Section>
   );
@@ -795,44 +924,47 @@ function AccessibilitySection({ a }: { a: AccessibilityDetail }) {
       {a.communication_needs && <InfoRow label="Communication" value={a.communication_needs} />}
       {a.neurodivergent_notes && <InfoRow label="Neurodivergent" value={a.neurodivergent_notes} />}
       {a.religious_practices && <InfoRow label="Religious" value={a.religious_practices} />}
-      {a.distance_limitations && <InfoRow label="Distance Limits" value={a.distance_limitations} />}
-      {a.unavailable_times && <InfoRow label="Unavailable Times" value={a.unavailable_times} />}
+      {a.distance_limitations && <InfoRow label="Distance limits" value={a.distance_limitations} />}
+      {a.unavailable_times && <InfoRow label="Unavailable times" value={a.unavailable_times} />}
       {a.other_needs && <InfoRow label="Other" value={a.other_needs} />}
     </Section>
   );
 }
 
+function capitalize(text: string): string {
+  return text ? text[0].toUpperCase() + text.slice(1).replace(/_/g, ' ') : text;
+}
+
 function ConsentsSection({ consents }: { consents: Consent[] }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
-  const labelFor = (type: string) => type.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
-  const toneFor = (status: string) => {
+  const { tokens, type } = useTheme();
+  const labelFor = (consentType: string) => consentType.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+  const colorFor = (status: string): BadgeColor => {
     switch (status) {
-      case 'signed': return { bg: colors.status.success + '20', fg: colors.status.success };
+      case 'signed': return 'green';
       case 'sent':
-      case 'viewed': return { bg: colors.status.info + '20', fg: colors.status.info };
+      case 'viewed': return 'blue';
       case 'failed':
-      case 'voided': return { bg: colors.status.error + '20', fg: colors.status.error };
-      default: return { bg: colors.gray[200], fg: colors.gray[700] };
+      case 'voided': return 'red';
+      default: return 'grey';
     }
   };
   return (
     <Section title="Consents">
       {consents.map((c) => {
-        const tone = toneFor(c.status);
         const signed = c.signed_at ? new Date(c.signed_at).toLocaleDateString() : null;
         return (
-          <View key={c.id} style={styles.consentRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.consentType}>{labelFor(c.consent_type)}</Text>
-              {signed && <Text style={styles.consentMeta}>Signed {signed}</Text>}
-              {!signed && c.pending_on && <Text style={styles.consentMeta}>Pending: {c.pending_on}</Text>}
-              {c.failure_reason && <Text style={[styles.consentMeta, { color: colors.text.accent }]}>{c.failure_reason}</Text>}
-            </View>
-            <View style={[styles.consentBadge, { backgroundColor: tone.bg }]}>
-              <Text style={[styles.consentBadgeText, { color: tone.fg }]}>{c.status}</Text>
-            </View>
-          </View>
+          <KeyValue
+            key={c.id}
+            label={labelFor(c.consent_type)}
+            value={
+              <View style={styles.consentValue}>
+                <Badge label={capitalize(c.status)} color={colorFor(c.status)} />
+                {signed && <Text style={[type.body, { color: tokens.text2 }]}>Signed {signed}</Text>}
+                {!signed && c.pending_on && <Text style={[type.body, { color: tokens.text2 }]}>Pending: {c.pending_on}</Text>}
+                {c.failure_reason && <Text style={[type.body, { color: tokens.error }]}>{c.failure_reason}</Text>}
+              </View>
+            }
+          />
         );
       })}
     </Section>
@@ -840,291 +972,307 @@ function ConsentsSection({ consents }: { consents: Consent[] }) {
 }
 
 function GuardiansSection({ guardians, onCall, onEmail }: { guardians: Guardian[]; onCall: (n: string) => void; onEmail: (e: string) => void }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
+  const { tokens, type } = useTheme();
   return (
     <Section title={`Guardians (${guardians.length})`}>
-      {guardians.map((g) => (
-        <View key={g.id} style={styles.guardianCard}>
-          <View style={styles.guardianHeader}>
-            <Text style={styles.guardianName}>{g.name || 'Unnamed guardian'}</Text>
-            {g.is_primary && (
-              <View style={styles.primaryBadge}><Text style={styles.primaryBadgeText}>Primary</Text></View>
+      {guardians.map((g, index) => {
+        const permissions = [
+          { label: 'Media', granted: g.media_permission },
+          { label: 'Photo', granted: g.photo_permission },
+          { label: 'Travel', granted: g.travel_permission },
+          { label: 'Med', granted: g.emergency_medical_consent },
+          { label: 'OTC', granted: g.otc_medication_consent },
+        ].filter((perm): perm is { label: string; granted: boolean } => perm.granted != null);
+        return (
+          <View key={g.id}>
+            {index > 0 && <Divider style={styles.itemDivider} />}
+            <View style={styles.personHeader}>
+              <Text style={[type.h3, styles.personName, { color: tokens.textH }]}>{g.name || 'Unnamed guardian'}</Text>
+              {g.is_primary && <Badge label="Primary" color="blue" />}
+              {g.status && <Badge label={capitalize(g.status)} color={g.status === 'completed' ? 'green' : 'grey'} />}
+            </View>
+            {g.relationship && <InfoRow label="Relationship" value={g.relationship} />}
+            {g.email && (
+              <InfoRow label="Email" value={g.email} onPress={() => onEmail(g.email!)} selectable accessibilityHint="Opens the default email app" />
             )}
-            {g.status && (
-              <View style={[styles.guardianStatusBadge, g.status === 'completed' ? { backgroundColor: colors.green + '20' } : { backgroundColor: colors.gray[200] }]}>
-                <Text style={[styles.guardianStatusText, g.status === 'completed' ? { color: colors.green } : { color: colors.gray[700] }]}>{g.status}</Text>
+            {g.phone && (
+              <InfoRow label="Phone" value={g.phone} onPress={() => onCall(g.phone!)} selectable accessibilityHint="Shows calling options" />
+            )}
+            {permissions.length > 0 && (
+              <KeyValue
+                label="Permissions"
+                value={
+                  <View style={styles.permRow}>
+                    {permissions.map((perm) => (
+                      <View
+                        key={perm.label}
+                        style={styles.perm}
+                        accessible
+                        accessibilityLabel={`${perm.label}: ${perm.granted ? 'granted' : 'not granted'}`}
+                      >
+                        <Icon name={perm.granted ? 'check' : 'x'} size={14} color={perm.granted ? tokens.success : tokens.error} />
+                        <Text style={[type.body, { color: perm.granted ? tokens.success : tokens.error }]}>{perm.label}</Text>
+                      </View>
+                    ))}
+                  </View>
+                }
+              />
+            )}
+            {g.emergency_contacts && g.emergency_contacts.length > 0 && (
+              <View style={styles.subsection}>
+                <Text style={[type.label, { color: tokens.text2 }]}>Emergency contacts</Text>
+                {g.emergency_contacts.map((ec) => (
+                  <View key={ec.id || ec.name} style={styles.subContact}>
+                    <Text style={[type.body, { color: tokens.text }]}>
+                      {ec.name}{ec.relationship ? ` · ${ec.relationship}` : ''}
+                    </Text>
+                    {ec.phone && (
+                      <LinkText value={ec.phone} onPress={() => onCall(ec.phone)} accessibilityHint="Shows calling options" />
+                    )}
+                    {ec.email && (
+                      <LinkText value={ec.email} onPress={() => onEmail(ec.email!)} accessibilityHint="Opens the default email app" />
+                    )}
+                  </View>
+                ))}
               </View>
             )}
           </View>
-          {g.relationship && <Text style={styles.guardianMeta}>{g.relationship}</Text>}
-          {g.email && (
-            <Text
-              style={styles.guardianLink}
-              selectable
-              onPress={() => onEmail(g.email!)}
-              accessibilityRole="link"
-              accessibilityHint="Opens the default email app"
-            >
-              {g.email}
-            </Text>
-          )}
-          {g.phone && (
-            <Text
-              style={styles.guardianLink}
-              selectable
-              onPress={() => onCall(g.phone!)}
-              accessibilityRole="link"
-              accessibilityHint="Shows calling options"
-            >
-              {g.phone}
-            </Text>
-          )}
-          {(g.media_permission != null || g.photo_permission != null || g.travel_permission != null || g.emergency_medical_consent != null || g.otc_medication_consent != null) && (
-            <View style={styles.permRow}>
-              {g.media_permission != null && <PermChip label="Media" granted={g.media_permission} />}
-              {g.photo_permission != null && <PermChip label="Photo" granted={g.photo_permission} />}
-              {g.travel_permission != null && <PermChip label="Travel" granted={g.travel_permission} />}
-              {g.emergency_medical_consent != null && <PermChip label="Med" granted={g.emergency_medical_consent} />}
-              {g.otc_medication_consent != null && <PermChip label="OTC" granted={g.otc_medication_consent} />}
-            </View>
-          )}
-          {g.emergency_contacts && g.emergency_contacts.length > 0 && (
-            <View style={styles.guardianContactsList}>
-              <Text style={styles.guardianContactsTitle}>Emergency Contacts</Text>
-              {g.emergency_contacts.map((ec) => (
-                <View key={ec.id || ec.name} style={styles.guardianContact}>
-                  <Text style={styles.guardianContactName}>{ec.name}{ec.relationship ? ` · ${ec.relationship}` : ''}</Text>
-                  {ec.phone && (
-                    <Text
-                      style={styles.guardianLink}
-                      selectable
-                      onPress={() => onCall(ec.phone)}
-                      accessibilityRole="link"
-                      accessibilityHint="Shows calling options"
-                    >
-                      {ec.phone}
-                    </Text>
-                  )}
-                  {ec.email && (
-                    <Text
-                      style={styles.guardianLink}
-                      selectable
-                      onPress={() => onEmail(ec.email!)}
-                      accessibilityRole="link"
-                      accessibilityHint="Opens the default email app"
-                    >
-                      {ec.email}
-                    </Text>
-                  )}
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-      ))}
+        );
+      })}
     </Section>
   );
 }
 
-function PermChip({ label, granted }: { label: string; granted: boolean }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
+function Section({ title, actions, children }: { title: string; actions?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <View style={[styles.permChip, granted ? styles.permChipOn : styles.permChipOff]}>
-      <Ionicons name={granted ? 'checkmark' : 'close'} size={10} color={granted ? colors.green : colors.red} />
-      <Text style={[styles.permChipText, { color: granted ? colors.green : colors.red }]}>{label}</Text>
-    </View>
+    <Container title={title} actions={actions}>
+      {children}
+    </Container>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={styles.sectionContent}>{children}</View>
-    </View>
-  );
+const TRAVEL_MODE_LABELS: Record<string, string> = {
+  plane: 'Flight',
+  train: 'Train',
+  car: 'Car',
+  bus: 'Bus',
+  other: 'Other',
+};
+
+function legStatusColor(status?: string): BadgeColor {
+  switch (status?.toLowerCase()) {
+    case 'arrived': return 'green';
+    case 'departed':
+    case 'enroute': return 'blue';
+    case 'delayed':
+    case 'diverted': return 'yellow';
+    case 'cancelled': return 'red';
+    default: return 'grey';
+  }
+}
+
+/** "Sat 14 Nov, 10:30 AM" in the event's timezone, for a leg's details. */
+function formatTravelDateTime(iso: string | undefined, timeZone?: string): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  const options: Intl.DateTimeFormatOptions = {
+    weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
+  };
+  try {
+    return date.toLocaleString(undefined, { ...options, timeZone });
+  } catch {
+    return date.toLocaleString(undefined, options);
+  }
+}
+
+interface TravelLegSummary {
+  key: string;
+  /** "QF1401", "Train" */
+  title: string;
+  /** "Sat 10:30 AM · Sydney → Canberra" */
+  summary: string;
+  status?: string;
+  /** When the airport pickup collected them, formatted. */
+  pickedUpAt?: string;
+  details: { label: string; value: string }[];
+}
+
+// One row per leg: each flight leg, or the whole journey for the other modes.
+function travelLegs(travel: Travel, canViewPii: boolean, timeZone?: string): TravelLegSummary[] {
+  const mode = TRAVEL_MODE_LABELS[travel.mode || ''] || 'Unknown';
+  const at = (iso?: string) => travelDayTime(iso, timeZone);
+  const full = (iso?: string) => formatTravelDateTime(iso, timeZone);
+  const route = (from?: string, to?: string) => (from || to ? `${from || '---'} → ${to || '---'}` : null);
+  const join = (...bits: (string | null | undefined)[]) => bits.filter(Boolean).join(' · ');
+  const rows = (pairs: [string, string | null | undefined][]) =>
+    pairs.filter((pair): pair is [string, string] => !!pair[1]).map(([label, value]) => ({ label, value }));
+
+  if (travel.mode === 'plane' && travel.legs?.length) {
+    return travel.legs.map((leg) => {
+      const departs = leg.live_departure_time || leg.departure_time;
+      const arrives = leg.live_arrival_time || leg.arrival_time;
+      return {
+        key: leg.id,
+        title: leg.flight_code || 'Flight',
+        summary: join(at(departs), route(leg.departure_airport, leg.arrival_airport)),
+        status: leg.live_status,
+        pickedUpAt: full(leg.airport_picked_up_at) ?? undefined,
+        details: rows([
+          ['From', leg.departure_airport],
+          ['To', leg.arrival_airport],
+          ['Depart', full(departs) || 'N/A'],
+          ['Arrive', full(arrives) || 'N/A'],
+        ]),
+      };
+    });
+  }
+
+  if (travel.mode === 'train' || travel.mode === 'bus') {
+    const from = travel.mode === 'train'
+      ? travel.train_departure_station || travel.departure_station
+      : travel.bus_departure_location;
+    const to = travel.mode === 'train'
+      ? travel.train_arrival_station || travel.arrival_station
+      : travel.bus_arrival_location;
+    const train = travel.mode === 'train';
+    return [{
+      key: travel.id,
+      title: mode,
+      summary: join(at(travel.departure_time), route(from, to)),
+      details: rows([
+        [train ? 'Departure station' : 'From', from],
+        [train ? 'Arrival station' : 'To', to],
+        ['Departure', full(travel.departure_time)],
+        ['Arrival', full(travel.arrival_time)],
+      ]),
+    }];
+  }
+
+  if (travel.mode === 'car') {
+    // The pickup address for a car journey is the participant's doorstep,
+    // and it isn't in the payload for this role at all.
+    const from = travel.origin_address || (!canViewPii ? 'Address hidden for your role' : undefined);
+    return [{
+      key: travel.id,
+      title: mode,
+      summary: join(at(travel.expected_arrival_time), travel.origin_address),
+      details: rows([
+        ['From', from],
+        ['Expected arrival', full(travel.expected_arrival_time)],
+      ]),
+    }];
+  }
+
+  return [{
+    key: travel.id,
+    title: mode,
+    summary: travel.mode === 'other' ? travel.other_details ?? '' : '',
+    details: rows([['Details', travel.mode === 'other' ? travel.other_details : undefined]]),
+  }];
 }
 
 function TravelSection({
   title,
   travel,
   canViewPii,
+  timeZone,
 }: {
   title: string;
   travel: Travel;
   canViewPii: boolean;
+  timeZone?: string;
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
-  const getModeLabel = (mode?: string) => {
-    const modes: Record<string, string> = {
-      plane: '✈️ Flight',
-      train: '🚂 Train',
-      car: '🚗 Car',
-      bus: '🚌 Bus',
-      other: 'Other',
-    };
-    return modes[mode || ''] || 'Unknown';
-  };
-
-  const getStatusColor = (status?: string) => {
-    switch (status?.toLowerCase()) {
-      case 'arrived': return colors.status.success;
-      case 'departed':
-      case 'enroute': return colors.status.info;
-      case 'delayed': return colors.status.warning;
-      case 'cancelled': return colors.status.error;
-      case 'diverted': return colors.purple;
-      default: return colors.gray[500];
-    }
-  };
-
-  const formatDateTime = (dateString?: string) => {
-    if (!dateString) return null;
-    return new Date(dateString).toLocaleString();
-  };
+  const { tokens, type } = useTheme();
+  const legs = travelLegs(travel, canViewPii, timeZone);
 
   return (
-    <View style={styles.section}>
-      <View style={styles.travelHeader}>
-        <Text style={styles.sectionTitle}>{title}</Text>
-        {travel.is_unaccompanied_minor && (
-          <View style={styles.umBadge}>
-            <Text style={styles.umBadgeText}>UM</Text>
-          </View>
-        )}
-      </View>
-      <View style={styles.sectionContent}>
-        <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Mode</Text>
-          <Text style={styles.infoValue}>{getModeLabel(travel.mode)}</Text>
+    <Section
+      title={title}
+      actions={travel.is_unaccompanied_minor ? <Badge label="UM" color="yellow" /> : undefined}
+    >
+      {legs.map((leg, index) => (
+        <React.Fragment key={leg.key}>
+          {index > 0 && <Divider />}
+          <TravelLegRow leg={leg} />
+        </React.Fragment>
+      ))}
+
+      {travel.notes && <InfoRow label="Notes" value={travel.notes} />}
+
+      {(travel.visa_required || travel.visa_status || travel.visa_type || travel.visa_number || travel.passport_nationality) && (
+        <View style={styles.subsection}>
+          <Text style={[type.h3, { color: tokens.textH }]}>Visa</Text>
+          {travel.passport_nationality && <InfoRow label="Passport" value={travel.passport_nationality} />}
+          {travel.visa_status && <InfoRow label="Status" value={travel.visa_status} />}
+          {travel.visa_type && <InfoRow label="Type" value={travel.visa_type} />}
+          {travel.visa_number && <InfoRow label="Number" value={travel.visa_number} />}
         </View>
+      )}
+    </Section>
+  );
+}
 
-        {travel.mode === 'train' && (
-          <>
-            {(travel.train_departure_station || travel.departure_station) && (
-              <View style={styles.infoRow}><Text style={styles.infoLabel}>Departure Station</Text><Text style={styles.infoValue}>{travel.train_departure_station || travel.departure_station}</Text></View>
-            )}
-            {(travel.train_arrival_station || travel.arrival_station) && (
-              <View style={styles.infoRow}><Text style={styles.infoLabel}>Arrival Station</Text><Text style={styles.infoValue}>{travel.train_arrival_station || travel.arrival_station}</Text></View>
-            )}
-            {travel.departure_time && (
-              <View style={styles.infoRow}><Text style={styles.infoLabel}>Departure</Text><Text style={styles.infoValue}>{formatDateTime(travel.departure_time)}</Text></View>
-            )}
-            {travel.arrival_time && (
-              <View style={styles.infoRow}><Text style={styles.infoLabel}>Arrival</Text><Text style={styles.infoValue}>{formatDateTime(travel.arrival_time)}</Text></View>
-            )}
-          </>
-        )}
-
-        {travel.mode === 'car' && (
-          <>
-            {travel.origin_address ? (
-              <View style={styles.infoRow}><Text style={styles.infoLabel}>From</Text><Text style={styles.infoValue}>{travel.origin_address}</Text></View>
-            ) : !canViewPii ? (
-              // The pickup address for a car journey is the participant's
-              // doorstep, and it isn't in the payload for this role at all.
-              <View style={styles.infoRow}><Text style={styles.infoLabel}>From</Text><Text style={styles.infoValue}>Address hidden for your role</Text></View>
-            ) : null}
-            {travel.expected_arrival_time && (
-              <View style={styles.infoRow}><Text style={styles.infoLabel}>Expected Arrival</Text><Text style={styles.infoValue}>{formatDateTime(travel.expected_arrival_time)}</Text></View>
-            )}
-          </>
-        )}
-
-        {travel.mode === 'bus' && (
-          <>
-            {travel.bus_departure_location && (
-              <View style={styles.infoRow}><Text style={styles.infoLabel}>From</Text><Text style={styles.infoValue}>{travel.bus_departure_location}</Text></View>
-            )}
-            {travel.bus_arrival_location && (
-              <View style={styles.infoRow}><Text style={styles.infoLabel}>To</Text><Text style={styles.infoValue}>{travel.bus_arrival_location}</Text></View>
-            )}
-            {travel.departure_time && (
-              <View style={styles.infoRow}><Text style={styles.infoLabel}>Departure</Text><Text style={styles.infoValue}>{formatDateTime(travel.departure_time)}</Text></View>
-            )}
-            {travel.arrival_time && (
-              <View style={styles.infoRow}><Text style={styles.infoLabel}>Arrival</Text><Text style={styles.infoValue}>{formatDateTime(travel.arrival_time)}</Text></View>
-            )}
-          </>
-        )}
-
-        {travel.mode === 'other' && travel.other_details && (
-          <View style={styles.infoRow}><Text style={styles.infoLabel}>Details</Text><Text style={styles.infoValue}>{travel.other_details}</Text></View>
-        )}
-
-        {travel.notes && (
-          <View style={styles.infoRow}><Text style={styles.infoLabel}>Notes</Text><Text style={styles.infoValue}>{travel.notes}</Text></View>
-        )}
-
-        {(travel.visa_required || travel.visa_status || travel.visa_type || travel.visa_number || travel.passport_nationality) && (
-          <View style={styles.visaBox}>
-            <Text style={styles.visaTitle}>Visa</Text>
-            {travel.passport_nationality && (
-              <View style={styles.infoRow}><Text style={styles.infoLabel}>Passport</Text><Text style={styles.infoValue}>{travel.passport_nationality}</Text></View>
-            )}
-            {travel.visa_status && (
-              <View style={styles.infoRow}><Text style={styles.infoLabel}>Status</Text><Text style={styles.infoValue}>{travel.visa_status}</Text></View>
-            )}
-            {travel.visa_type && (
-              <View style={styles.infoRow}><Text style={styles.infoLabel}>Type</Text><Text style={styles.infoValue}>{travel.visa_type}</Text></View>
-            )}
-            {travel.visa_number && (
-              <View style={styles.infoRow}><Text style={styles.infoLabel}>Number</Text><Text style={styles.infoValue}>{travel.visa_number}</Text></View>
-            )}
-          </View>
-        )}
-
-        {travel.legs && travel.legs.length > 0 && (
-          <View style={styles.flightLegsContainer}>
-            {travel.legs.map((leg) => (
-              <View key={leg.id} style={styles.flightLeg}>
-                <View style={styles.flightLegHeader}>
-                  <Text style={styles.flightCode}>{leg.flight_code || 'N/A'}</Text>
-                  {leg.live_status && (
-                    <View style={[styles.statusBadge, { backgroundColor: getStatusColor(leg.live_status) + '20' }]}>
-                      <Text style={[styles.statusBadgeText, { color: getStatusColor(leg.live_status) }]}>
-                        {leg.live_status}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-                <View style={styles.routeRow}>
-                  <Text style={styles.airport}>{leg.departure_airport || '---'}</Text>
-                  <Ionicons name="airplane" size={14} color={colors.gray[400]} style={styles.planeIcon} />
-                  <Text style={styles.airport}>{leg.arrival_airport || '---'}</Text>
-                </View>
-                <View style={styles.flightTimes}>
-                  <View style={styles.flightTimeColumn}>
-                    <Text style={styles.flightTimeLabel}>Depart</Text>
-                    <Text style={styles.flightTime}>
-                      {formatDateTime(leg.live_departure_time || leg.departure_time) || 'N/A'}
-                    </Text>
-                  </View>
-                  <View style={styles.flightTimeColumn}>
-                    <Text style={styles.flightTimeLabel}>Arrive</Text>
-                    <Text style={styles.flightTime}>
-                      {formatDateTime(leg.live_arrival_time || leg.arrival_time) || 'N/A'}
-                    </Text>
-                  </View>
-                </View>
-                {leg.airport_picked_up_at && (
-                  <View style={styles.pickedUpBadge}>
-                    <Ionicons name="checkmark-circle" size={14} color={colors.green} />
-                    <Text style={styles.pickedUpText}>
-                      Picked up {formatDateTime(leg.airport_picked_up_at)}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            ))}
-          </View>
-        )}
-      </View>
+/** "QF1401 · Sat 10:30 AM · Sydney → Canberra"; tapping it opens the leg's details. */
+function TravelLegRow({ leg }: { leg: TravelLegSummary }) {
+  const { tokens, type, hitTarget } = useTheme();
+  const [open, setOpen] = useState(false);
+  const expandable = leg.details.length > 0 || !!leg.pickedUpAt;
+  const line = (
+    <View style={[styles.legRow, { minHeight: hitTarget }]}>
+      <Text style={[type.body, styles.legLine, { color: tokens.text2 }]} numberOfLines={open ? undefined : 1}>
+        <Text style={[type.label, { color: tokens.textH }]}>{leg.title}</Text>
+        {leg.summary ? ` · ${leg.summary}` : ''}
+      </Text>
+      {leg.status ? <Badge label={capitalize(leg.status)} color={legStatusColor(leg.status)} /> : null}
+      {leg.pickedUpAt ? <Icon name="check-circle" size={16} color={tokens.success} /> : null}
+      {expandable ? <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} color={tokens.muted} /> : null}
     </View>
+  );
+
+  return (
+    <View>
+      {expandable ? (
+        <PressableSurface
+          onPress={() => setOpen((value) => !value)}
+          rippleColor={tokens.text}
+          rippleAlpha={0.1}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: open }}
+          accessibilityHint={open ? 'Hides the leg details' : 'Shows the leg details'}
+        >
+          {line}
+        </PressableSurface>
+      ) : line}
+      {open && (
+        <View style={styles.legDetails}>
+          {leg.details.map((d) => <InfoRow key={d.label} label={d.label} value={d.value} />)}
+          {leg.pickedUpAt && (
+            <View style={styles.pickedUp}>
+              <Icon name="check-circle" size={16} color={tokens.success} />
+              <Text style={[type.body, { color: tokens.success }]}>
+                Picked up {leg.pickedUpAt}
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function LinkText({ value, onPress, accessibilityHint }: { value: string; onPress: () => void; accessibilityHint?: string }) {
+  const { tokens, type } = useTheme();
+  return (
+    <Text
+      style={[type.body, { color: tokens.accent }]}
+      selectable
+      onPress={onPress}
+      accessibilityRole="link"
+      accessibilityHint={accessibilityHint}
+    >
+      {value}
+    </Text>
   );
 }
 
@@ -1132,422 +1280,144 @@ interface InfoRowProps {
   label: string;
   value: string;
   onPress?: () => void;
-  highlight?: boolean;
+  valueColor?: string;
   selectable?: boolean;
   accessibilityHint?: string;
 }
 
-function InfoRow({ label, value, onPress, highlight, selectable, accessibilityHint }: InfoRowProps) {
-  const styles = useThemedStyles(makeStyles);
+function InfoRow({ label, value, onPress, valueColor, selectable, accessibilityHint }: InfoRowProps) {
+  if (onPress) {
+    return (
+      <KeyValue
+        label={label}
+        value={<LinkText value={value} onPress={onPress} accessibilityHint={accessibilityHint} />}
+      />
+    );
+  }
   return (
-    <View style={[styles.infoRow, highlight && styles.infoRowHighlight]}>
-      <Text style={styles.infoLabel}>{label}</Text>
-      <Text
-        style={[styles.infoValue, onPress && styles.infoValueLink]}
-        selectable={selectable}
-        onPress={onPress}
-        accessibilityRole={onPress ? 'link' : undefined}
-        accessibilityHint={accessibilityHint}
-      >
-        {value}
-      </Text>
-    </View>
+    <KeyValue
+      label={label}
+      value={value}
+      valueColor={valueColor}
+      selectable={selectable}
+    />
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+const styles = StyleSheet.create({
   content: {
-    padding: 16,
+    paddingHorizontal: 16,
+    gap: 16,
   },
   header: {
-    backgroundColor: colors.glass.dark,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.glass.border,
-  },
-  headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  headshot: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    marginRight: 16,
-  },
-  headshotPlaceholder: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.gray[200],
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
+    gap: 14,
   },
   headerInfo: {
     flex: 1,
+    minWidth: 0,
   },
-  name: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: colors.text.primary,
-    marginBottom: 2,
-  },
-  pronouns: {
-    fontSize: 16,
-    color: colors.text.secondary,
-    marginBottom: 12,
-  },
-  statusRow: {
+  statusLine: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
   },
-  checkedInTime: {
-    marginLeft: 12,
-    fontSize: 14,
-    color: colors.text.secondary,
+  statusText: {
+    flexShrink: 1,
   },
-  alertsSection: {
+  safetyBody: {
+    gap: 12,
+  },
+  safetyItem: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  safetyText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  actions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginBottom: 16,
-  },
-  section: {
-    backgroundColor: colors.glass.dark,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: colors.glass.border,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text.primary,
-    marginBottom: 12,
-  },
-  sectionContent: {},
-  infoRow: {
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray[100],
-  },
-  infoRowHighlight: {
-    backgroundColor: colors.yellow + '20',
-    marginHorizontal: -8,
-    paddingHorizontal: 8,
-    borderRadius: 6,
-    borderBottomWidth: 0,
-    marginBottom: 4,
-  },
-  infoLabel: {
-    fontSize: 12,
-    color: colors.text.muted,
-    marginBottom: 2,
-  },
-  infoValue: {
-    fontSize: 16,
-    color: colors.text.primary,
-  },
-  infoValueLink: {
-    color: colors.status.info,
-  },
-  safeguardingRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray[100],
-  },
-  safeguardingLabel: {
-    fontSize: 14,
-    color: colors.text.primary,
-  },
-  safeguardingValue: {
-    fontSize: 14,
-    color: colors.text.secondary,
-  },
-  actionButtons: {
-    marginTop: 8,
-    marginBottom: 32,
-    gap: 12,
-  },
-  writeBadgeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.red,
-    padding: 16,
-    borderRadius: 12,
     gap: 8,
   },
-  writeBadgeButtonDisabled: {
-    opacity: 0.6,
+  actionButton: {
+    flexGrow: 1,
+    flexBasis: '40%',
   },
-  writeBadgeButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: '600',
+  itemDivider: {
+    marginVertical: 8,
   },
-  openInBrowserButton: {
+  personHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.glass.dark,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.blue,
+    flexWrap: 'wrap',
     gap: 8,
-  },
-  openInBrowserText: {
-    color: colors.status.info,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  undoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.orange,
-    padding: 16,
-    borderRadius: 12,
-    gap: 8,
-  },
-  undoButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  travelHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  umBadge: {
-    backgroundColor: colors.orange + '20',
-    paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 6,
   },
-  umBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.orange,
+  personName: {
+    flexShrink: 1,
   },
-  flightLegsContainer: {
+  subsection: {
     marginTop: 8,
-    gap: 12,
   },
-  flightLeg: {
-    backgroundColor: colors.background,
-    borderRadius: 10,
-    padding: 12,
+  subContact: {
+    paddingVertical: 4,
   },
-  flightLegHeader: {
+  consentValue: {
+    gap: 2,
+  },
+  permRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: 12,
+    rowGap: 4,
+  },
+  perm: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  legRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 8,
+    paddingVertical: 6,
   },
-  flightCode: {
-    fontSize: 16,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-    letterSpacing: 0.5,
-    color: colors.text.primary,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  statusBadgeText: {
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  routeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  airport: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    fontVariant: ['tabular-nums'],
-    letterSpacing: 0.5,
-  },
-  planeIcon: {
-    marginHorizontal: 8,
-  },
-  flightTimes: {
-    flexDirection: 'row',
-    gap: 16,
-  },
-  flightTimeColumn: {
+  legLine: {
     flex: 1,
+    minWidth: 0,
   },
-  flightTimeLabel: {
-    fontSize: 11,
-    color: colors.text.muted,
-    textTransform: 'uppercase',
-    marginBottom: 2,
+  legDetails: {
+    paddingBottom: 6,
   },
-  flightTime: {
-    fontSize: 13,
-    color: colors.text.primary,
-  },
-  pickedUpBadge: {
+  pickedUp: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: colors.gray[200],
+    paddingVertical: 6,
   },
-  pickedUpText: {
-    fontSize: 13,
-    color: colors.green,
-    fontWeight: '500',
-  },
-  noteInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-    marginBottom: 12,
-  },
-  noteInput: {
-    flex: 1,
-    backgroundColor: colors.background,
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 14,
-    color: colors.text.primary,
-    minHeight: 44,
-    maxHeight: 100,
-  },
-  noteSubmitButton: {
-    backgroundColor: colors.red,
-    width: 44,
-    height: 44,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  noteSubmitButtonDisabled: {
-    opacity: 0.5,
+  notesBody: {
+    gap: 12,
   },
   notesLoading: {
-    padding: 16,
-    alignItems: 'center',
-  },
-  noNotesText: {
-    fontSize: 14,
-    color: colors.text.muted,
-    textAlign: 'center',
-    paddingVertical: 12,
-  },
-  noteCard: {
-    backgroundColor: colors.background,
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 8,
-  },
-  noteCardRestricted: {
-    backgroundColor: colors.orange + '10',
-    borderWidth: 1,
-    borderColor: colors.orange + '30',
-  },
-  noteHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 6,
-  },
-  noteAuthorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flex: 1,
-  },
-  noteAuthor: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.text.primary,
-  },
-  restrictedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.orange,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    gap: 3,
-  },
-  restrictedBadgeText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: colors.white,
-  },
-  noteTime: {
-    fontSize: 11,
-    color: colors.text.muted,
-  },
-  noteContent: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    lineHeight: 20,
-  },
-  visaBox: {
-    marginTop: 8,
-    padding: 10,
-    borderRadius: 8,
-    backgroundColor: colors.gray[100],
-  },
-  visaTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.gray[700],
-    textTransform: 'uppercase',
-    marginBottom: 4,
-  },
-  consentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray[100],
   },
-  consentType: { fontSize: 14, fontWeight: '600', color: colors.text.primary },
-  consentMeta: { fontSize: 12, color: colors.text.secondary, marginTop: 2 },
-  consentBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 },
-  consentBadgeText: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
-  guardianCard: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray[100],
+  note: {
+    gap: 2,
   },
-  guardianHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  guardianName: { fontSize: 15, fontWeight: '600', color: colors.text.primary },
-  primaryBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: colors.red },
-  primaryBadgeText: { fontSize: 9, fontWeight: '800', color: colors.white, letterSpacing: 0.5 },
-  guardianStatusBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  guardianStatusText: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase' },
-  guardianMeta: { fontSize: 12, color: colors.text.secondary, marginTop: 2 },
-  guardianLink: { fontSize: 13, color: colors.status.info, marginTop: 2 },
-  permRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 },
-  permChip: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  permChipOn: { backgroundColor: colors.green + '15' },
-  permChipOff: { backgroundColor: colors.red + '15' },
-  permChipText: { fontSize: 10, fontWeight: '700' },
-  guardianContactsList: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.gray[100] },
-  guardianContactsTitle: { fontSize: 11, fontWeight: '700', color: colors.gray[600], textTransform: 'uppercase', marginBottom: 4 },
-  guardianContact: { marginTop: 4 },
-  guardianContactName: { fontSize: 13, fontWeight: '600', color: colors.text.primary },
+  noteMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  noteMetaText: {
+    flexShrink: 1,
+  },
+  addNoteButton: {
+    alignSelf: 'flex-start',
+  },
 });

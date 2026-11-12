@@ -1,0 +1,48 @@
+diff --git a/node_modules/react-native-bottom-tabs/android/src/main/java/com/rcttabview/RCTTabView.kt b/node_modules/react-native-bottom-tabs/android/src/main/java/com/rcttabview/RCTTabView.kt
+index 66de5d2..77c3000 100644
+--- a/node_modules/react-native-bottom-tabs/android/src/main/java/com/rcttabview/RCTTabView.kt
++++ b/node_modules/react-native-bottom-tabs/android/src/main/java/com/rcttabview/RCTTabView.kt
+@@ -100,22 +100,32 @@ class ReactBottomNavigationView(context: Context) : LinearLayout(context) {
+     uiModeConfiguration = resources.configuration.uiMode
+ 
+     post {
+-      addOnLayoutChangeListener { _, left, top, right, bottom,
++      addOnLayoutChangeListener { _, _, _, _, _,
+                                   _, _, _, _ ->
+-        val newWidth = right - left
+-        val newHeight = bottom - top
+-
+         // Notify about tab bar height.
+         onTabBarMeasuredListener?.invoke(Utils.convertPixelsToDp(context, bottomNavigation.height).toInt())
++      }
++      // The screens are the layout holder's size, which also changes when only
++      // the tab bar does (its bottom inset padding drops once the keyboard has
++      // gone) while this view's own size stays the same. Comparing this view's
++      // size missed that and left the screens short until a tab switch.
++      layoutHolder.addOnLayoutChangeListener { _, left, top, right, bottom,
++                                               _, _, _, _ ->
++        reportLayoutHolderSize(right - left, bottom - top)
++      }
++      // It may have settled before this listener was added.
++      reportLayoutHolderSize(layoutHolder.width, layoutHolder.height)
++    }
++  }
+ 
+-        if (newWidth != lastReportedSize?.width || newHeight != lastReportedSize?.height) {
+-          val dpWidth = Utils.convertPixelsToDp(context, layoutHolder.width)
+-          val dpHeight = Utils.convertPixelsToDp(context, layoutHolder.height)
++  private fun reportLayoutHolderSize(newWidth: Int, newHeight: Int) {
++    if (newWidth == 0 || newHeight == 0) return
++    if (newWidth != lastReportedSize?.width || newHeight != lastReportedSize?.height) {
++      val dpWidth = Utils.convertPixelsToDp(context, newWidth)
++      val dpHeight = Utils.convertPixelsToDp(context, newHeight)
+ 
+-          onNativeLayoutListener?.invoke(dpWidth, dpHeight)
+-          lastReportedSize = Size(newWidth, newHeight)
+-        }
+-      }
++      onNativeLayoutListener?.invoke(dpWidth, dpHeight)
++      lastReportedSize = Size(newWidth, newHeight)
+     }
+   }
+ 

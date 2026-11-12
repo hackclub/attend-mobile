@@ -1,65 +1,45 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  RefreshControl,
-  Alert,
-  ImageBackground,
-  Image,
-  ActivityIndicator,
-  Linking,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
-import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
+import { eventPhaseLabel } from '../services/eventDates';
+import { groupTickets, ticketBadge } from '../services/eventSwitcher';
 import { VersionFooter } from '../components/VersionFooter';
-import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
-import type { RootStackParamList, Ticket } from '../types';
+import { AccountButton } from '../components/AccountSheet';
+import { EventCard } from '../components/EventBanner';
+import { useTheme } from '../theme';
+import { EmptyState, ErrorView, GroupToggle, LoadingView, QuickActionTile, Screen } from '../components/ui';
+import type { AppStackParamList, Ticket } from '../types';
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ParticipantMain'>;
+type NavigationProp = NativeStackNavigationProp<AppStackParamList, 'MyTickets'>;
 
-// Dates are shown in the event's timezone, not the device's, so the day
-// doesn't shift for travellers.
-function formatDate(dateString?: string, timezone?: string) {
-  if (!dateString) return '';
-  const opts = { month: 'short', day: 'numeric', year: 'numeric' } as const;
-  try {
-    return new Date(dateString).toLocaleDateString(undefined, {
-      ...opts,
-      timeZone: timezone || undefined,
-    });
-  } catch {
-    try {
-      return new Date(dateString).toLocaleDateString(undefined, opts);
-    } catch {
-      return '';
-    }
-  }
-}
+const joinMeta = (...parts: (string | null | undefined)[]) => parts.filter(Boolean).join(' · ');
 
+/**
+ * A participant's home: every ticket as an event card (even just one),
+ * upcoming first and ended ones collapsed under Past. A card pushes that
+ * event's pass.
+ */
 export function MyTicketsScreen() {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
+  const { tokens, type, spacing } = useTheme();
   const navigation = useNavigation<NavigationProp>();
-  const { state, logout } = useApp();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pastOpen, setPastOpen] = useState(false);
 
   const loadTickets = useCallback(async () => {
     try {
       const fresh = await api.getMyTickets();
       setTickets(fresh);
+      setLoadFailed(false);
     } catch (error) {
       // Keep whatever we already have on screen; a transient error shouldn't
       // wipe the list.
       console.error('Failed to load tickets:', error);
+      setLoadFailed(true);
     } finally {
       setIsLoading(false);
     }
@@ -69,13 +49,13 @@ export function MyTicketsScreen() {
     loadTickets();
   }, [loadTickets]);
 
-  // The unread count on the Messages button, refreshed whenever the list is
+  // The unread count on the Messages tile, refreshed whenever the list is
   // back in view (reading a message clears it).
   const [unread, setUnread] = useState(0);
   useFocusEffect(
     useCallback(() => {
-      api.getInbox().then(page => setUnread(page.unread_count)).catch(() => {});
-    }, [])
+      api.getInbox().then((page) => setUnread(page.unread_count)).catch(() => {});
+    }, []),
   );
 
   const handleRefresh = useCallback(async () => {
@@ -84,267 +64,90 @@ export function MyTicketsScreen() {
     setIsRefreshing(false);
   }, [loadTickets]);
 
-  const handleLogout = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: logout },
-    ]);
-  };
+  // Sign out, appearance and notifications live in the shared Account sheet.
 
-  const renderTicket = ({ item }: { item: Ticket }) => {
-    const event = item.event;
-    const hasBanner = !!event.banner_url;
-    const startDate = formatDate(event.starts_at, event.timezone);
+  const { upcoming, past } = useMemo(() => groupTickets(tickets), [tickets]);
 
-    const content = (
-      <>
-        <View style={styles.cardHeader}>
-          {event.logo_url ? (
-            <Image
-              source={{ uri: event.logo_url }}
-              style={[styles.logo, hasBanner && styles.logoOnBanner]}
-              resizeMode="cover"
-            />
-          ) : null}
-          <Text style={[styles.eventName, hasBanner && styles.textOnBanner]}>{event.name}</Text>
-        </View>
-
-        {startDate ? (
-          <Text style={[styles.meta, hasBanner && styles.subTextOnBanner]}>{startDate}</Text>
-        ) : null}
-        {event.location_city ? (
-          <Text style={[styles.meta, hasBanner && styles.subTextOnBanner]}>{event.location_city}</Text>
-        ) : null}
-
-        <View style={styles.badgeRow}>
-          {item.checked_in ? (
-            <View style={[styles.pill, styles.pillCheckedIn]}>
-              <Text style={styles.pillCheckedInText}>Checked in</Text>
-            </View>
-          ) : (
-            <View style={[styles.pill, hasBanner ? styles.pillOnBanner : styles.pillNeutral]}>
-              <Text style={[styles.pillText, hasBanner && styles.textOnBanner]}>
-                {item.display_status}
-              </Text>
-            </View>
-          )}
-          {/* Unconfirmed tickets prompt the attendee to finish registration. */}
-          {!item.confirmed && (
-            <View style={styles.finishHint}>
-              <Text style={[styles.finishHintText, hasBanner && styles.subTextOnBanner]}>
-                Tap to finish registration
-              </Text>
-              <Ionicons
-                name="arrow-forward"
-                size={13}
-                color={hasBanner ? 'rgba(255,255,255,0.9)' : colors.text.muted}
-              />
-            </View>
-          )}
-        </View>
-      </>
-    );
-
-    // Confirmed → open the native ticket. Unconfirmed → send them to the
-    // onboarding website to complete their registration.
-    const handlePress = () => {
-      if (item.confirmed) {
-        navigation.navigate('TicketDetail', { ticket: item });
-      } else {
-        Linking.openURL(item.onboarding_url).catch(() => {
-          Alert.alert('Something went wrong', 'Could not open registration. Please try again.');
-        });
-      }
-    };
-
-    return (
-      <TouchableOpacity style={styles.cardWrapper} activeOpacity={0.75} onPress={handlePress}>
-        {hasBanner ? (
-          <ImageBackground
-            source={{ uri: event.banner_url }}
-            style={styles.card}
-            imageStyle={styles.cardImage}
-          >
-            <View style={styles.bannerScrim} />
-            {content}
-          </ImageBackground>
-        ) : (
-          <View style={[styles.card, styles.cardPlain]}>{content}</View>
-        )}
-      </TouchableOpacity>
-    );
-  };
+  // Every ticket opens its pass; an unfinished registration's pass says so
+  // and links to the onboarding site.
+  const card = (ticket: Ticket) => (
+    <EventCard
+      key={ticket.id}
+      event={ticket.event}
+      meta={joinMeta(eventPhaseLabel(ticket.event, undefined, 'in'), ticket.event.location_city)}
+      badge={ticketBadge(ticket)}
+      onPress={() => navigation.navigate('TicketDetail', { ticket })}
+      accessibilityHint="Opens your pass"
+    />
+  );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          {/* Staff reach this screen by pushing onto the stack, so offer a way
-              back to the scanner app. Participant-only users land here as the
-              root and have nothing to go back to. */}
-          {navigation.canGoBack() && (
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={styles.backButton}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityLabel="Back"
-            >
-              <Ionicons name="chevron-back" size={26} color={colors.text.accent} />
-            </TouchableOpacity>
-          )}
-          <View>
-            <Text style={styles.headerTitle}>Hack Club Attend</Text>
-            <Text style={styles.headerSubtitle}>
-              {state.auth.user?.name || state.auth.user?.email}
-            </Text>
-          </View>
+    <>
+      <Screen
+        title="My tickets"
+        action={<AccountButton />}
+        refreshing={isRefreshing}
+        onRefresh={handleRefresh}
+      >
+        <View style={styles.quickActions}>
+          <QuickActionTile
+            icon="mail"
+            tint="sky"
+            label="Messages"
+            subLabel={unread > 0 ? `${unread} unread` : undefined}
+            onPress={() => navigation.navigate('Inbox')}
+          />
+          <QuickActionTile
+            icon="shield-exclamation"
+            tint="red"
+            label="Report an incident"
+            onPress={() => navigation.navigate('IncidentReport')}
+          />
         </View>
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-          <Text style={styles.logoutText}>Sign Out</Text>
-        </TouchableOpacity>
-      </View>
 
-      <View style={styles.quickActions}>
-        <TouchableOpacity
-          style={styles.quickAction}
-          onPress={() => navigation.navigate('Inbox')}
-          accessibilityRole="button"
-          accessibilityLabel={unread ? `Messages, ${unread} unread` : 'Messages'}
-        >
-          <Ionicons name="mail-outline" size={16} color={colors.gray[700]} />
-          <Text style={styles.quickActionText}>Messages</Text>
-          {unread > 0 ? (
-            <View style={styles.unreadBadge}>
-              <Text style={styles.unreadText}>{unread}</Text>
-            </View>
-          ) : null}
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.quickAction}
-          onPress={() => navigation.navigate('IncidentReport')}
-          accessibilityRole="button"
-        >
-          <Ionicons name="alert-circle-outline" size={16} color={colors.gray[700]} />
-          <Text style={styles.quickActionText}>Report an incident</Text>
-        </TouchableOpacity>
-      </View>
-
-      <FlatList
-        data={tickets}
-        renderItem={renderTicket}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
-        refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.text.accent} />
-        }
-        ListFooterComponent={<VersionFooter />}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            {isLoading ? (
-              <ActivityIndicator color={colors.text.accent} />
-            ) : (
-              <>
-                <Text style={styles.emptyTitle}>No tickets yet</Text>
-                <Text style={styles.emptyText}>
-                  When you register for an event, your ticket will appear here.
-                </Text>
-              </>
-            )}
+        {upcoming.length > 0 ? (
+          <View style={{ gap: spacing.md }}>
+            <Text style={[type.label, { color: tokens.text2 }]} accessibilityRole="header">
+              Upcoming
+            </Text>
+            {upcoming.map(card)}
           </View>
-        }
-      />
-    </SafeAreaView>
+        ) : null}
+
+        {past.length > 0 ? (
+          <View style={{ gap: spacing.md }}>
+            <GroupToggle
+              label="Past"
+              count={past.length}
+              open={pastOpen}
+              onToggle={() => setPastOpen((open) => !open)}
+            />
+            {pastOpen ? past.map(card) : null}
+          </View>
+        ) : null}
+
+        {tickets.length > 0 ? null : isLoading ? (
+          <LoadingView />
+        ) : loadFailed ? (
+          <ErrorView
+            title="Couldn’t load your tickets"
+            message="Check your connection and try again."
+            onRetry={() => void handleRefresh()}
+          />
+        ) : (
+          <EmptyState
+            icon="ticket"
+            title="No tickets yet"
+            message="When you register for an event, your ticket will appear here."
+          />
+        )}
+
+        <VersionFooter />
+      </Screen>
+    </>
   );
 }
 
-const makeStyles = (colors: ThemeColors, theme: Theme) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    backgroundColor: colors.glass.medium,
-  },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  backButton: { marginRight: 6, marginLeft: -6 },
-  headerTitle: { fontSize: 24, fontWeight: 'bold', color: colors.text.primary },
-  headerSubtitle: { fontSize: 14, color: colors.text.secondary, marginTop: 2 },
-  logoutButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: colors.glass.light,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.glass.border,
-  },
-  logoutText: { fontSize: 14, color: colors.text.accent, fontWeight: '500' },
-  quickActions: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
-  quickAction: {
-    minHeight: 38,
-    paddingHorizontal: 14,
-    borderRadius: 999,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.gray[200],
-  },
-  quickActionText: { fontSize: 14, fontWeight: '600', color: colors.gray[700] },
-  unreadBadge: {
-    minWidth: 20,
-    paddingHorizontal: 6,
-    borderRadius: 999,
-    alignItems: 'center',
-    backgroundColor: colors.red,
-  },
-  unreadText: { fontSize: 12, fontWeight: '700', color: colors.white },
-  list: { padding: 16, paddingBottom: 100 },
-  cardWrapper: {
-    borderRadius: 16,
-    marginBottom: 12,
-    overflow: 'hidden',
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08 * theme.shadowOpacity,
-    shadowRadius: 12,
-    elevation: 3 * theme.elevation,
-    borderWidth: 1,
-    borderColor: colors.glass.border,
-  },
-  card: { padding: 16 },
-  cardPlain: { backgroundColor: colors.glass.dark },
-  cardImage: { borderRadius: 16 },
-  bannerScrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.5)' },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  logo: { width: 36, height: 36, borderRadius: 8, marginRight: 10, backgroundColor: colors.white },
-  logoOnBanner: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.6)' },
-  eventName: { fontSize: 18, fontWeight: '600', color: colors.text.primary, flex: 1 },
-  meta: { fontSize: 14, color: colors.text.secondary, marginBottom: 2 },
-  textOnBanner: {
-    color: colors.white,
-    textShadowColor: 'rgba(0,0,0,0.6)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  subTextOnBanner: {
-    color: 'rgba(255,255,255,0.9)',
-    textShadowColor: 'rgba(0,0,0,0.6)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  badgeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
-  finishHint: { flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 10 },
-  finishHintText: { fontSize: 12, fontWeight: '500', color: colors.text.muted },
-  pill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999 },
-  pillNeutral: { backgroundColor: colors.gray[100] },
-  pillOnBanner: { backgroundColor: 'rgba(255,255,255,0.2)' },
-  pillText: { fontSize: 12, fontWeight: '600', color: colors.text.secondary },
-  pillCheckedIn: { backgroundColor: colors.green },
-  pillCheckedInText: { fontSize: 12, fontWeight: '700', color: colors.white },
-  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 64, paddingHorizontal: 32 },
-  emptyTitle: { fontSize: 18, fontWeight: '600', color: colors.text.primary, marginBottom: 6 },
-  emptyText: { fontSize: 14, color: colors.text.secondary, textAlign: 'center', lineHeight: 20 },
+const styles = StyleSheet.create({
+  quickActions: { flexDirection: 'row', gap: 12 },
 });

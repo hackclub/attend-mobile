@@ -4,7 +4,6 @@ import type { IdCheckPayload } from './idCheck/verdict';
 import type {
   TravelCalendarData,
   TravelCalendarEntry,
-  ApiResponse,
   BroadcastMessage,
   CreateScanOptions,
   CreateScanResponse,
@@ -129,7 +128,11 @@ class ApiClient {
       } catch {
         // If the response is HTML (like a Rails error page), show a generic message
         if (errorBody.includes('<!DOCTYPE') || errorBody.includes('<html')) {
-          console.error(`[API] Server error ${response.status} at ${endpoint}:`, errorBody);
+          // A Rails error page can echo request params, so only print it in
+          // development builds.
+          if (__DEV__) {
+            console.error(`[API] Server error ${response.status} at ${endpoint}:`, errorBody);
+          }
           message = `Server error (${response.status})`;
         } else if (errorBody && errorBody.length < 200) {
           message = errorBody;
@@ -168,7 +171,6 @@ class ApiClient {
   }
 
   async exchangeCodeForToken(code: string, redirectUri?: string, codeVerifier?: string): Promise<{ token: string; user: User }> {
-    console.log('Exchanging code for token:', { code: code.substring(0, 10) + '...', redirectUri });
     return this.request<{ token: string; user: User }>('/api/v1/session', {
       method: 'POST',
       body: JSON.stringify({ 
@@ -190,6 +192,11 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(body),
     });
+  }
+
+  // Revokes the bearer token on the server (`resource :session` destroy).
+  async deleteSession(timeoutMs?: number): Promise<void> {
+    await this.request('/api/v1/session', { method: 'DELETE' }, timeoutMs);
   }
 
   async getCurrentUser(): Promise<User> {
@@ -218,17 +225,11 @@ class ApiClient {
 
   async getEvents(): Promise<Event[]> {
     const response = await this.request<{ events: Event[] }>('/api/v1/events');
-    console.log('Events response:', response);
     const events = response.events || [];
     // The payload carries each event's role, so roster access can be settled
     // before any screen asks for participants.
     forbiddenParticipants.applyEventRoles(events);
     return events;
-  }
-
-  async getEvent(eventId: string): Promise<Event> {
-    const response = await this.request<ApiResponse<Event>>(`/api/v1/events/${eventId}`);
-    return response.data;
   }
 
   async getParticipants(eventId: string, updatedSince?: string): Promise<ParticipantsSyncPage> {
@@ -238,7 +239,6 @@ class ApiClient {
         `/api/v1/events/${eventId}/participants${query}`
       )
     );
-    console.log('Participants response sample:', response.participants?.[0]);
     return {
       participants: response.participants ?? [],
       synced_at: response.synced_at ?? '',
@@ -341,14 +341,14 @@ class ApiClient {
     });
   }
 
-  async validateToken(): Promise<boolean> {
+  /** The signed-in user from /me, or null when the token is invalid (401). */
+  async validateToken(): Promise<User | null> {
     try {
-      await this.getCurrentUser();
-      return true;
+      return await this.getCurrentUser();
     } catch (error) {
-      // If it's a 401, token is invalid - return false
+      // If it's a 401, token is invalid - return null
       if (error instanceof ApiError && error.isUnauthorized) {
-        return false;
+        return null;
       }
       // For network errors or other issues, rethrow so caller can decide
       throw error;
@@ -370,11 +370,14 @@ class ApiClient {
     });
   }
 
-  async unregisterPushToken(token: string): Promise<void> {
-    await this.request(`/api/v1/push_tokens`, {
-      method: 'DELETE',
-      body: JSON.stringify({ token }),
-    });
+  // The server route is `resources :push_tokens, param: :token`, so the
+  // token goes in the path; a DELETE to the bare collection has no route.
+  async unregisterPushToken(token: string, timeoutMs?: number): Promise<void> {
+    await this.request(
+      `/api/v1/push_tokens/${encodeURIComponent(token)}`,
+      { method: 'DELETE' },
+      timeoutMs
+    );
   }
 
   async getParticipantNotes(eventId: string, participantEventId: string): Promise<ParticipantNote[]> {

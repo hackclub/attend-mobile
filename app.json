@@ -5,10 +5,11 @@
     "owner": "hack-club",
     "version": "1.0.0",
     "icon": "./assets/icon.png",
+    "primaryColor": "#EC3750",
     "scheme": "attend",
     "userInterfaceStyle": "automatic",
     "runtimeVersion": {
-      "policy": "appVersion"
+      "policy": "fingerprint"
     },
     "updates": {
       "url": "https://u.expo.dev/1eae2e71-70e1-49b2-8b6a-6aeda7e22b93"
@@ -17,6 +18,7 @@
       "**/*"
     ],
     "ios": {
+      "icon": "./assets/Attend.icon",
       "supportsTablet": true,
       "bundleIdentifier": "com.hackclub.attend",
       "entitlements": {
@@ -52,6 +54,7 @@
       }
     },
     "android": {
+      "allowBackup": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#EC3750",
@@ -59,9 +62,13 @@
       },
       "package": "com.hackclub.attend",
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
-      ]
+        "android.permission.CAMERA"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_MEDIA_IMAGES"
+      ],
+      "predictiveBackGestureEnabled": true
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -70,22 +77,27 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/splash.png",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 120,
           "resizeMode": "contain",
           "backgroundColor": "#EC3750",
-          "enableFullScreenImage_legacy": true
+          "dark": {
+            "image": "./assets/splash-icon-dark.png",
+            "backgroundColor": "#0F1115"
+          }
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Attend to access your camera to scan QR codes and the code on ID documents."
+          "cameraPermission": "Allow Attend to access your camera to scan QR codes and the code on ID documents.",
+          "recordAudioAndroid": false
         }
       ],
       [
         "expo-notifications",
         {
-          "icon": "./assets/icon.png",
+          "icon": "./assets/notification-icon.png",
           "color": "#EC3750"
         }
       ],
@@ -113,16 +125,41 @@
           "selectIdentifiers": ["A0000002471001"]
         }
       ],
-      "expo-audio",
+      [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": false,
+          "recordAudioAndroid": false
+        }
+      ],
       [
         "expo-image-picker",
         {
           "photosPermission": "Attend lets you attach photos to a confidential incident report.",
-          "cameraPermission": false,
+          "cameraPermission": "Allow Attend to access your camera to scan QR codes and the code on ID documents.",
           "microphonePermission": false
         }
       ],
-      "./plugins/withScannerOrientationFix"
+      [
+        "react-native-bottom-tabs",
+        {
+          "theme": "material3"
+        }
+      ],
+      "./plugins/withAndroidBrandTheme",
+      "./plugins/withScannerOrientationFix",
+      "./plugins/withKotlinJvmTargetFix",
+      "./plugins/withAppShortcuts",
+      "./plugins/withKeepRuntimeResources",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {

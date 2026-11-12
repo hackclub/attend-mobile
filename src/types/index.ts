@@ -1,3 +1,5 @@
+import type { NavigatorScreenParams } from '@react-navigation/native';
+
 export interface User {
   id: string;
   email: string;
@@ -469,42 +471,106 @@ export interface AppState {
   participants: Map<string, Participant[]>;
 }
 
+type ParticipantDetailParams =
+  // `id` (a participant_event id) comes from the attend://participant/:id
+  // deep link; the screen looks it up once the gate is unlocked.
+  { participant: Participant } | { id: string };
+
+/**
+ * The root stack: the homes (the organizer tabs, and the attendee's tickets
+ * and passes) and whatever is presented over every tab: the ID check, kiosk
+ * mode and the form sheets (the switcher among them).
+ */
 export type RootStackParamList = {
   Login: undefined;
-  Main: undefined;
-  ParticipantMain: undefined;
-  ParticipantDetail: { participant: Participant };
-  TicketDetail: { ticket: Ticket };
-  IncidentList: undefined;
-  IncidentDetail: { incidentId: string };
-  IncidentForm: { incidentId?: string };
-  MessageList: undefined;
-  MessageDetail: { messageId: string };
-  MessageCompose: { messageId?: string };
-  MessagePreview: { messageId: string };
-  Inbox: undefined;
-  InboxMessage: { messageId: string };
-  IncidentReport: undefined;
+  Main: NavigatorScreenParams<MainTabParamList> | undefined;
+  ParticipantMain: NavigatorScreenParams<PassStackParamList> | undefined;
   IdCheck: { participant: Participant; eventId: string };
-  KioskSetup: { scanContextId?: string; scanContextName?: string };
   Kiosk: {
     pin: string;
     biometricUnlock: boolean;
+    /** The camera attendees scan at, chosen in kiosk setup. Front by default. */
+    facing?: 'front' | 'back';
+    /** Android: pin the screen to Attend while kiosk mode runs. On by default. */
+    pinScreen?: boolean;
     scanContextId?: string;
     scanContextName?: string;
   };
+  // Form sheets (navigation/sheets). Their data comes through a sheet
+  // channel, not params.
+  AccountSheet: undefined;
+  ScanContextSheet: undefined;
+  ScannerSearchSheet: undefined;
+  FilterSheet: undefined;
+  OptionsSheet: undefined;
+  MultiSelectSheet: undefined;
+  LinkSheet: undefined;
+  KioskSetupSheet: undefined;
+  KioskUnlockSheet: undefined;
+  /** The dev UI gallery (attend://ui-gallery), only in EXPO_PUBLIC_UI_GALLERY=1 builds. */
+  UiGallery: undefined;
 };
 
+/** The organizer tabs. Each holds its own stack, so the tab bar stays put. */
 export type MainTabParamList = {
-  Events: undefined;
-  Scanner: undefined;
-  Search: undefined;
-  Travel: undefined;
+  Overview: NavigatorScreenParams<OverviewStackParamList> | undefined;
+  Scanner: NavigatorScreenParams<ScannerStackParamList> | undefined;
+  Search: NavigatorScreenParams<PeopleStackParamList> | undefined;
+  Travel: NavigatorScreenParams<TravelStackParamList> | undefined;
 };
 
-export type ParticipantTabParamList = {
-  MyTickets: undefined;
+export type OverviewStackParamList = {
+  EventHome: undefined;
+  IncidentList: undefined;
+  IncidentDetail: { incidentId: string };
+  IncidentForm: { incidentId?: string };
+  IncidentReport: undefined;
+  MessageList: undefined;
+  /** notice: the server's confirmation of an action taken on the previous screen. */
+  MessageDetail: { messageId: string; notice?: string };
+  MessageCompose: { messageId?: string };
+  MessagePreview: { messageId: string };
 };
+
+export type ScannerStackParamList = {
+  ScannerHome: undefined;
+  ParticipantDetail: ParticipantDetailParams;
+};
+
+export type PeopleStackParamList = {
+  PeopleHome: undefined;
+  ParticipantDetail: ParticipantDetailParams;
+};
+
+export type TravelStackParamList = {
+  TravelHome: undefined;
+  ParticipantDetail: ParticipantDetailParams;
+};
+
+/**
+ * The attendee's stack: their ticket list, or (for an organizer who picked
+ * an event they attend) a pass as the bottom screen.
+ */
+export type PassStackParamList = {
+  MyTickets: undefined;
+  TicketDetail: { ticket: Ticket };
+  Inbox: undefined;
+  InboxMessage: { messageId: string };
+  IncidentReport: undefined;
+};
+
+/**
+ * Every screen in every navigator, by name, for typing a screen's own route
+ * and navigation. Navigating to a screen outside the current stack goes
+ * through its navigator (see src/navigation/routes.ts).
+ */
+export type AppStackParamList = RootStackParamList &
+  MainTabParamList &
+  OverviewStackParamList &
+  ScannerStackParamList &
+  PeopleStackParamList &
+  TravelStackParamList &
+  PassStackParamList;
 
 export type QRCodeData = {
   type: 'participant';

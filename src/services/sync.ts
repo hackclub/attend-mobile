@@ -3,6 +3,8 @@ import { asyncStorage, STORAGE_KEYS } from './storage';
 import { api } from './api';
 import { forbiddenParticipants } from './eventAccess';
 import { mergeParticipant, mergeParticipants, type ParticipantUpdate } from './participantIndex';
+import { PARTICIPANT_CACHE_VERSION, slimParticipant, slimParticipants } from './participantCache';
+import { scanQueue } from './scanQueue';
 import type { Event, Participant, RemoteScan, ScanContext } from '../types';
 
 // Upper bound on pages per sync pass; at 500 scans/page this covers 50k
@@ -22,6 +24,50 @@ class SyncService {
   private participantCacheQueues = new Map<string, Promise<unknown>>();
   private cacheGeneration = 0;
   private cacheWriteQueue: Promise<void> = Promise.resolve();
+  private participantCacheMigration: Promise<void> | null = null;
+  // Each event's slim roster, as last read from or written to storage, so
+  // reads after the first skip storage and JSON parsing.
+  private rosters = new Map<string, Participant[]>();
+
+  constructor() {
+    // Queued scans feed pendingScans, and a scan confirmed by a later flush
+    // updates the cached roster just like a live one.
+    scanQueue.subscribe(event => {
+      if (event.type === 'changed') {
+        void this.notifyListeners().catch(() => undefined);
+      } else if (event.type === 'confirmed') {
+        void this.cacheConfirmedParticipant(event.eventId, event.response.participant)
+          .catch(error => console.warn('[Sync] Failed to cache flushed scan participant:', error));
+      }
+    });
+  }
+
+  /**
+   * Re-slims rosters written by builds that cached every participant field.
+   * Runs once per install (tracked by a version key) before any roster read
+   * or write, so a fat cache never survives an upgrade.
+   */
+  private migrateParticipantCache(): Promise<void> {
+    this.participantCacheMigration ??= (async () => {
+      const version = await asyncStorage.get<number>(STORAGE_KEYS.PARTICIPANT_CACHE_VERSION);
+      if (version === PARTICIPANT_CACHE_VERSION) return;
+      const keys = await asyncStorage.getAllKeys();
+      for (const key of keys) {
+        if (!key.startsWith('participants_')) continue;
+        const cached = await asyncStorage.get<Participant[]>(key);
+        if (Array.isArray(cached)) {
+          await asyncStorage.set(key, slimParticipants(cached));
+        } else {
+          await asyncStorage.remove(key);
+        }
+      }
+      await asyncStorage.set(STORAGE_KEYS.PARTICIPANT_CACHE_VERSION, PARTICIPANT_CACHE_VERSION);
+    })().catch(error => {
+      this.participantCacheMigration = null;
+      console.warn('[Sync] Participant cache migration failed:', error);
+    });
+    return this.participantCacheMigration;
+  }
 
   getCacheGeneration(): number {
     return this.cacheGeneration;
@@ -55,13 +101,16 @@ class SyncService {
   }
 
   async getStatus(): Promise<SyncStatus> {
-    const netInfo = await NetInfo.fetch();
-    const lastSyncAt = await asyncStorage.get<string>(STORAGE_KEYS.LAST_SYNC);
+    const [netInfo, lastSyncAt, pendingScans] = await Promise.all([
+      NetInfo.fetch(),
+      asyncStorage.get<string>(STORAGE_KEYS.LAST_SYNC),
+      scanQueue.getPendingCount(),
+    ]);
 
     return {
       isOnline: netInfo.isConnected ?? false,
       isSyncing: this.isSyncing,
-      pendingScans: 0,
+      pendingScans,
       lastSyncAt,
     };
   }
@@ -91,16 +140,44 @@ class SyncService {
     return events;
   }
 
+  private rememberRoster(eventId: string, generation: number, participants: Participant[]): void {
+    if (generation === this.cacheGeneration) this.rosters.set(eventId, participants);
+  }
+
+  private async writeRoster(
+    eventId: string,
+    generation: number,
+    participants: Participant[]
+  ): Promise<void> {
+    await asyncStorage.set(STORAGE_KEYS.PARTICIPANTS(eventId), participants);
+    this.rememberRoster(eventId, generation, participants);
+  }
+
   async cacheParticipants(eventId: string, participants: Participant[]): Promise<void> {
     const generation = this.cacheGeneration;
     await this.enqueueParticipantCache(eventId, async () => {
+      await this.migrateParticipantCache();
       if (generation !== this.cacheGeneration) return;
-      await asyncStorage.set(STORAGE_KEYS.PARTICIPANTS(eventId), participants);
+      await this.writeRoster(eventId, generation, slimParticipants(participants));
     });
   }
 
+  /**
+   * The event's cached roster. Read from storage once, then kept in memory.
+   * Treat the array as read-only: it's shared until the next change.
+   */
   async getCachedParticipants(eventId: string): Promise<Participant[]> {
-    return (await asyncStorage.get<Participant[]>(STORAGE_KEYS.PARTICIPANTS(eventId))) ?? [];
+    const remembered = this.rosters.get(eventId);
+    if (remembered) return remembered;
+    const generation = this.cacheGeneration;
+    await this.migrateParticipantCache();
+    const cached = await asyncStorage.get<Participant[]>(STORAGE_KEYS.PARTICIPANTS(eventId));
+    // A write that landed while this read was in flight is newer.
+    const written = this.rosters.get(eventId);
+    if (written) return written;
+    const participants = Array.isArray(cached) ? slimParticipants(cached) : [];
+    this.rememberRoster(eventId, generation, participants);
+    return participants;
   }
 
   async cacheConfirmedParticipant(
@@ -123,7 +200,13 @@ class SyncService {
           )
         : [...cached, merged];
 
-      await asyncStorage.set(STORAGE_KEYS.PARTICIPANTS(eventId), participants);
+      // The rest of the roster is already slim.
+      const slimMerged = slimParticipant(merged);
+      await this.writeRoster(
+        eventId,
+        generation,
+        participants.map(participant => participant === merged ? slimMerged : participant)
+      );
       return merged;
     });
   }
@@ -139,8 +222,17 @@ class SyncService {
         return this.getCachedParticipants(eventId);
       }
       const latest = await this.getCachedParticipants(eventId);
-      const participants = mergeParticipants(latest, incoming);
-      await asyncStorage.set(STORAGE_KEYS.PARTICIPANTS(eventId), participants);
+      // Nothing changed since the last sync: keep the stored roster (and
+      // hand back the same array), only moving the cursor on.
+      let participants = latest;
+      if (incoming.length > 0) {
+        // Untouched entries are already slim and keep their identity.
+        const touched = new Set(incoming.map(item => item.participant_event_id));
+        participants = mergeParticipants(latest, incoming).map(item =>
+          touched.has(item.participant_event_id) ? slimParticipant(item) : item
+        );
+        await this.writeRoster(eventId, generation, participants);
+      }
       if (syncedAt) {
         await asyncStorage.set(
           STORAGE_KEYS.PARTICIPANT_SYNC_CURSOR(eventId),
@@ -179,10 +271,33 @@ class SyncService {
     event: Event | null,
     generation = this.cacheGeneration
   ): Promise<void> {
-    await this.enqueueCacheWrite(generation, () => event
-      ? asyncStorage.set(STORAGE_KEYS.CURRENT_EVENT, event)
-      : asyncStorage.remove(STORAGE_KEYS.CURRENT_EVENT)
-    );
+    await this.enqueueCacheWrite(generation, async () => {
+      if (!event) {
+        await asyncStorage.remove(STORAGE_KEYS.CURRENT_EVENT);
+        return;
+      }
+      await asyncStorage.set(STORAGE_KEYS.CURRENT_EVENT, event);
+      await this.pruneOtherEventScans(event.id);
+    });
+  }
+
+  /**
+   * The scan list is only kept to merge the next incremental pull into, so
+   * other events' copies are dead weight that would otherwise pile up, one
+   * per event ever opened. Their cursors go with them so coming back to an
+   * event starts with a full pull.
+   */
+  private async pruneOtherEventScans(currentEventId: string): Promise<void> {
+    const keep = new Set([
+      STORAGE_KEYS.SCANS(currentEventId),
+      STORAGE_KEYS.SCAN_SYNC_CURSOR(currentEventId),
+    ]);
+    const keys = await asyncStorage.getAllKeys();
+    for (const key of keys) {
+      if ((key.startsWith('scans_') || key.startsWith('scan_sync_cursor_')) && !keep.has(key)) {
+        await asyncStorage.remove(key);
+      }
+    }
   }
 
   async getCurrentEvent(): Promise<Event | null> {
@@ -245,7 +360,36 @@ class SyncService {
     return scans;
   }
 
-  async syncAll(eventId: string): Promise<void> {
+  /**
+   * Sends the signed-in user's queued scans for every event, waiting at most
+   * `timeoutMs` (the flush carries on in the background after that). Resolves
+   * with how many are still waiting.
+   */
+  async flushQueuedScans(timeoutMs?: number): Promise<number> {
+    const flush = scanQueue.flush();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      if (timeoutMs === undefined) {
+        await flush;
+      } else {
+        await Promise.race([
+          flush,
+          new Promise<void>(resolve => { timer = setTimeout(resolve, timeoutMs); }),
+        ]);
+      }
+    } catch (error) {
+      console.warn('[Sync] Scan queue flush failed:', error);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    return scanQueue.getPendingCount();
+  }
+
+  /**
+   * Sends every queued scan (all events, not just this one), then pulls the
+   * event list and, given an event, its roster and scans.
+   */
+  async syncAll(eventId?: string | null): Promise<void> {
     const generation = this.cacheGeneration;
     const netInfo = await NetInfo.fetch();
     if (!netInfo.isConnected) {
@@ -256,17 +400,24 @@ class SyncService {
     await this.notifyListeners();
 
     try {
+      // Push this device's offline scans before pulling, so the pulled
+      // roster and scan list already include them. The pending count covers
+      // every event, so the flush does too.
+      await this.flushQueuedScans();
+
       const [events] = await Promise.all([
         api.getEvents(),
-        this.refreshParticipants(eventId, generation),
+        eventId ? this.refreshParticipants(eventId, generation) : Promise.resolve([]),
       ]);
 
       await this.cacheEvents(events, generation);
 
-      try {
-        await this.syncScans(eventId, generation);
-      } catch (error) {
-        console.warn('[Sync] Scan sync failed:', error);
+      if (eventId) {
+        try {
+          await this.syncScans(eventId, generation);
+        } catch (error) {
+          console.warn('[Sync] Scan sync failed:', error);
+        }
       }
 
       await this.enqueueCacheWrite(generation, () =>
@@ -314,8 +465,21 @@ class SyncService {
     }
   }
 
-  async clear(): Promise<void> {
+  /**
+   * Sign-out: wipes every cached roster, scan list, event and the current
+   * event. Queued scans are deleted too unless `keepQueuedScans` is set (an
+   * expired session): then they stay, tagged with their user, and are sent
+   * only if that same user signs back in.
+   */
+  async clear({ keepQueuedScans = false }: { keepQueuedScans?: boolean } = {}): Promise<void> {
     this.cacheGeneration += 1;
+    if (keepQueuedScans) {
+      await scanQueue.setUser(null);
+    } else {
+      await scanQueue.clear().catch(error => console.warn('[Sync] Scan queue clear failed:', error));
+      await scanQueue.setUser(null);
+    }
+    this.rosters.clear();
     forbiddenParticipants.reset();
     await Promise.allSettled(this.participantCacheQueues.values());
     this.participantCacheQueues.clear();

@@ -114,6 +114,20 @@ export const secureStorage = {
     }
   },
 
+  /**
+   * Deletes the stored token and user but keeps the token in memory, so a
+   * sign-out can still revoke it with the server after the device no longer
+   * holds it: killing the app from here on leaves it signed out. Follow with
+   * clear().
+   */
+  async clearPersisted(): Promise<void> {
+    if (cachedToken === undefined) {
+      await this.getToken().catch(() => null);
+    }
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await SecureStore.deleteItemAsync(USER_KEY);
+  },
+
   async clear(): Promise<void> {
     try {
       await SecureStore.deleteItemAsync(TOKEN_KEY);
@@ -178,6 +192,11 @@ export const STORAGE_KEYS = {
   SCAN_CONTEXTS: (eventId: string) => `scan_contexts_${eventId}`,
   POWER_MODE_ENABLED: 'scanner_power_mode_enabled',
   PENDING_SCANS: 'pending_scans',
+  // Offline scan queue: scans not yet confirmed by the server, oldest first,
+  // and scans the server permanently rejected, kept for the user to see.
+  SCAN_QUEUE: (eventId: string) => `scan_queue_${eventId}`,
+  SCAN_QUEUE_FAILED: (eventId: string) => `scan_queue_failed_${eventId}`,
+  PARTICIPANT_CACHE_VERSION: 'participant_cache_version',
   LAST_SYNC: 'last_sync',
   EVENTS: 'cached_events',
   CURRENT_EVENT: 'current_event',

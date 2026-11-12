@@ -1,85 +1,80 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Linking, ImageBackground, Platform, Alert } from 'react-native';
+import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import {
+  Alert,
+  Linking,
+  Platform,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
-import QRCode from 'react-native-qrcode-svg';
+import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { BottomTabBarHeightContext } from 'react-native-bottom-tabs';
+import { AccountButton } from '../components/AccountSheet';
+import { eventBannerText } from '../components/EventBanner';
+import { BannerScrollView } from '../components/BannerScrollView';
+import { EventStatusCard } from '../components/EventStatusCard';
+import { TicketPass } from '../components/TicketPass';
 import { WalletButtons } from '../components/WalletButtons';
+import { resetRoot, rootNavigation } from '../navigation/rootNavigation';
+import type { PartialState } from '../navigation/routes';
+import { bannerKey } from '../navigation/switcherOverlay';
 import {
   startTicketActivity,
   stopTicketActivity,
   isTicketActivityRunning,
+  openLiveUpdateSettings,
 } from '../../modules/activity-controller/src';
 import { api } from '../services/api';
-import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
-import type { RootStackParamList, Ticket } from '../types';
+import { eventStatus } from '../services/eventStatus';
+import { useBannerStatusBar } from '../hooks/useBannerStatusBar';
+import { resolveTabBarInset } from '../hooks/useTabBarInset';
+import { typography, useTheme } from '../theme';
+import {
+  Button,
+  Container,
+  ListRow,
+  QuickActionTile,
+} from '../components/ui';
+import type { AppStackParamList, Ticket } from '../types';
 
-type TicketDetailRoute = RouteProp<RootStackParamList, 'TicketDetail'>;
+type TicketDetailRoute = RouteProp<AppStackParamList, 'TicketDetail'>;
+type Nav = NativeStackNavigationProp<AppStackParamList, 'TicketDetail'>;
 
-// Times are shown in the event's timezone (not the device's) so a 9:30 AM
-// Pacific event reads as 9:30 AM wherever you open the app.
-function formatStart(iso?: string, timezone?: string): { date: string; time: string } {
-  if (!iso) return { date: '', time: '' };
+const HOTLINE = '+18556254225';
+const HOTLINE_DISPLAY = '+1 (855) 625 4225';
+
+function formatFlightWhen(iso?: string): string {
+  if (!iso) return '';
   try {
-    const d = new Date(iso);
-    const timeZone = timezone || undefined;
-    return {
-      date: d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone }),
-      time: d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZone }),
-    };
+    return new Date(iso).toLocaleString(undefined, {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
   } catch {
-    // Invalid timezone identifiers throw — fall back to device-local.
-    try {
-      const d = new Date(iso);
-      return {
-        date: d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
-        time: d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }),
-      };
-    } catch {
-      return { date: '', time: '' };
-    }
+    return '';
   }
 }
 
-// Live "starts in" countdown. Returns a human label that ticks each second.
-function useCountdown(startsAt?: string, endsAt?: string): { label: string; sub: string } {
-  const [, force] = useState(0);
-  const ref = useRef<ReturnType<typeof setInterval> | null>(null);
-  useEffect(() => {
-    ref.current = setInterval(() => force((n) => n + 1), 1000);
-    return () => {
-      if (ref.current) clearInterval(ref.current);
-    };
-  }, []);
-
-  if (!startsAt) return { label: '', sub: '' };
-  const now = Date.now();
-  const start = new Date(startsAt).getTime();
-  const end = endsAt ? new Date(endsAt).getTime() : start;
-
-  if (now >= start && now <= end) return { label: 'Happening now', sub: 'Enjoy the event!' };
-  if (now > end) return { label: 'Event ended', sub: '' };
-
-  const diff = start - now;
-  const days = Math.floor(diff / 86400000);
-  const hours = Math.floor((diff % 86400000) / 3600000);
-  const mins = Math.floor((diff % 3600000) / 60000);
-  const secs = Math.floor((diff % 60000) / 1000);
-
-  let label: string;
-  if (days > 0) label = `${days}d ${hours}h ${mins}m`;
-  else if (hours > 0) label = `${hours}h ${mins}m ${secs}s`;
-  else label = `${mins}m ${secs}s`;
-
-  return { label, sub: 'until doors open' };
-}
-
+/**
+ * The attendee's pass for one event. Pushed from the ticket list, and also
+ * used as the top-level view of an event the user only attends, so it must
+ * not assume there is a screen to go back to or a tab bar below it.
+ */
 export function TicketDetailScreen() {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
+  const { tokens, spacing } = useTheme();
   const route = useRoute<TicketDetailRoute>();
-  const navigation = useNavigation();
+  const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
+  const { height: sceneHeight } = useWindowDimensions();
+  // Only present when this screen sits inside the native tab navigator.
+  const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
+  const bottomInset = Math.max(insets.bottom, resolveTabBarInset(tabBarHeight, sceneHeight));
   const [ticket, setTicket] = useState<Ticket>(route.params.ticket);
 
   useEffect(() => {
@@ -95,19 +90,51 @@ export function TicketDetailScreen() {
     };
   }, [route.params.ticket.id]);
 
+  const bannerStatusBar = useBannerStatusBar(tokens.shaded);
+
+  // "Now" for the status card and banner, moved on whenever the pass comes
+  // back into view. The unread count on the Messages tile refreshes then too
+  // (reading a message clears it).
+  const [now, setNow] = useState(() => new Date());
+  const [unread, setUnread] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      setNow(new Date());
+      api.getInbox().then((page) => setUnread(page.unread_count)).catch(() => {});
+    }, []),
+  );
+
   const event = ticket.event;
-  const start = formatStart(event.starts_at, event.timezone);
-  const countdown = useCountdown(event.starts_at, event.ends_at);
+  const banner = eventBannerText(event, 'Attendee', now);
   const venue = event.location_address || event.location_city || event.location_country || 'TBA';
+  const ended = eventStatus(event, { now })?.phase === 'ended';
+  // Pushed from the ticket list it has a way back; as an event's home (an
+  // event the user only attends) it has the account avatar instead.
+  const canGoBack = navigation.canGoBack();
+  // As an organizer's home for an event they attend, the banner switches
+  // events like the Overview's does. (Only organizers have the switcher:
+  // they're the ones with the event tabs, Main.)
+  const canSwitch = !canGoBack && !!rootNavigation(navigation).getState()?.routeNames?.includes('Main');
+  const bannerSwitcher = useMemo(
+    () => ({
+      key: bannerKey.ticket(ticket),
+      current: { eventId: ticket.event.id, ticketId: ticket.id },
+      enabled: canSwitch,
+      switchTo: (home: PartialState, before?: () => void) => {
+        before?.();
+        resetRoot(navigation, home);
+      },
+    }),
+    [canSwitch, navigation, ticket]
+  );
 
   // Live Activity: let confirmed attendees pin their pass to the Lock Screen.
-  // Shown on any iOS device; whether the OS actually allows it is handled when
-  // the user taps (areLiveActivitiesSupported can read false on simulators).
-  const liveActivitySupported = Platform.OS === 'ios';
-  const [liveActivityOn, setLiveActivityOn] = useState(false);
-  useEffect(() => {
-    setLiveActivityOn(isTicketActivityRunning());
-  }, []);
+  // iOS: a Live Activity. Android: an ongoing notification (a Live Update on
+  // Android 16+). Whether the OS allows it is handled when the user taps
+  // (areLiveActivitiesSupported can read false on simulators, and Android asks
+  // for the notification permission then).
+  const liveActivitySupported = Platform.OS === 'ios' || Platform.OS === 'android';
+  const [liveActivityOn, setLiveActivityOn] = useState(() => isTicketActivityRunning());
 
   const toggleLiveActivity = async () => {
     if (liveActivityOn) {
@@ -120,493 +147,171 @@ export function TicketDetailScreen() {
       venue,
       ticket.short_code,
       event.starts_at || new Date().toISOString(),
-      ticket.checked_in
+      ticket.checked_in,
     );
     if (!ok) {
-      Alert.alert(
-        'Live Activities are off',
-        'Turn on Live Activities for Attend in Settings → Attend to pin your pass to the Lock Screen.'
-      );
+      if (Platform.OS === 'android') {
+        Alert.alert(
+          'Notifications are off',
+          'Allow notifications for Attend to show your pass on the Lock Screen.',
+          [
+            { text: 'Not now', style: 'cancel' },
+            { text: 'Open settings', onPress: () => openLiveUpdateSettings() },
+          ],
+        );
+      } else {
+        Alert.alert(
+          'Live Activities are off',
+          'Turn on Live Activities for Attend in Settings → Attend to pin your pass to the Lock Screen.',
+        );
+      }
     }
     setLiveActivityOn(ok);
   };
 
   const hasCoords = event.location_latitude != null && event.location_longitude != null;
-  const hasDestination =
-    hasCoords || !!(event.location_address || event.location_city);
+  const hasDestination = hasCoords || !!(event.location_address || event.location_city);
 
-  // Open Apple Maps with driving directions to the venue (coords preferred,
-  // else a text query of the address).
+  // Driving directions in the platform's maps app (coords preferred, else a
+  // text query of the address).
   const openDirections = () => {
     const dest = hasCoords
       ? `${event.location_latitude},${event.location_longitude}`
       : encodeURIComponent(
-          [event.location_address, event.location_city, event.location_country]
-            .filter(Boolean)
-            .join(', ')
+          [event.location_address, event.location_city, event.location_country].filter(Boolean).join(', '),
         );
-    Linking.openURL(`http://maps.apple.com/?daddr=${dest}`).catch(() => {});
+    const url =
+      Platform.OS === 'android'
+        ? `https://www.google.com/maps/dir/?api=1&destination=${dest}`
+        : `http://maps.apple.com/?daddr=${dest}`;
+    Linking.openURL(url).catch(() => {});
   };
 
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 6, paddingBottom: insets.bottom + 32 }]}>
-        {/* Header row */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-            activeOpacity={0.8}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            accessibilityLabel="Back"
-          >
-            <Ionicons name="chevron-back" size={22} color={colors.text.primary} />
-          </TouchableOpacity>
-        </View>
+    <View style={[styles.screen, { backgroundColor: tokens.shaded }]}>
+      <BannerScrollView
+        banner={{
+          event: event,
+          eyebrow: banner.eyebrow,
+          eyebrowIcon: banner.eyebrowIcon,
+          meta: banner.meta,
+          topInset: insets.top,
+          blendInto: tokens.shaded,
+          onBack: canGoBack ? () => navigation.goBack() : undefined,
+          switcher: bannerSwitcher,
+          accessory: canGoBack ? undefined : <AccountButton onBanner />,
+        }}
+        onScrollY={bannerStatusBar.onScrollY}
+        // No pull-to-refresh here, so a pull anywhere opens the switcher.
+        pullAnywhere
+        contentContainerStyle={{ paddingBottom: bottomInset + spacing.xxl }}
+      >
+        <View style={[{ padding: spacing.lg, gap: spacing.lg }]}>
+          <TicketPass ticket={ticket} pageColor={tokens.shaded} />
+          {ticket.confirmed ? <WalletButtons ticket={ticket} /> : null}
 
-        {/* Boarding-pass card */}
-        <View style={styles.pass}>
-          {/* Event banner strip with the logo badge (when the event has art) */}
-          {event.banner_url ? (
-            <View style={styles.bannerStrip}>
-              <Image source={{ uri: event.banner_url }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-              <View style={[StyleSheet.absoluteFill, styles.bannerStripScrim]} />
-              {event.logo_url ? (
-                <Image source={{ uri: event.logo_url }} style={styles.bannerLogo} resizeMode="cover" />
-              ) : null}
-            </View>
+          <EventStatusCard
+            event={event}
+            checkedIn={ticket.checked_in}
+            now={now}
+            footer={
+              hasDestination && !ended ? (
+                <Button title="Get directions" icon="location" onPress={openDirections} fullWidth />
+              ) : null
+            }
+          />
+
+          {ticket.confirmed && liveActivitySupported ? (
+            <Container flush>
+              <ListRow
+                icon="lock-closed"
+                title="Show on Lock Screen"
+                divider={false}
+                toggle={{ value: liveActivityOn, onValueChange: toggleLiveActivity }}
+              />
+            </Container>
           ) : null}
 
-          {/* Colored top band */}
-          <View style={styles.passTop}>
-            <View style={styles.passTopRow}>
-              <Text style={styles.passLabel}>ATTENDEE PASS</Text>
-              <Text style={styles.passConf}>{ticket.short_code}</Text>
-            </View>
-
-            <View style={styles.passBrandRow}>
-              {event.logo_url && !event.banner_url ? (
-                <Image source={{ uri: event.logo_url }} style={styles.passLogo} resizeMode="cover" />
-              ) : null}
-              <Text style={styles.passEventName} numberOfLines={2}>
-                {event.name}
-              </Text>
-            </View>
-
-            <Text style={styles.passName}>{ticket.attendee_name}</Text>
-
-            {ticket.confirmed ? (
-              <>
-                <View style={styles.qrBox}>
-                  <QRCode value={ticket.qr_payload} size={190} backgroundColor="white" color={colors.black} />
-                </View>
-                <Text style={styles.scanHint}>Show this at check-in</Text>
-                <View style={styles.walletWrap}>
-                  <WalletButtons ticket={ticket} />
-                </View>
-              </>
-            ) : (
-              <View style={styles.pendingBox}>
-                <Ionicons name="hourglass-outline" size={28} color={colors.white} />
-                <Text style={styles.pendingText}>
-                  Your pass unlocks once you finish registration.
-                </Text>
-                <TouchableOpacity
-                  style={styles.pendingButton}
-                  activeOpacity={0.85}
-                  onPress={() => Linking.openURL(ticket.onboarding_url)}
-                >
-                  <Text style={styles.pendingButtonText}>Complete registration</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* Dashed separator (inside the band so the banner runs through it) */}
-            <View style={styles.perforation}>
-              <View style={styles.dashRow}>
-                {Array.from({ length: 26 }).map((_, i) => (
-                  <View key={i} style={styles.dash} />
-                ))}
-              </View>
-            </View>
-          </View>
-
-          {/* Info tiles: location + start */}
-          <View style={styles.passBottom}>
-            <View style={styles.tile}>
-              <View style={styles.tileHead}>
-                <Ionicons name="location-outline" size={16} color={colors.text.accent} />
-                <Text style={styles.tileLabel}>VENUE</Text>
-              </View>
-              <Text style={styles.tileValue} numberOfLines={2}>{venue}</Text>
-              {event.location_city && event.location_address ? (
-                <Text style={styles.tileSub}>{event.location_city}</Text>
-              ) : null}
-            </View>
-            <View style={styles.tileDivider} />
-            <View style={styles.tile}>
-              <View style={styles.tileHead}>
-                <Ionicons name="time-outline" size={16} color={colors.text.accent} />
-                <Text style={styles.tileLabel}>STARTS</Text>
-              </View>
-              <Text style={styles.tileValue}>{start.time || 'TBA'}</Text>
-              {start.date ? <Text style={styles.tileSub}>{start.date}</Text> : null}
-            </View>
-          </View>
-
-          {/* Directions */}
-          {hasDestination ? (
-            <TouchableOpacity style={styles.directionsButton} activeOpacity={0.85} onPress={openDirections}>
-              <Ionicons name="navigate" size={17} color={colors.white} />
-              <Text style={styles.directionsText}>Get directions</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
-        {/* Countdown */}
-        {countdown.label ? (
-          <View style={styles.countdownCard}>
-            <Ionicons name="airplane" size={18} color={colors.status.info} style={styles.countdownIcon} />
-            <View>
-              <Text style={styles.countdownValue}>{countdown.label}</Text>
-              {countdown.sub ? <Text style={styles.countdownSub}>{countdown.sub}</Text> : null}
-            </View>
-            {ticket.checked_in ? (
-              <View style={styles.checkedInTag}>
-                <Text style={styles.checkedInTagText}>Checked in</Text>
-              </View>
-            ) : null}
-          </View>
-        ) : null}
-
-        {/* Pin the pass to the Lock Screen (Live Activity) */}
-        {ticket.confirmed && liveActivitySupported ? (
-          <TouchableOpacity
-            style={[styles.liveActivityButton, liveActivityOn && styles.liveActivityButtonOn]}
-            activeOpacity={0.85}
-            onPress={toggleLiveActivity}
-          >
-            <Ionicons
-              name={liveActivityOn ? 'checkmark-circle' : 'lock-closed-outline'}
-              size={18}
-              color={liveActivityOn ? colors.green : colors.text.primary}
+          {/* Messages and incident reports live in this stack, so they push
+              over the pass whether it's a ticket from the list or an event's
+              home (an organizer's attended event resets to this stack). */}
+          <View style={styles.quickActions}>
+            <QuickActionTile
+              icon="mail"
+              tint="sky"
+              label="Messages"
+              subLabel={unread > 0 ? `${unread} unread` : undefined}
+              onPress={() => navigation.navigate('Inbox')}
             />
-            <Text style={[styles.liveActivityText, liveActivityOn && styles.liveActivityTextOn]}>
-              {liveActivityOn ? 'On your Lock Screen' : 'Show on Lock Screen'}
-            </Text>
-          </TouchableOpacity>
-        ) : null}
+            <QuickActionTile
+              icon="shield-exclamation"
+              tint="red"
+              label="Report an incident"
+              onPress={() => navigation.navigate('IncidentReport')}
+            />
+          </View>
 
-        {/* Messages from organizers */}
-        <MessagesCard messages={ticket.messages} />
+          <TravelCard travel={ticket.travel_inbound} />
 
-        {/* Inbound travel */}
-        <TravelCard travel={ticket.travel_inbound} />
-
-        {/* Safety */}
-        <SafetyCard />
-      </ScrollView>
+          <Container title="Safety" flush>
+            <ListRow
+              icon="device-mobile"
+              title="24/7 event hotline"
+              subtitle={HOTLINE_DISPLAY}
+              external
+              divider={false}
+              onPress={() => Linking.openURL(`tel:${HOTLINE}`).catch(() => {})}
+            />
+          </Container>
+        </View>
+      </BannerScrollView>
+      {bannerStatusBar.scrim}
     </View>
   );
-}
-
-function formatFlightWhen(iso?: string): string {
-  if (!iso) return '';
-  try {
-    return new Date(iso).toLocaleString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return '';
-  }
 }
 
 function TravelCard({ travel }: { travel?: Ticket['travel_inbound'] }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
+  const { tokens, type } = useTheme();
   if (!travel) return null;
 
   const legs = travel.legs && travel.legs.length > 0 ? travel.legs : null;
-  const hasSummary =
-    travel.carrier || travel.flight_number || travel.departure_city || travel.arrival_city;
+  const hasSummary = travel.carrier || travel.flight_number || travel.departure_city || travel.arrival_city;
   if (!legs && !hasSummary) return null;
 
-  return (
-    <View style={styles.sectionCard}>
-      <View style={styles.sectionHeader}>
-        <Ionicons name="airplane" size={16} color={colors.green} />
-        <Text style={styles.sectionTitle}>Arriving</Text>
-      </View>
+  const rows = legs
+    ? legs.map((leg) => ({
+        code: leg.flight_code || 'Flight',
+        when: formatFlightWhen(leg.departure_time),
+        route: [leg.departure_airport, leg.arrival_airport].filter(Boolean).join(' → '),
+      }))
+    : [
+        {
+          code: [travel.carrier, travel.flight_number].filter(Boolean).join(' ') || 'Journey',
+          when: formatFlightWhen(travel.departure_time || travel.arrival_time),
+          route: [travel.departure_city, travel.arrival_city].filter(Boolean).join(' → '),
+        },
+      ];
 
-      {legs
-        ? legs.map((leg, i) => (
-            <View key={i} style={styles.travelRow}>
-              <Text style={styles.travelCode}>{leg.flight_code || 'Flight'}</Text>
-              <Text style={styles.travelRoute}>
-                {[leg.departure_airport, leg.arrival_airport].filter(Boolean).join('  →  ')}
-              </Text>
-              {formatFlightWhen(leg.departure_time) ? (
-                <Text style={styles.travelWhen}>{formatFlightWhen(leg.departure_time)}</Text>
-              ) : null}
-            </View>
-          ))
-        : (
-          <View style={styles.travelRow}>
-            <Text style={styles.travelCode}>
-              {[travel.carrier, travel.flight_number].filter(Boolean).join(' ') || 'Journey'}
+  return (
+    <Container title="Arriving">
+      <View style={styles.stack}>
+        {rows.map((row, i) => (
+          <View key={i}>
+            <Text style={[type.body, { color: tokens.text }]}>
+              <Text style={[styles.bold, { color: tokens.textH }]}>{row.code}</Text>
+              {row.when ? ` · ${row.when}` : ''}
             </Text>
-            <Text style={styles.travelRoute}>
-              {[travel.departure_city, travel.arrival_city].filter(Boolean).join('  →  ')}
-            </Text>
-            {formatFlightWhen(travel.departure_time || travel.arrival_time) ? (
-              <Text style={styles.travelWhen}>
-                {formatFlightWhen(travel.departure_time || travel.arrival_time)}
-              </Text>
-            ) : null}
+            {row.route ? <Text style={[type.body, { color: tokens.text2 }]}>{row.route}</Text> : null}
           </View>
-        )}
-    </View>
-  );
-}
-
-function formatMessageWhen(iso?: string | null): string {
-  if (!iso) return '';
-  try {
-    return new Date(iso).toLocaleString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-  } catch {
-    return '';
-  }
-}
-
-function MessagesCard({ messages }: { messages?: Ticket['messages'] }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
-  if (!messages || messages.length === 0) return null;
-
-  return (
-    <View style={styles.sectionCard}>
-      <View style={styles.sectionHeader}>
-        <Ionicons name="chatbubble-ellipses" size={16} color={colors.status.info} />
-        <Text style={styles.sectionTitle}>Messages</Text>
+        ))}
       </View>
-
-      {messages.map((m, i) => (
-        <View key={m.id} style={[styles.messageRow, i > 0 && styles.messageRowBorderTop]}>
-          <View style={styles.messageMetaRow}>
-            <Text style={styles.messageSender}>{m.sender_name || 'Event team'}</Text>
-            {formatMessageWhen(m.delivered_at) ? (
-              <Text style={styles.messageWhen}>{formatMessageWhen(m.delivered_at)}</Text>
-            ) : null}
-          </View>
-          {m.subject ? <Text style={styles.messageSubject}>{m.subject}</Text> : null}
-          <Text style={styles.messageBody}>{m.body}</Text>
-        </View>
-      ))}
-    </View>
+    </Container>
   );
 }
 
-const HOTLINE = '+18556254225';
-const HOTLINE_DISPLAY = '+1 (855) 625 4225';
-const INCIDENT_URL = 'https://hack.club/incident';
-
-function SafetyCard() {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.sectionCard}>
-      <View style={styles.sectionHeader}>
-        <Ionicons name="shield-checkmark" size={16} color={colors.text.accent} />
-        <Text style={styles.sectionTitle}>Safety</Text>
-      </View>
-
-      <TouchableOpacity style={styles.safetyRow} activeOpacity={0.7} onPress={() => Linking.openURL(INCIDENT_URL)}>
-        <Ionicons name="flag-outline" size={22} color={colors.text.secondary} />
-        <View style={styles.safetyTextWrap}>
-          <Text style={styles.safetyTitle}>Report an incident</Text>
-          <Text style={styles.safetySubtitle}>hack.club/incident</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={colors.text.muted} />
-      </TouchableOpacity>
-
-      <View style={styles.safetyDivider} />
-
-      <TouchableOpacity style={styles.safetyRow} activeOpacity={0.7} onPress={() => Linking.openURL(`tel:${HOTLINE}`)}>
-        <Ionicons name="call-outline" size={22} color={colors.green} />
-        <View style={styles.safetyTextWrap}>
-          <Text style={styles.safetyTitle}>24/7 event hotline</Text>
-          <Text style={styles.safetySubtitle}>{HOTLINE_DISPLAY}</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={colors.text.muted} />
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-const makeStyles = (colors: ThemeColors, theme: Theme) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { paddingHorizontal: 16 },
-  header: { height: 40, justifyContent: 'center', marginBottom: 8 },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.gray[100],
-    marginLeft: -4,
-  },
-  pass: {
-    borderRadius: 24,
-    backgroundColor: colors.surface,
-    overflow: 'hidden',
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.14 * theme.shadowOpacity,
-    shadowRadius: 20,
-    elevation: 5 * theme.elevation,
-  },
-  passTop: { backgroundColor: colors.red, paddingHorizontal: 22, paddingTop: 20, paddingBottom: 0, alignItems: 'center', overflow: 'hidden' },
-  bannerStrip: { height: 128, backgroundColor: colors.gray[200], justifyContent: 'flex-end' },
-  bannerStripScrim: { backgroundColor: 'rgba(0,0,0,0.15)' },
-  bannerLogo: {
-    width: 52,
-    height: 52,
-    borderRadius: 12,
-    margin: 14,
-    backgroundColor: colors.white,
-    borderWidth: 2,
-    borderColor: colors.white,
-  },
-  passTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignSelf: 'stretch', marginBottom: 14 },
-  passLabel: { color: 'rgba(255,255,255,0.85)', fontSize: 11, fontWeight: '700', letterSpacing: 1.5 },
-  passConf: { color: colors.white, fontSize: 13, fontWeight: '800', letterSpacing: 1, fontVariant: ['tabular-nums'] },
-  passBrandRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch', gap: 10, marginBottom: 4 },
-  passLogo: { width: 40, height: 40, borderRadius: 9, backgroundColor: colors.white },
-  passEventName: { flex: 1, color: colors.white, fontSize: 22, fontWeight: '800' },
-  passName: {
-    alignSelf: 'stretch',
-    color: 'rgba(255,255,255,0.95)',
-    fontSize: 14,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-    marginTop: 6,
-    marginBottom: 18,
-  },
-  qrBox: { backgroundColor: colors.white, padding: 14, borderRadius: 16 },
-  scanHint: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop: 12,
-  },
-  walletWrap: { marginTop: 16, alignItems: 'center' },
-  pendingBox: { alignItems: 'center', paddingVertical: 12 },
-  pendingText: {
-    color: 'rgba(255,255,255,0.95)',
-    fontSize: 14,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginTop: 10,
-    marginBottom: 16,
-    paddingHorizontal: 8,
-  },
-  pendingButton: { backgroundColor: colors.white, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12 },
-  pendingButtonText: { color: colors.red, fontSize: 15, fontWeight: '700' },
-  perforation: { alignSelf: 'stretch', height: 22, justifyContent: 'center', marginTop: 16 },
-  dashRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  dash: { width: 7, height: 2, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.6)' },
-  passBottom: { flexDirection: 'row', backgroundColor: colors.surface, paddingVertical: 18, paddingHorizontal: 4 },
-  tile: { flex: 1, paddingHorizontal: 18 },
-  tileHead: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6 },
-  tileLabel: { fontSize: 11, fontWeight: '700', color: colors.text.muted, letterSpacing: 1 },
-  tileValue: { fontSize: 18, fontWeight: '800', color: colors.text.primary },
-  tileSub: { fontSize: 13, color: colors.text.secondary, marginTop: 2 },
-  tileDivider: { width: 1, backgroundColor: colors.gray[100] },
-  directionsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: colors.red,
-    borderRadius: 12,
-    paddingVertical: 13,
-    marginHorizontal: 20,
-    marginTop: -2,
-    marginBottom: 20,
-  },
-  directionsText: { color: colors.white, fontSize: 15, fontWeight: '700' },
-  liveActivityButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    paddingVertical: 14,
-    marginTop: 16,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-  },
-  liveActivityButtonOn: { borderColor: colors.green, backgroundColor: '#F0FDF9' },
-  liveActivityText: { fontSize: 15, fontWeight: '700', color: colors.text.primary },
-  liveActivityTextOn: { color: colors.green },
-  countdownCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 16,
-    marginTop: 16,
-    borderWidth: 1,
-    borderColor: colors.gray[100],
-  },
-  countdownIcon: { marginRight: 12 },
-  countdownValue: { fontSize: 22, fontWeight: '800', color: colors.text.primary, fontVariant: ['tabular-nums'] },
-  countdownSub: { fontSize: 13, color: colors.text.secondary, marginTop: 1 },
-  checkedInTag: { marginLeft: 'auto', backgroundColor: colors.green, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
-  checkedInTagText: { color: colors.white, fontSize: 12, fontWeight: '700' },
-  sectionCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 16,
-    marginTop: 16,
-    borderWidth: 1,
-    borderColor: colors.gray[100],
-  },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
-  sectionTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.text.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  travelRow: { backgroundColor: colors.gray[50], borderRadius: 10, padding: 12, marginBottom: 8 },
-  travelCode: { fontSize: 16, fontWeight: '700', color: colors.text.primary },
-  travelRoute: { fontSize: 14, color: colors.text.secondary, marginTop: 2 },
-  travelWhen: { fontSize: 13, color: colors.text.muted, marginTop: 2 },
-  messageRow: { paddingVertical: 12 },
-  messageRowBorderTop: { borderTopWidth: 1, borderTopColor: colors.gray[100] },
-  messageMetaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  messageSender: { fontSize: 14, fontWeight: '700', color: colors.text.primary },
-  messageWhen: { fontSize: 12, color: colors.text.muted },
-  messageSubject: { fontSize: 14, fontWeight: '600', color: colors.text.primary, marginBottom: 2 },
-  messageBody: { fontSize: 14, color: colors.text.secondary, lineHeight: 20 },
-  safetyRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 12 },
-  safetyTextWrap: { flex: 1 },
-  safetyTitle: { fontSize: 15, fontWeight: '600', color: colors.text.primary },
-  safetySubtitle: { fontSize: 13, color: colors.text.secondary, marginTop: 1 },
-  safetyDivider: { height: 1, backgroundColor: colors.gray[100] },
+const styles = StyleSheet.create({
+  screen: { flex: 1 },
+  quickActions: { flexDirection: 'row', gap: 12 },
+  stack: { gap: 12 },
+  bold: { fontWeight: typography.label.fontWeight },
 });

@@ -1,49 +1,72 @@
-import React, { useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useEffect, useMemo, useCallback, useState, useRef } from 'react';
+import type * as Notifications from 'expo-notifications';
 import { ActivityIndicator, View, StyleSheet, Platform } from 'react-native';
-import { NavigationContainer, DefaultTheme, DarkTheme, NavigationContainerRef } from '@react-navigation/native';
+import { useAppShortcutLaunch } from './src/hooks/useAppShortcutLaunch';
+import {
+  NavigationContainer,
+  DefaultTheme,
+  DarkTheme,
+  createNavigationContainerRef,
+  getStateFromPath as defaultGetStateFromPath,
+  type LinkingOptions,
+} from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
-import type { AppleIcon } from 'react-native-bottom-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import { SwitcherOverlayHost, useSwitcherOverlayOpen } from './src/components/SwitcherOverlay';
+import { PortalHost } from './src/components/Portal';
+import { SWITCHER_APP_RADIUS, SWITCHER_APP_SCALE_OUT, switcherProgress } from './src/navigation/switcherOverlay';
 import { StatusBar } from 'expo-status-bar';
 import * as Linking from 'expo-linking';
 import * as ScreenOrientation from 'expo-screen-orientation';
+import { holdSplash, hideSplash, isAppReady } from './src/services/splash';
 import { notificationService } from './src/services/notifications';
+import { haptics } from './src/services/haptics';
 import { AppProvider, useApp } from './src/context/AppContext';
 import { useEventAccess } from './src/hooks/useEventAccess';
 import { LoginScreen } from './src/screens/LoginScreen';
-import { EventListScreen } from './src/screens/EventListScreen';
+import { EventHome } from './src/screens/EventHome';
+import { RoleRestricted } from './src/components/RoleRestricted';
 import { ScannerScreen } from './src/screens/ScannerScreen';
 
 import { SearchScreen } from './src/screens/SearchScreen';
 import { ParticipantDetailScreen } from './src/screens/ParticipantDetailScreen';
-import { TravelCalendarScreen } from './src/screens/TravelCalendarScreen';
-import { KioskSetupScreen } from './src/screens/KioskSetupScreen';
-import { KioskScreen } from './src/screens/KioskScreen';
 import { MyTicketsScreen } from './src/screens/MyTicketsScreen';
 import { TicketDetailScreen } from './src/screens/TicketDetailScreen';
-import { IncidentListScreen } from './src/screens/IncidentListScreen';
-import { IncidentDetailScreen } from './src/screens/IncidentDetailScreen';
-import { IncidentFormScreen } from './src/screens/IncidentFormScreen';
-import { IncidentReportScreen } from './src/screens/IncidentReportScreen';
-import { MessageListScreen } from './src/screens/MessageListScreen';
-import { MessageDetailScreen } from './src/screens/MessageDetailScreen';
-import { MessageComposeScreen } from './src/screens/MessageComposeScreen';
-import { MessagePreviewScreen } from './src/screens/MessagePreviewScreen';
-import { InboxScreen } from './src/screens/InboxScreen';
-import { InboxMessageScreen } from './src/screens/InboxMessageScreen';
-import { IdCheckScreen } from './src/screens/IdCheckScreen';
-import { ThemeProvider, useTheme, useThemedStyles, type ThemeColors } from './src/theme';
-import type { RootStackParamList, MainTabParamList } from './src/types';
+import { ThemeProvider, overlayTokens, useTheme, useThemedStyles, withAlpha, type Theme } from './src/theme';
+import type {
+  MainTabParamList,
+  OverviewStackParamList,
+  PassStackParamList,
+  PeopleStackParamList,
+  RootStackParamList,
+  ScannerStackParamList,
+  TravelStackParamList,
+} from './src/types';
 import * as Sentry from '@sentry/react-native';
 import { scrubIdCheckBreadcrumb, scrubIdCheckEvent } from './src/services/idCheck/sentryScrub';
+import { stripHttpBreadcrumbQuery } from './src/services/breadcrumbScrub';
+import { fallbackToRegisteredRoute, limitLinkParams, preferOrganizerTabs } from './src/services/deepLinks';
+import { ROOT_NAVIGATOR } from './src/navigation/routes';
+import { linkingConfig } from './src/navigation/linking';
+import { isKioskLocked } from './src/navigation/kioskLock';
+import { lazyScreens } from './src/navigation/lazyScreens';
+import { useSheetScreens } from './src/navigation/sheetScreens';
+import { sheetStack } from './src/navigation/sheetStack';
+import { SheetHost } from './src/components/SheetHost';
+
+const REPLAY_ENABLED = Platform.OS === 'ios';
 
 Sentry.init({
   dsn: 'https://6a7370567b34299ea8bb4ecf2aec3628@o4509680631087104.ingest.us.sentry.io/4510470752043008',
 
-  // Adds more context data to events (IP address, cookies, user, etc.)
-  // For more information, visit: https://docs.sentry.io/platforms/react-native/data-management/data-collected/
-  sendDefaultPii: true,
+  // No IP addresses, cookies or user details: this app handles participant
+  // personal data, so nothing identifying goes to Sentry by default.
+  // https://docs.sentry.io/platforms/react-native/data-management/data-collected/
+  sendDefaultPii: false,
 
   // Enable Logs
   enableLogs: true,
@@ -51,18 +74,39 @@ Sentry.init({
   // Enable Tracing
   tracesSampleRate: 0.2,
 
-  // Configure Session Replay
-  replaysSessionSampleRate: 0.1,
-  replaysOnErrorSampleRate: 1,
-  integrations: [Sentry.mobileReplayIntegration(), Sentry.feedbackIntegration()],
+  // Session Replay only on iOS: on Android it costs startup time and memory
+  // on the lower-end devices organizers scan with.
+  replaysSessionSampleRate: REPLAY_ENABLED ? 0.1 : 0,
+  replaysOnErrorSampleRate: REPLAY_ENABLED ? 1 : 0,
+  // Replays must never show participant data, so masking is spelled out
+  // here rather than left to the SDK's defaults. The feedback integration
+  // isn't listed: the app shows no feedback UI, and the SDK adds it on demand
+  // if one ever opens.
+  integrations: REPLAY_ENABLED
+    ? [
+        Sentry.mobileReplayIntegration({
+          maskAllText: true,
+          maskAllImages: true,
+          maskAllVectors: true,
+        }),
+      ]
+    : [],
 
-  // Keep anything logged during an on-device ID check out of Sentry.
-  beforeBreadcrumb: scrubIdCheckBreadcrumb,
+  // Keep anything logged during an on-device ID check out of Sentry, and
+  // strip query strings (search terms) from HTTP breadcrumb URLs.
+  beforeBreadcrumb: (breadcrumb) => {
+    const scrubbed = scrubIdCheckBreadcrumb(breadcrumb);
+    return scrubbed ? stripHttpBreadcrumbQuery(scrubbed) : null;
+  },
   beforeSend: scrubIdCheckEvent,
 
   // uncomment the line below to enable Spotlight (https://spotlightjs.com)
   // spotlight: __DEV__,
 });
+
+// The splash stays up until the first real screen is ready (see
+// AppNavigation), so a restored session opens straight onto its event.
+holdSplash();
 
 // Portrait is requested at runtime instead of android:screenOrientation in
 // the manifest: Play flags the manifest attribute, and Android 16+ ignores
@@ -74,9 +118,20 @@ if (Platform.OS === 'android') {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createNativeBottomTabNavigator<MainTabParamList>();
+const OverviewStack = createNativeStackNavigator<OverviewStackParamList>();
+const ScannerStack = createNativeStackNavigator<ScannerStackParamList>();
+const PeopleStack = createNativeStackNavigator<PeopleStackParamList>();
+const TravelStack = createNativeStackNavigator<TravelStackParamList>();
+const PassStack = createNativeStackNavigator<PassStackParamList>();
+
+// Pushed screens draw their own back link and title (components/ui/Screen),
+// so no stack shows a native header.
+const STACK_OPTIONS = { headerShown: false } as const;
+// Forms that create or compose open modally, with Cancel and Save in their bar.
+const FORM_MODAL_OPTIONS = { presentation: 'modal' } as const;
 
 function useNavigationTheme() {
-  const { colors, isDark } = useTheme();
+  const { tokens, isDark } = useTheme();
   // Memoized: NavigationContainer re-renders the whole tree when `theme`
   // changes identity.
   return useMemo(() => {
@@ -85,82 +140,163 @@ function useNavigationTheme() {
       ...base,
       colors: {
         ...base.colors,
-        background: colors.background,
-        card: isDark ? 'rgba(21,30,46,0.8)' : 'rgba(255,255,255,0.8)',
-        border: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
-        primary: colors.text.accent,
+        background: tokens.bg,
+        card: tokens.bg,
+        border: tokens.div2,
+        primary: tokens.accent,
       },
     };
-  }, [colors, isDark]);
+  }, [tokens, isDark]);
 }
 
-// iOS renders SF Symbols in the native (liquid glass) tab bar; Android's
-// Material bottom bar can't use SF Symbols, so it gets bundled SVG sources,
-// tinted by the bar's active/inactive colors.
-const tabIcon = (sfSymbol: AppleIcon['sfSymbol'], androidSource: number) => () =>
-  Platform.OS === 'ios' ? ({ sfSymbol } satisfies AppleIcon) : androidSource;
+// The two homes (an event's tabs, a pass) replace each other when switching
+// events, behind the closing switcher. Android's default transition removed
+// the old one first, flashing the window black before the new one faded in;
+// an instant swap reads as the switcher revealing the new event.
+const HOME_OPTIONS = { animation: 'none' } as const;
 
-// Android-only bar styling: the Material bar's own theming doesn't track our
-// palette, so we paint it from the active scheme's surface color.
+// Both native bars draw the app's heroicons (assets/tabs, made by bin/tab-icons):
+// the outline icon at rest and the solid one when selected. The bars tint
+// them with their active and inactive colours.
+const tabIcon = (icon: number, selectedIcon: number) => ({ focused }: { focused: boolean }) =>
+  focused ? selectedIcon : icon;
+
+// Android-only bar styling. The Material 3 app theme (plugins/
+// withAndroidBrandTheme.js) already gives the bar our surface, indicator and
+// ripple colours, but only for the system scheme: it's resolved once when the
+// bar is created, and an in-app light/dark override doesn't recreate it. So
+// the colours that change between schemes still come from the active palette.
 function useAndroidTabBarProps() {
-  const { colors } = useTheme();
+  const { tokens } = useTheme();
   if (Platform.OS !== 'android') return {};
   return {
-    // The native barTintColor is read from tabBarStyle.backgroundColor;
-    // without it the bar paints the theme's colorPrimary (near-black).
-    tabBarStyle: { backgroundColor: colors.surface },
-    tabBarInactiveTintColor: colors.gray[500],
-    activeIndicatorColor: `${colors.red}1F`,
-    rippleColor: `${colors.red}22`,
+    // The native barTintColor is read from tabBarStyle.backgroundColor.
+    tabBarStyle: { backgroundColor: tokens.bg },
+    // Unset, the library falls back to android:textColorSecondary.
+    tabBarInactiveTintColor: tokens.muted,
+    // Translucent, so it reads on either surface.
+    activeIndicatorColor: withAlpha(tokens.brand, 0.12),
   };
 }
 
+// Each tab is its own stack, so a pushed screen keeps the tab bar.
+function OverviewTab() {
+  return (
+    <OverviewStack.Navigator screenOptions={STACK_OPTIONS}>
+      <OverviewStack.Screen name="EventHome" component={EventHome} />
+      <OverviewStack.Screen name="IncidentList" getComponent={lazyScreens.IncidentList} />
+      <OverviewStack.Screen name="IncidentDetail" getComponent={lazyScreens.IncidentDetail} />
+      <OverviewStack.Screen name="IncidentForm" getComponent={lazyScreens.IncidentForm} options={FORM_MODAL_OPTIONS} />
+      <OverviewStack.Screen name="IncidentReport" getComponent={lazyScreens.IncidentReport} options={FORM_MODAL_OPTIONS} />
+      <OverviewStack.Screen name="MessageList" getComponent={lazyScreens.MessageList} />
+      <OverviewStack.Screen name="MessageDetail" getComponent={lazyScreens.MessageDetail} />
+      <OverviewStack.Screen name="MessageCompose" getComponent={lazyScreens.MessageCompose} options={FORM_MODAL_OPTIONS} />
+      {/* Over the composer: a pushed screen would go under its modal on iOS. */}
+      <OverviewStack.Screen name="MessagePreview" getComponent={lazyScreens.MessagePreview} options={FORM_MODAL_OPTIONS} />
+    </OverviewStack.Navigator>
+  );
+}
+
+function ScannerTab() {
+  return (
+    <ScannerStack.Navigator screenOptions={STACK_OPTIONS}>
+      <ScannerStack.Screen name="ScannerHome" component={ScannerScreen} />
+      <ScannerStack.Screen name="ParticipantDetail" component={ParticipantDetailScreen} />
+    </ScannerStack.Navigator>
+  );
+}
+
+// People is the roster. A role without participant records keeps the tab but
+// sees why it's empty, rather than the tab vanishing.
+function PeopleHome() {
+  const { canViewParticipantRecords } = useEventAccess();
+  return canViewParticipantRecords ? <SearchScreen /> : <RoleRestricted fill />;
+}
+
+function PeopleTab() {
+  return (
+    <PeopleStack.Navigator screenOptions={STACK_OPTIONS}>
+      <PeopleStack.Screen name="PeopleHome" component={PeopleHome} />
+      <PeopleStack.Screen name="ParticipantDetail" component={ParticipantDetailScreen} />
+    </PeopleStack.Navigator>
+  );
+}
+
+function TravelTab() {
+  return (
+    <TravelStack.Navigator screenOptions={STACK_OPTIONS}>
+      <TravelStack.Screen name="TravelHome" getComponent={lazyScreens.TravelCalendar} />
+      <TravelStack.Screen name="ParticipantDetail" component={ParticipantDetailScreen} />
+    </TravelStack.Navigator>
+  );
+}
+
+/**
+ * The attendee's stack: their tickets, each pushing its pass. An organizer
+ * who picks an event they attend gets the pass alone as its home.
+ */
+function PassStackNavigator() {
+  return (
+    <PassStack.Navigator screenOptions={STACK_OPTIONS}>
+      <PassStack.Screen name="MyTickets" component={MyTicketsScreen} />
+      <PassStack.Screen name="TicketDetail" component={TicketDetailScreen} />
+      <PassStack.Screen name="Inbox" getComponent={lazyScreens.Inbox} />
+      <PassStack.Screen name="InboxMessage" getComponent={lazyScreens.InboxMessage} />
+      <PassStack.Screen name="IncidentReport" getComponent={lazyScreens.IncidentReport} options={FORM_MODAL_OPTIONS} />
+    </PassStack.Navigator>
+  );
+}
+
 function MainTabs() {
-  // A role without participant records gets no Search tab at all: the roster,
-  // the search box, and every participant link behind it would only 403. An
-  // event that doesn't run travel gets no Travel tab.
-  const { canViewParticipantRecords, showTravel } = useEventAccess();
-  const { colors } = useTheme();
+  // Every organizer gets Overview, Scan and People; Travel only shows for an
+  // event that runs travel.
+  const { showTravel } = useEventAccess();
+  const { tokens } = useTheme();
   const androidTabBarProps = useAndroidTabBarProps();
 
   return (
     <Tab.Navigator
-      tabBarActiveTintColor={colors.text.accent}
+      tabBarActiveTintColor={tokens.accent}
       {...androidTabBarProps}
+      // A tick when a tap switches tabs; reselecting the current tab (which
+      // scrolls it to the top) stays silent.
+      screenListeners={({ navigation }) => ({
+        tabPress: () => {
+          if (!navigation.isFocused()) haptics.selection();
+        },
+      })}
     >
       <Tab.Screen
-        name="Events"
-        component={EventListScreen}
+        name="Overview"
+        component={OverviewTab}
         options={{
-          tabBarLabel: 'Events',
-          tabBarIcon: tabIcon('calendar', require('./assets/tabs/calendar.svg')),
+          tabBarLabel: 'Overview',
+          tabBarIcon: tabIcon(require('./assets/tabs/home.svg'), require('./assets/tabs/home-selected.svg')),
         }}
       />
       <Tab.Screen
         name="Scanner"
-        component={ScannerScreen}
+        component={ScannerTab}
         options={{
           tabBarLabel: 'Scan',
-          tabBarIcon: tabIcon('qrcode.viewfinder', require('./assets/tabs/scan.svg')),
+          tabBarIcon: tabIcon(require('./assets/tabs/scan.svg'), require('./assets/tabs/scan-selected.svg')),
         }}
       />
-      {canViewParticipantRecords ? (
-        <Tab.Screen
-          name="Search"
-          component={SearchScreen}
-          options={{
-            tabBarLabel: 'Search',
-            tabBarIcon: tabIcon('magnifyingglass', require('./assets/tabs/search.svg')),
-          }}
-        />
-      ) : null}
+      <Tab.Screen
+        name="Search"
+        component={PeopleTab}
+        options={{
+          tabBarLabel: 'People',
+          tabBarIcon: tabIcon(require('./assets/tabs/people.svg'), require('./assets/tabs/people-selected.svg')),
+        }}
+      />
       {showTravel ? (
         <Tab.Screen
           name="Travel"
-          component={TravelCalendarScreen}
+          component={TravelTab}
           options={{
             tabBarLabel: 'Travel',
-            tabBarIcon: tabIcon('airplane', require('./assets/tabs/travel.svg')),
+            tabBarIcon: tabIcon(require('./assets/tabs/travel.svg'), require('./assets/tabs/travel-selected.svg')),
           }}
         />
       ) : null}
@@ -168,150 +304,211 @@ function MainTabs() {
   );
 }
 
-// The pushed paper-world screens share the participant page's header: a
-// translucent blurred bar on iOS, the surface color on Android.
-function useStackHeaderOptions() {
-  const { colors, isDark } = useTheme();
-  return useCallback(
-    (title: string) => ({
-      headerShown: true,
-      headerTitle: title,
-      headerBackTitle: 'Back',
-      headerTintColor: colors.text.accent,
-      headerTransparent: Platform.OS === 'ios',
-      headerBlurEffect: isDark ? ('dark' as const) : ('light' as const),
-      headerStyle: {
-        backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.surface,
-      },
-    }),
-    [colors, isDark]
-  );
-}
+// The dev UI gallery (attend://ui-gallery). The condition is folded at build
+// time, so unless the build sets EXPO_PUBLIC_UI_GALLERY=1 this is null and the
+// gallery isn't bundled.
+const getUiGallery = process.env.EXPO_PUBLIC_UI_GALLERY === '1'
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- deferred on purpose
+  ? () => require('./src/screens/dev/UiGallery').UiGallery
+  : null;
 
 function RootNavigator() {
   const { state } = useApp();
-  const { colors, isDark } = useTheme();
+  const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
-  const header = useStackHeaderOptions();
+  const sheetScreens = useSheetScreens();
+  const isAuthenticated = state.auth.isAuthenticated;
+
+  // Signing out closes any drawer still open (Android's aren't routes).
+  useEffect(() => {
+    if (!isAuthenticated) sheetStack.clear();
+  }, [isAuthenticated]);
 
   if (state.auth.isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.text.accent} />
+        <ActivityIndicator size="large" color={tokens.accent} />
       </View>
     );
   }
 
   const user = state.auth.user;
-  // Organizers (global admins or anyone with a staff role) get the scanner
-  // experience. Everyone else lands on their tickets. A user who is both a
-  // participant and an organizer defaults to the scanner app but can reach
-  // their tickets from the Events header.
+  // Organizers (global admins or anyone with a staff role) get the event
+  // tabs. Everyone has the attendee stack: it's a participant's home, and an
+  // organizer reaches the events they attend through it from the switcher
+  // (the participant flag can lag a new registration, so it isn't gated).
   const isOrganizer = !!(user?.is_organizer ?? user?.global_admin);
-  const isParticipant = !!user?.is_participant;
-  const showParticipant = isParticipant || !isOrganizer;
+  const uiGallery = getUiGallery ? (
+    <Stack.Screen name="UiGallery" getComponent={getUiGallery} />
+  ) : null;
+  const sheetRoutes = sheetScreens.map((sheet) => (
+    <Stack.Screen
+      key={sheet.name}
+      name={sheet.name}
+      getComponent={sheet.getComponent}
+      options={sheet.options}
+    />
+  ));
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator id={ROOT_NAVIGATOR} screenOptions={{ headerShown: false }}>
       {state.auth.isAuthenticated ? (
         <>
-          {isOrganizer && <Stack.Screen name="Main" component={MainTabs} />}
-          {showParticipant && (
-            <Stack.Screen name="ParticipantMain" component={MyTicketsScreen} />
-          )}
-          <Stack.Screen name="TicketDetail" component={TicketDetailScreen} />
-          <Stack.Screen
-            name="ParticipantDetail"
-            component={ParticipantDetailScreen}
-            options={{
-              headerShown: true,
-              headerTitle: 'Participant',
-              headerBackTitle: 'Back',
-              headerTintColor: colors.text.accent,
-              headerTransparent: Platform.OS === 'ios',
-              headerBlurEffect: isDark ? 'dark' : 'light',
-              headerStyle: {
-                backgroundColor: Platform.OS === 'ios' ? 'transparent' : colors.surface,
-              },
-            }}
-          />
-          <Stack.Screen name="IncidentList" component={IncidentListScreen} options={header('Incidents')} />
-          <Stack.Screen name="IncidentDetail" component={IncidentDetailScreen} options={header('Incident details')} />
-          <Stack.Screen name="IncidentForm" component={IncidentFormScreen} options={header('New incident')} />
-          <Stack.Screen name="IncidentReport" component={IncidentReportScreen} options={header('Report an incident')} />
-          <Stack.Screen name="MessageList" component={MessageListScreen} options={header('Messages')} />
-          <Stack.Screen name="MessageDetail" component={MessageDetailScreen} options={header('Message')} />
-          <Stack.Screen name="MessageCompose" component={MessageComposeScreen} options={header('Compose message')} />
-          <Stack.Screen name="MessagePreview" component={MessagePreviewScreen} options={header('Preview & send')} />
-          <Stack.Screen name="Inbox" component={InboxScreen} options={header('Messages')} />
-          <Stack.Screen name="InboxMessage" component={InboxMessageScreen} options={header('Message')} />
+          {isOrganizer && <Stack.Screen name="Main" component={MainTabs} options={HOME_OPTIONS} />}
+          <Stack.Screen name="ParticipantMain" component={PassStackNavigator} options={HOME_OPTIONS} />
           {user?.global_admin ? (
             <Stack.Screen
               name="IdCheck"
-              component={IdCheckScreen}
-              options={{ presentation: 'modal', gestureEnabled: false }}
+              getComponent={lazyScreens.IdCheck}
+              options={{ presentation: 'fullScreenModal' }}
             />
           ) : null}
           <Stack.Screen
-            name="KioskSetup"
-            component={KioskSetupScreen}
-            options={{ presentation: 'modal' }}
-          />
-          <Stack.Screen
             name="Kiosk"
-            component={KioskScreen}
+            getComponent={lazyScreens.Kiosk}
             options={{
               presentation: 'fullScreenModal',
               gestureEnabled: false,
               animation: 'fade',
             }}
           />
+          {/* Form sheets: the account sheet and every picker (navigation/sheets). */}
+          {sheetRoutes}
+          {uiGallery}
         </>
       ) : (
-        <Stack.Screen name="Login" component={LoginScreen} />
+        <>
+          <Stack.Screen name="Login" component={LoginScreen} />
+          {/* The gallery works signed out, with its sheets. */}
+          {uiGallery}
+          {uiGallery ? sheetRoutes : null}
+        </>
       )}
     </Stack.Navigator>
   );
 }
 
-const linking = {
+const navigationRef = createNavigationContainerRef<RootStackParamList>();
+
+const rootRouteNames = () =>
+  navigationRef.isReady() ? navigationRef.getRootState()?.routeNames : undefined;
+
+// The routes each mounted root navigator registers (Main's tabs: Travel only
+// for an event with travel).
+const childRouteNames = () => {
+  if (!navigationRef.isReady()) return {};
+  const names: Record<string, string[]> = {};
+  for (const route of navigationRef.getRootState()?.routes ?? []) {
+    if (route.state && 'routeNames' in route.state && route.state.routeNames) {
+      names[route.name] = [...route.state.routeNames];
+    }
+  }
+  return names;
+};
+
+const linking: LinkingOptions<RootStackParamList> = {
   prefixes: [Linking.createURL('/'), 'attend://'],
-  config: {
-    screens: {
-      Main: {
-        screens: {
-          Scanner: 'scanner',
-          Events: 'events',
-          Search: 'search',
-          Travel: 'travel',
-        },
-      },
-      ParticipantMain: 'my-tickets',
-      ParticipantDetail: 'participant/:id',
-      IncidentList: 'incidents',
-      IncidentReport: 'incident',
-      MessageList: 'event-messages',
-      Inbox: 'messages',
-      InboxMessage: 'messages/:messageId',
-    },
+  config: linkingConfig,
+  // Kiosk mode takes no links: navigating would dismiss it without the PIN.
+  // This also covers home screen shortcuts, which are re-opened as links.
+  filter: () => !isKioskLocked(),
+  // Scan and People live in Main (organizers only), and Travel only for an
+  // event with travel; a link to a route this user doesn't have opens their
+  // home instead of doing nothing.
+  getStateFromPath: (path, options) => {
+    const routeNames = rootRouteNames();
+    return preferOrganizerTabs(
+      fallbackToRegisteredRoute(
+        limitLinkParams(defaultGetStateFromPath(path, options)),
+        routeNames,
+        childRouteNames()
+      ),
+      routeNames
+    );
   },
 };
 
+// Only genuine attend:// deep links count. A loose substring check also
+// matched the Expo dev client's launch URL, which contains the app slug
+// ("attend-scanner") and fired before the navigator mounted.
+const isScannerLink = (url: string) => /^attend:\/\/(--\/)?scan(ner)?(\/|\?|$)/.test(url);
+
 export default Sentry.wrap(function App() {
-  const navigationRef = useRef<NavigationContainerRef<RootStackParamList>>(null);
+  return (
+    // Gesture handler's root: the event banner's pull-to-switch needs it.
+    <GestureHandlerRootView style={rootStyles.gestureRoot}>
+      <SafeAreaProvider>
+        <KeyboardProvider>
+          <ThemeProvider>
+            <AppProvider>
+              <AppNavigation />
+            </AppProvider>
+          </ThemeProvider>
+        </KeyboardProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
+  );
+});
+
+function AppNavigation() {
+  const { state } = useApp();
+  const [navigationReady, setNavigationReady] = useState(false);
+
+  // iOS home screen quick actions (Android shortcuts arrive as plain links).
+  // Held until auth has loaded, the user is signed in and the navigator is
+  // mounted: on a cold start RootNavigator first shows the auth spinner, and
+  // a link opened then would be consumed and dropped.
+  const routingReady = navigationReady && !state.auth.isLoading && state.auth.isAuthenticated;
+  useAppShortcutLaunch(routingReady);
+  const handledPushRef = useRef<string | null>(null);
+
+  // Tapping an organizer-message push opens that message in the inbox (it
+  // carries the message id); an older payload without one opens the
+  // participant's tickets as before. Taps that arrive before the app can
+  // route (a cold start, still signing in) are left as the "last response"
+  // and picked up by the effect below once it can (or once the user
+  // has signed in).
+  const openPush = useCallback((response: Notifications.NotificationResponse) => {
+    if (!routingReady || !navigationRef.isReady()) return;
+    const key = `${response.notification.request.identifier}:${response.notification.date}`;
+    if (handledPushRef.current === key) return;
+    handledPushRef.current = key;
+    notificationService.clearLastNotificationResponse();
+
+    const data = response.notification.request.content.data as { type?: string; message_id?: string } | undefined;
+    if (data?.type !== 'message' || isKioskLocked()) return;
+    if (data.message_id) {
+      // `initial: false` keeps the ticket list under it to go back to.
+      navigationRef.navigate('ParticipantMain', {
+        screen: 'InboxMessage',
+        params: { messageId: data.message_id },
+        initial: false,
+      });
+    } else {
+      navigationRef.navigate('ParticipantMain');
+    }
+  }, [routingReady]);
 
   useEffect(() => {
-    // Only genuine attend:// deep links count. A loose substring check also
-    // matched the Expo dev client's launch URL, which contains the app slug
-    // ("attend-scanner") and fired before the navigator mounted.
-    const isScannerLink = (url: string) =>
-      /^attend:\/\/(--\/)?scanner/.test(url);
+    const last = notificationService.getLastNotificationResponse();
+    if (last) openPush(last);
+    const subscription = notificationService.addNotificationResponseListener(openPush);
+    return () => subscription.remove();
+  }, [openPush]);
 
+  const appReady = isAppReady({ authLoading: state.auth.isLoading, navigationReady });
+  useEffect(() => {
+    if (appReady) hideSplash();
+  }, [appReady]);
+
+  useEffect(() => {
     const openScanner = (url?: string | null) => {
-      if (url && isScannerLink(url) && navigationRef.current?.isReady()) {
-        // Navigate to scanner tab when tapping Live Activity
-        navigationRef.current.navigate('Main', { screen: 'Scanner' } as any);
-      }
+      if (!url || !isScannerLink(url) || !navigationRef.isReady() || isKioskLocked()) return;
+      // A participant-only user has no Scanner; the linking config's
+      // fallback already sends them home.
+      if (!rootRouteNames()?.includes('Main')) return;
+      // Navigate to scanner tab when tapping Live Activity
+      navigationRef.navigate('Main', { screen: 'Scanner' });
     };
 
     const subscription = Linking.addEventListener('url', (event) => openScanner(event.url));
@@ -319,62 +516,74 @@ export default Sentry.wrap(function App() {
     // Handle initial URL (app opened from Live Activity)
     Linking.getInitialURL().then(openScanner);
 
-    // Tapping an organizer-message push opens that message in the inbox
-    // (it carries the message id); an older payload without one opens the
-    // participant's tickets as before.
-    const notifSub = notificationService.addNotificationResponseListener((response) => {
-      const data = response.notification.request.content.data as { type?: string; message_id?: string } | undefined;
-      if (data?.type !== 'message' || !navigationRef.current) return;
-      if (data.message_id) {
-        navigationRef.current.navigate('InboxMessage', { messageId: data.message_id });
-      } else {
-        navigationRef.current.navigate('ParticipantMain' as any);
-      }
-    });
-
     return () => {
       subscription.remove();
-      notifSub.remove();
     };
   }, []);
 
   return (
-    <SafeAreaProvider>
-      <ThemeProvider>
-        <AppProvider>
-          <ThemedNavigationContainer navigationRef={navigationRef}>
-            <RootNavigator />
-          </ThemedNavigationContainer>
-        </AppProvider>
-      </ThemeProvider>
-    </SafeAreaProvider>
+    <ThemedNavigationContainer onReady={() => setNavigationReady(true)}>
+      <RootNavigator />
+    </ThemedNavigationContainer>
   );
-});
+}
 
 function ThemedNavigationContainer({
-  navigationRef,
+  onReady,
   children,
 }: {
-  navigationRef: React.RefObject<NavigationContainerRef<RootStackParamList> | null>;
+  onReady: () => void;
   children: React.ReactNode;
 }) {
   const theme = useNavigationTheme();
 
   return (
-    <NavigationContainer ref={navigationRef} theme={theme} linking={linking}>
+    <NavigationContainer ref={navigationRef} theme={theme} linking={linking} onReady={onReady}>
       {/* "auto" tracks the system appearance, so the clock and icons stay
           readable against whichever background the scheme paints. */}
       <StatusBar style="auto" />
-      {children}
+      <AppUnderOverlay>{children}</AppUnderOverlay>
+      <SwitcherOverlayHost />
+      <PortalHost />
+      <SheetHost />
     </NavigationContainer>
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+const makeStyles = ({ tokens }: Theme) => StyleSheet.create({
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.background,
+    backgroundColor: tokens.bg,
   },
+});
+
+/** The app, hidden from screen readers while the event switcher covers it. */
+function AppUnderOverlay({ children }: { children: React.ReactNode }) {
+  const overlayOpen = useSwitcherOverlayOpen();
+  // Scales out behind the event switcher as it opens, following it.
+  const scaled = useAnimatedStyle(() => {
+    const p = Math.min(1, Math.max(0, switcherProgress.value));
+    return {
+      transform: [{ scale: 1 - SWITCHER_APP_SCALE_OUT * p }],
+      borderRadius: SWITCHER_APP_RADIUS * p,
+    };
+  });
+  return (
+    <Animated.View
+      style={[rootStyles.fill, rootStyles.scaled, scaled]}
+      importantForAccessibility={overlayOpen ? 'no-hide-descendants' : 'auto'}
+      accessibilityElementsHidden={overlayOpen}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+const rootStyles = StyleSheet.create({
+  // Black around the app as it scales out behind the event switcher.
+  gestureRoot: { flex: 1, backgroundColor: overlayTokens.cameraStage },
+  scaled: { overflow: 'hidden' },
+  fill: { flex: 1 },
 });

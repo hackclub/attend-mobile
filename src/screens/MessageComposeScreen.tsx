@@ -1,40 +1,43 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
+import { useDiscardGuard } from '../hooks/useDiscardGuard';
 import { api } from '../services/api';
 import { hasUnsupportedFormatting, htmlToMarkup, markupToHtml } from '../services/richText';
 import { MarkupEditor, RichText } from '../components/RichText';
 import {
   Button,
+  Container,
+  ErrorView,
+  Flashbar,
+  LoadingView,
+  Screen,
+  StatusIndicator,
+  TextField,
+  Toggle,
+} from '../components/ui';
+import {
   CheckboxRow,
   DateTimeField,
-  ErrorView,
   Field,
-  LoadingView,
   MultiSelectField,
-  Notice,
-  Section,
   SelectField,
-  StatusPill,
-  SwitchRow,
-  TextField,
 } from '../components/forms';
 import { titleize } from '../services/statusDisplay';
-import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
-import type { MessageFormOptions, MessageInput, RootStackParamList } from '../types';
+import { spacing, useTheme } from '../theme';
+import type { MessageFormOptions, MessageInput, AppStackParamList } from '../types';
 
-type Nav = NativeStackNavigationProp<RootStackParamList, 'MessageCompose'>;
-type Route = RouteProp<RootStackParamList, 'MessageCompose'>;
+type Nav = NativeStackNavigationProp<AppStackParamList, 'MessageCompose'>;
+type Route = RouteProp<AppStackParamList, 'MessageCompose'>;
 
 /**
  * Step 1 of 2: write the message. Saving keeps it a draft and moves on to
  * the preview, where it is sent or scheduled, as in the web composer.
  */
 export function MessageComposeScreen() {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
+  const { tokens, type, radii } = useTheme();
   const navigation = useNavigation<Nav>();
   const { params } = useRoute<Route>();
   const [messageId, setMessageId] = useState(params?.messageId);
@@ -56,6 +59,10 @@ export function MessageComposeScreen() {
   const [body, setBody] = useState('');
   const [schedule, setSchedule] = useState(false);
   const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
+  const toggleSchedule = (on: boolean) => {
+    setSchedule(on);
+    if (on && !scheduledAt) setScheduledAt(new Date(Date.now() + 60 * 60 * 1000));
+  };
 
   const load = useCallback(async () => {
     if (!event) return;
@@ -89,15 +96,28 @@ export function MessageComposeScreen() {
     load();
   }, [load]);
 
-  useLayoutEffect(() => {
-    navigation.setOptions({ headerTitle: 'Compose message' });
-  }, [navigation]);
-
   const bodyHtml = useMemo(() => markupToHtml(body), [body]);
+  // Leaving with unsaved edits asks first. Saving (Next) makes the draft
+  // the new baseline, so coming back from the preview and leaving doesn't.
+  const { markClean } = useDiscardGuard(
+    options
+      ? JSON.stringify([audience, channels, participantIds, groupIds, subject, body, schedule, scheduledAt?.getTime()])
+      : null
+  );
 
-  if (!event) return <ErrorView message="Pick an event on the Events tab first." />;
-  if (loadError) return <ErrorView message={loadError} onRetry={load} />;
-  if (!options) return <LoadingView />;
+  if (!event || loadError || !options) {
+    return (
+      <Screen title="Compose message" scroll={false} modal modalBar={{}}>
+        {!event ? (
+          <ErrorView message="Pick an event on the Overview tab first." />
+        ) : loadError ? (
+          <ErrorView message={loadError} onRetry={load} />
+        ) : (
+          <LoadingView />
+        )}
+      </Screen>
+    );
+  }
 
   const toggleChannel = (value: string, on: boolean) =>
     setChannels(list => (on ? [...list, value] : list.filter(c => c !== value)));
@@ -128,6 +148,7 @@ export function MessageComposeScreen() {
         ? await api.updateMessage(event.id, messageId, input)
         : await api.createMessage(event.id, input);
       setMessageId(saved.id);
+      markClean();
       navigation.navigate('MessagePreview', { messageId: saved.id });
     } catch (e) {
       setErrors([e instanceof Error ? e.message : 'Could not save the message.']);
@@ -137,145 +158,158 @@ export function MessageComposeScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView
-        style={styles.container}
-        contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Text style={styles.step}>Step 1 of 2 — Write your message</Text>
+    <Screen
+      title="Compose message"
+      modal
+      keyboardAware
+      modalBar={{
+        confirm: <Button title="Next" variant="primary" onPress={next} loading={saving} />,
+      }}
+      scrollViewProps={{ keyboardShouldPersistTaps: 'handled' }}
+    >
+      <Text style={[type.body, { color: tokens.muted }]}>Step 1 of 2 — Write your message</Text>
 
-        <Section title="Recipients">
-          <Field label="Audience">
-            <SelectField title="Audience" value={audience} options={options.audiences} onChange={setAudience} />
-          </Field>
+      <Container title="Recipients" bodyStyle={styles.section}>
+        <Field label="Audience">
+          <SelectField title="Audience" value={audience} options={options.audiences} onChange={setAudience} />
+        </Field>
 
-          {audience === 'specific_participants' ? (
-            <Field label="Select participants">
-              <MultiSelectField
-                title="Select participants"
-                items={options.participants.map(p => ({
-                  id: p.id,
-                  title: p.name,
-                  subtitle: p.email,
-                  trailing: (
-                    <StatusPill
-                      tone={p.status === 'complete' ? 'success' : ['in_progress', 'awaiting_guardian'].includes(p.status) ? 'progress' : 'pending'}
-                      label={titleize(p.status)}
-                    />
-                  ),
-                }))}
-                selected={participantIds}
-                onChange={setParticipantIds}
-                noun={['participant', 'participants']}
-                searchPlaceholder="Find participants"
-              />
-            </Field>
-          ) : null}
-
-          <Field label="Channels">
-            {options.channels.map(channel => (
-              <CheckboxRow
-                key={channel.value}
-                label={channel.label}
-                description={channel.description}
-                checked={channels.includes(channel.value)}
-                disabled={channel.disabled}
-                onChange={on => toggleChannel(channel.value, on)}
-              />
-            ))}
-          </Field>
-
-          {options.groups.length ? (
-            <Field
-              label="Restrict to groups"
-              optional
-              description='Narrows the audience to people in the groups you select. For example, "Incomplete onboarding" with Exhibitor reaches exhibitors not yet onboarded. Leave all cleared to send to the full audience.'
-            >
-              {options.groups.map(group => (
-                <CheckboxRow
-                  key={group.id}
-                  label={group.name}
-                  checked={groupIds.includes(group.id)}
-                  onChange={on => setGroupIds(ids => (on ? [...ids, group.id] : ids.filter(id => id !== group.id)))}
-                />
-              ))}
-            </Field>
-          ) : null}
-        </Section>
-
-        <Section title="Content">
-          <Field
-            label="Subject"
-            optional
-            description="The email subject line. Slack and SMS use the event name."
-          >
-            <TextField value={subject} onChangeText={setSubject} placeholder="For example: Important update about your travel" />
-          </Field>
-          <Field
-            label="Message"
-            description="Use the toolbar for links, bold, italic and lists. Formatting is adapted for each channel. Required before the message can be sent."
-          >
-            {simplified ? (
-              <Notice tone="warning">
-                This message was written on the web with formatting the app can’t edit (such as underline or code
-                blocks). Saving here keeps the text and simpler formatting.
-              </Notice>
-            ) : null}
-            <MarkupEditor value={body} onChangeText={setBody} placeholder="Write your message" />
-            <Button
-              title={showPreview ? 'Hide formatted preview' : 'Show formatted preview'}
-              variant="link"
-              onPress={() => setShowPreview(v => !v)}
+        {audience === 'specific_participants' ? (
+          <Field label="Select participants">
+            <MultiSelectField
+              title="Select participants"
+              items={options.participants.map(p => ({
+                id: p.id,
+                title: p.name,
+                subtitle: p.email,
+                trailing: (
+                  <StatusIndicator
+                    type={p.status === 'complete' ? 'success' : ['in_progress', 'awaiting_guardian'].includes(p.status) ? 'in-progress' : 'pending'}
+                    label={titleize(p.status)}
+                  />
+                ),
+              }))}
+              selected={participantIds}
+              onChange={setParticipantIds}
+              noun={['participant', 'participants']}
+              searchPlaceholder="Find participants"
             />
-            {showPreview ? (
-              <View style={styles.preview}>
-                {body.trim() ? <RichText html={bodyHtml} /> : <Text style={styles.muted}>Nothing to preview yet.</Text>}
-              </View>
-            ) : null}
           </Field>
-        </Section>
-
-        <Section title="Delivery">
-          <SwitchRow
-            label="Schedule for later"
-            value={schedule}
-            onChange={on => {
-              setSchedule(on);
-              if (on && !scheduledAt) setScheduledAt(new Date(Date.now() + 60 * 60 * 1000));
-            }}
-          />
-          {schedule ? (
-            <Field label="Send at" optional>
-              <DateTimeField value={scheduledAt} onChange={setScheduledAt} minimumDate={new Date()} />
-            </Field>
-          ) : null}
-        </Section>
-
-        {errors.length ? (
-          <Notice tone="error">
-            {errors.map(message => (
-              <Text key={message} style={{ color: colors.status.error }}>{message}</Text>
-            ))}
-          </Notice>
         ) : null}
 
-        <View style={styles.actions}>
-          <Button title="Cancel" variant="link" onPress={() => navigation.goBack()} />
-          <Button title="Next: Preview →" variant="primary" onPress={next} loading={saving} />
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        <Field label="Channels">
+          {options.channels.map(channel => (
+            <CheckboxRow
+              key={channel.value}
+              label={channel.label}
+              description={channel.description}
+              checked={channels.includes(channel.value)}
+              disabled={channel.disabled}
+              onChange={on => toggleChannel(channel.value, on)}
+            />
+          ))}
+        </Field>
+
+        {options.groups.length ? (
+          <Field
+            label="Restrict to groups"
+            optional
+            description='Narrows the audience to people in the groups you select. For example, "Incomplete onboarding" with Exhibitor reaches exhibitors not yet onboarded. Leave all cleared to send to the full audience.'
+          >
+            {options.groups.map(group => (
+              <CheckboxRow
+                key={group.id}
+                label={group.name}
+                checked={groupIds.includes(group.id)}
+                onChange={on => setGroupIds(ids => (on ? [...ids, group.id] : ids.filter(id => id !== group.id)))}
+              />
+            ))}
+          </Field>
+        ) : null}
+      </Container>
+
+      <Container title="Content" bodyStyle={styles.section}>
+        <Field
+          label="Subject"
+          optional
+          description="The email subject line. Slack and SMS use the event name."
+        >
+          <TextField value={subject} onChangeText={setSubject} placeholder="For example: Important update about your travel" />
+        </Field>
+        <Field
+          label="Message"
+          description="Use the toolbar for links, bold, italic and lists. Formatting is adapted for each channel. Required before the message can be sent."
+        >
+          {simplified ? (
+            <Flashbar
+              type="warning"
+              message="This message was written on the web with formatting the app can’t edit (such as underline or code blocks). Saving here keeps the text and simpler formatting."
+            />
+          ) : null}
+          <MarkupEditor value={body} onChangeText={setBody} placeholder="Write your message" />
+          <Button
+            title={showPreview ? 'Hide formatted preview' : 'Show formatted preview'}
+            variant="link"
+            onPress={() => setShowPreview(v => !v)}
+            style={styles.linkButton}
+          />
+          {showPreview ? (
+            <View
+              style={[
+                styles.preview,
+                { backgroundColor: tokens.shaded, borderColor: tokens.div2, borderRadius: radii.container },
+              ]}
+            >
+              {body.trim() ? (
+                <RichText html={bodyHtml} />
+              ) : (
+                <Text style={[type.body, { color: tokens.muted }]}>Nothing to preview yet.</Text>
+              )}
+            </View>
+          ) : null}
+        </Field>
+      </Container>
+
+      <Container title="Delivery" bodyStyle={styles.section}>
+        {/* The whole row flips the switch. */}
+        <Pressable
+          style={styles.toggleRow}
+          onPress={() => toggleSchedule(!schedule)}
+          accessibilityRole="switch"
+          accessibilityLabel="Schedule for later"
+          accessibilityState={{ checked: schedule }}
+        >
+          <Text style={[type.body, styles.flex, { color: tokens.text }]}>Schedule for later</Text>
+          <Toggle accessibilityLabel="Schedule for later" value={schedule} onValueChange={toggleSchedule} decorative />
+        </Pressable>
+        {schedule ? (
+          <Field label="Send at" optional>
+            <DateTimeField value={scheduledAt} onChange={setScheduledAt} minimumDate={new Date()} />
+          </Field>
+        ) : null}
+      </Container>
+
+      {errors.length ? <Flashbar type="error" message={errors.join('\n')} /> : null}
+
+      <View style={styles.actions}>
+        <Button
+          title="Next: Preview"
+          icon="chevron-right"
+          iconPosition="end"
+          variant="primary"
+          onPress={next}
+          loading={saving}
+        />
+      </View>
+    </Screen>
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+const styles = StyleSheet.create({
   flex: { flex: 1 },
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { paddingBottom: 40 },
-  step: { fontSize: 14, color: colors.gray[600], paddingHorizontal: 16, paddingTop: 8 },
-  preview: { padding: 12, borderRadius: 12, backgroundColor: colors.gray[50], borderWidth: StyleSheet.hairlineWidth, borderColor: colors.gray[200] },
-  muted: { color: colors.gray[500] },
-  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, paddingHorizontal: 16, paddingTop: 18 },
+  section: { gap: spacing.lg },
+  linkButton: { alignSelf: 'flex-start', paddingHorizontal: 0 },
+  preview: { padding: spacing.md, borderWidth: 1 },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: 44 },
+  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
 });

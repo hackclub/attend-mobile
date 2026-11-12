@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Platform, Alert } from 'react-native';
-import * as Haptics from 'expo-haptics';
-import { nfcService, NFCReadResult, NFCWriteData } from '../services/nfc';
+import { haptics } from '../services/haptics';
+import { nfcService, NFCReadResult, NFCSessionState, NFCWriteData } from '../services/nfc';
 
 interface UseNFCReturn {
   isSupported: boolean;
@@ -13,6 +12,17 @@ interface UseNFCReturn {
   writeTag: (data: NFCWriteData) => Promise<{ success: boolean; error?: string }>;
   cancelOperation: () => Promise<void>;
   clearLastRead: () => void;
+  /**
+   * True on Android: there is no system "hold near reader" sheet, so show an
+   * in-app one driven by `session` while a read/write runs.
+   */
+  needsInAppPrompt: boolean;
+  /** Progress of the current read/write: idle, waiting, success or error. */
+  session: NFCSessionState;
+  /** Clears a finished success/error session (e.g. when the sheet closes). */
+  resetSession: () => void;
+  /** Android: opens the system NFC settings (when `isEnabled` is false). */
+  openSettings: () => Promise<void>;
 }
 
 export function useNFC(): UseNFCReturn {
@@ -21,24 +31,31 @@ export function useNFC(): UseNFCReturn {
   const [isReading, setIsReading] = useState(false);
   const [isWriting, setIsWriting] = useState(false);
   const [lastRead, setLastRead] = useState<NFCReadResult | null>(null);
+  const [session, setSession] = useState<NFCSessionState>(() => nfcService.getSnapshot().session);
 
   useEffect(() => {
-    async function init() {
-      if (Platform.OS !== 'ios') {
-        setIsSupported(false);
-        return;
-      }
+    let mounted = true;
+    const unsubscribe = nfcService.subscribe(snapshot => {
+      setSession(snapshot.session);
+      setIsEnabled(snapshot.adapterEnabled);
+    });
 
+    async function init() {
       const supported = await nfcService.init();
+      if (!mounted) return;
       setIsSupported(supported);
 
       if (supported) {
         const enabled = await nfcService.isEnabled();
-        setIsEnabled(enabled);
+        if (mounted) setIsEnabled(enabled);
       }
     }
 
     init();
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
   }, []);
 
   const readTag = useCallback(async (): Promise<NFCReadResult> => {
@@ -52,9 +69,9 @@ export function useNFC(): UseNFCReturn {
       setLastRead(result);
 
       if (result.success) {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        haptics.success();
       } else if (result.error !== 'Cancelled') {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        haptics.error();
       }
 
       return result;
@@ -73,9 +90,9 @@ export function useNFC(): UseNFCReturn {
       const result = await nfcService.writeTag(data);
 
       if (result.success) {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        haptics.success();
       } else if (result.error !== 'Cancelled') {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        haptics.error();
       }
 
       return result;
@@ -94,6 +111,9 @@ export function useNFC(): UseNFCReturn {
     setLastRead(null);
   }, []);
 
+  const resetSession = useCallback(() => nfcService.resetSession(), []);
+  const openSettings = useCallback(() => nfcService.openSettings(), []);
+
   return {
     isSupported,
     isEnabled,
@@ -104,5 +124,9 @@ export function useNFC(): UseNFCReturn {
     writeTag,
     cancelOperation,
     clearLastRead,
+    needsInAppPrompt: nfcService.needsInAppPrompt,
+    session,
+    resetSession,
+    openSettings,
   };
 }

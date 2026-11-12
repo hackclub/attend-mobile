@@ -1,0 +1,143 @@
+import type { ReactNode } from 'react';
+import type {
+  Conjunction,
+  FilterContext,
+  FilterRule,
+  SavedView,
+  BasicFilters,
+  SortRule,
+} from '../services/participantFilters';
+import type { Participant, ScanContext, User } from '../types';
+import { createSheetChannel } from './sheetChannel';
+
+// The data each form-sheet route reads, kept apart from the sheets' own
+// modules so a screen can open one without loading it.
+
+/** The one scan-context picker, for the scanner and for kiosk setup. */
+export interface ScanContextSheetData {
+  title: string;
+  /** The event the contexts belong to. */
+  eventName?: string;
+  contexts: ScanContext[];
+  selectedId?: string | null;
+  onSelect: (context: ScanContext) => void;
+}
+export const scanContextSheet = createSheetChannel<ScanContextSheetData>();
+
+/**
+ * The dev gallery's account drawer while signed out: a sample user, and
+ * Sign out calls `onSignOut` once the sheet has gone. Ignored signed in.
+ */
+export interface AccountSheetPreview {
+  user: User;
+  onSignOut: () => void;
+}
+export const accountSheetPreview = createSheetChannel<AccountSheetPreview>();
+
+/** Kiosk mode's PIN setup, in the scanner's context. */
+export interface KioskSetupSheetData {
+  scanContextId?: string;
+  scanContextName?: string;
+  /** The dev gallery's: starting calls `onStart`, once the sheet has gone, instead of opening the kiosk. */
+  preview?: { onStart: () => void };
+}
+export const kioskSetupSheet = createSheetChannel<KioskSetupSheetData>();
+
+/**
+ * Exiting kiosk mode. The attempt count and lockout live with the kiosk, so
+ * closing and reopening the drawer doesn't reset them.
+ */
+export interface KioskUnlockSheetData {
+  biometricUnlock: boolean;
+  /** When the lockout after too many wrong PINs ends (epoch ms), or null. */
+  lockedUntil: number | null;
+  /** Wrong PINs left before the lockout. */
+  attemptsLeft: number;
+  /** Checks a PIN, counting a wrong one; true when it's right. */
+  checkPin: (pin: string) => boolean;
+  /** Leaves kiosk mode. Called once the drawer has gone. */
+  onUnlocked: () => void;
+}
+export const kioskUnlockSheet = createSheetChannel<KioskUnlockSheetData>();
+
+/** The scanner's search / Enter ID sheet. */
+export interface ScannerSearchSheetData {
+  /** Without roster access it's an attendee-ID field only. */
+  canSearchRoster: boolean;
+  needsContext: boolean;
+  isProcessing: boolean;
+  /** Scans the participant or ID; the sheet closes once it resolves. */
+  onScanParticipant: (participant: Participant) => Promise<void>;
+  onScanId: (identifier: string) => Promise<void>;
+  /** Keeps power mode from dimming while someone types. */
+  onActivity: () => void;
+}
+export const scannerSearchSheet = createSheetChannel<ScannerSearchSheetData>();
+
+/** People's filter & sort. */
+export interface FilterSheetData {
+  rules: FilterRule[];
+  onRulesChange: (rules: FilterRule[]) => void;
+  conjunction: Conjunction;
+  onConjunctionChange: (conjunction: Conjunction) => void;
+  sort: SortRule | null;
+  onSortChange: (sort: SortRule | null) => void;
+  basic: BasicFilters;
+  onBasicChange: (basic: BasicFilters) => void;
+  /** Takes off every filter and the sort (not the chip). */
+  onClearAll: () => void;
+  /** How many people the list shows with all of it applied. */
+  resultCount: number;
+  savedViews: SavedView[];
+  onSaveView: (name: string) => void;
+  onDeleteView: (viewId: string) => void;
+  filterContext: FilterContext;
+}
+export const filterSheet = createSheetChannel<FilterSheetData>();
+
+export interface SheetOption {
+  value: string;
+  label: string;
+  /** A muted second line, only when it adds something to the label. */
+  description?: string;
+  destructive?: boolean;
+  disabled?: boolean;
+}
+
+/** A single-choice list: a form's longer select fields, or an action list. */
+export interface OptionsSheetData {
+  title: string;
+  subtitle?: string;
+  options: SheetOption[];
+  /** Ticked. Leave out for a list of actions. */
+  selected?: string | null;
+  /** Called after the sheet starts closing. */
+  onSelect: (value: string) => void;
+  renderOption?: (option: SheetOption) => ReactNode;
+}
+export const optionsSheet = createSheetChannel<OptionsSheetData>();
+
+export interface MultiSelectSheetItem {
+  id: string;
+  title: string;
+  subtitle?: string | null;
+  trailing?: ReactNode;
+}
+
+/** A searchable checklist, live: each tick calls onChange. */
+export interface MultiSelectSheetData {
+  title: string;
+  items: MultiSelectSheetItem[];
+  selected: string[];
+  onChange: (ids: string[]) => void;
+  /** Singular and plural, e.g. ['participant', 'participants']. */
+  noun: [string, string];
+  searchPlaceholder?: string;
+}
+export const multiSelectSheet = createSheetChannel<MultiSelectSheetData>();
+
+/** The message editor's "Add a link". */
+export interface LinkSheetData {
+  onSubmit: (url: string) => void;
+}
+export const linkSheet = createSheetChannel<LinkSheetData>();

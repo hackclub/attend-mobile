@@ -358,3 +358,25 @@ describe('api.recordIdCheck', () => {
     expect(result.note_id).toBe('note-1');
   });
 });
+
+describe('sign-out calls', () => {
+  it('revokes the session with DELETE /api/v1/session', async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ success: true }));
+
+    await api.deleteSession(3000);
+
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toMatch(/\/api\/v1\/session$/);
+    expect(init.method).toBe('DELETE');
+  });
+
+  it('puts the push token in the path, as the server route expects', async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ success: true }));
+
+    await api.unregisterPushToken('ExponentPushToken[abc]');
+
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toMatch(/\/api\/v1\/push_tokens\/ExponentPushToken%5Babc%5D$/);
+    expect(init.method).toBe('DELETE');
+  });
+});

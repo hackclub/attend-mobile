@@ -8,7 +8,9 @@ import type {
 } from '../types';
 import { mergeParticipant } from './participantIndex';
 
-export type ScannerOutcome = 'confirming' | ScanOutcome | 'not_scanned';
+// 'queued': Attend could not be reached, so the scan was saved to the offline
+// queue. It is not a confirmed check-in and must never be shown as one.
+export type ScannerOutcome = 'confirming' | ScanOutcome | 'queued' | 'not_scanned';
 
 export interface ScannerResult {
   attemptId: string;
@@ -20,6 +22,9 @@ export interface ScannerResult {
   firstScannedAt?: string;
   message?: string;
   retryable: boolean;
+  // Only for 'queued': this device already has a scan of the person in this
+  // context (cached roster or offline queue). The server still decides.
+  alreadyScannedLocally?: boolean;
 }
 
 export function parseQRCode(data: string): QRCodeData | null {
@@ -39,6 +44,20 @@ export function parseQRCode(data: string): QRCodeData | null {
   }
 
   return null;
+}
+
+/**
+ * Where an NFC read goes. Only the Attend external record (`isBadge`) is a
+ * badge token for the badge endpoint; URI/text content must be an Attend
+ * code, and anything else is null ("Not an Attend badge", no server call).
+ */
+export function nfcScanTarget(
+  payload: string,
+  isBadge: boolean
+): { kind: 'badge'; identifier: string } | { kind: 'participant'; identifier: string } | null {
+  if (isBadge) return { kind: 'badge', identifier: payload };
+  const parsed = parseQRCode(payload);
+  return parsed ? { kind: 'participant', identifier: parsed.id } : null;
 }
 
 export function responseOutcome(
@@ -98,6 +117,19 @@ export function scannableContexts(contexts: ScanContext[]): ScanContext[] {
   return bySchedule(today.length > 0 ? today : contexts);
 }
 
+/**
+ * How kiosk mode starts outside the scanner, under the scanner's rules: an
+ * event without contexts needs none, an event with exactly one uses it, and
+ * otherwise staff choose one of the contexts open now.
+ */
+export function kioskContextChoice(
+  contexts: ScanContext[]
+): { kind: 'start'; context?: ScanContext } | { kind: 'choose'; contexts: ScanContext[] } {
+  if (contexts.length === 0) return { kind: 'start' };
+  if (contexts.length === 1) return { kind: 'start', context: contexts[0] };
+  return { kind: 'choose', contexts: scannableContexts(contexts) };
+}
+
 export class SameCodeGate {
   private lastCode: string | null = null;
   private lastSeenAt = 0;
@@ -114,6 +146,15 @@ export class SameCodeGate {
     const wasAbsentLongEnough = now - this.lastSeenAt >= this.suppressionMs;
     this.lastSeenAt = now;
     return wasAbsentLongEnough;
+  }
+
+  /**
+   * Note that the last code is still in view without accepting it. Used
+   * while a request is running, so the suppression window counts from the
+   * moment that code was last seen rather than from its first frame.
+   */
+  touch(code: string, now = Date.now()): void {
+    if (code === this.lastCode) this.lastSeenAt = now;
   }
 
   reset(): void {
@@ -163,7 +204,12 @@ export function resultFromResponse(input: {
   };
 }
 
-function retryableFailure(error: unknown): boolean {
+/**
+ * Whether a failed scan request may succeed if sent again later: a network
+ * error, a timeout (status 0), rate limiting or a server error. These are the
+ * failures that send a scan to the offline queue.
+ */
+export function isRetryableScanError(error: unknown): boolean {
   if (error instanceof TypeError) return true;
   if (!error || typeof error !== 'object' || !('status' in error)) return false;
 
@@ -172,7 +218,7 @@ function retryableFailure(error: unknown): boolean {
 }
 
 export function failedResult(error: unknown, input: BaseResultInput): ScannerResult {
-  const retryable = retryableFailure(error);
+  const retryable = isRetryableScanError(error);
   const message = retryable
     ? 'Could not reach Attend. Try again.'
     : error instanceof Error
@@ -184,6 +230,44 @@ export function failedResult(error: unknown, input: BaseResultInput): ScannerRes
     outcome: 'not_scanned',
     message,
     retryable,
+  };
+}
+
+/**
+ * A scan of this person in this context that the cached roster already knows
+ * about, for the offline "already scanned" hint. Null when there is none.
+ */
+export function cachedPriorScan(
+  participant: Participant | undefined,
+  scanContextId: string | undefined
+): { firstScannedAt?: string } | null {
+  if (!participant) return null;
+  if (!scanContextId) {
+    return participant.checked_in_at ? { firstScannedAt: participant.checked_in_at } : null;
+  }
+  const entry = participant.scans_by_context?.find(
+    scan => scan.scan_context_id === scanContextId && scan.scan_count > 0
+  );
+  return entry ? { firstScannedAt: entry.first_scanned_at } : null;
+}
+
+export function queuedResult(input: BaseResultInput & {
+  alreadyScannedLocally: boolean;
+  firstScannedAt?: string;
+}): ScannerResult {
+  return {
+    attemptId: input.attemptId,
+    rawData: input.rawData,
+    source: input.source,
+    participant: input.participant,
+    scanContext: input.scanContext,
+    outcome: 'queued',
+    message: input.alreadyScannedLocally
+      ? 'Already scanned here on this device. Will sync when back online'
+      : 'Will sync when back online',
+    alreadyScannedLocally: input.alreadyScannedLocally,
+    firstScannedAt: input.alreadyScannedLocally ? input.firstScannedAt : undefined,
+    retryable: false,
   };
 }
 

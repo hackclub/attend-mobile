@@ -1,48 +1,56 @@
-import React, { useCallback, useLayoutEffect, useState } from 'react';
-import { Alert, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
+import { useFlash } from '../hooks/useFlash';
+import { haptics } from '../services/haptics';
 import { api } from '../services/api';
 import { RichText } from '../components/RichText';
 import {
+  ActionMenu,
   Badge,
   Button,
-  EmptyState,
+  Container,
   ErrorView,
+  Flashbar,
   KeyValue,
   LoadingView,
-  Section,
-  StatusPill,
-  formatDateTime,
-  formatRelative,
-} from '../components/forms';
-import {
-  CHANNEL_COLORS,
-  CHANNEL_LABELS,
-  DELIVERY_STATUS_TONES,
-  MESSAGE_STATUS_TONES,
-  titleize,
-} from '../services/statusDisplay';
-import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
-import type { BroadcastMessage, RootStackParamList } from '../types';
+  type MenuAction,
+  Screen,
+  Stat,
+  StatusIndicator,
+} from '../components/ui';
+import { formatDateTime, formatRelative } from '../components/forms';
+import { MESSAGE_STATUS_BADGE, channelList, statusType } from '../components/messageStatus';
+import { CHANNEL_LABELS, DELIVERY_STATUS_TONES, MESSAGE_STATUS_TONES, titleize } from '../services/statusDisplay';
+import { spacing, useTheme } from '../theme';
+import type { BroadcastMessage, AppStackParamList } from '../types';
 
-type Nav = NativeStackNavigationProp<RootStackParamList, 'MessageDetail'>;
-type Route = RouteProp<RootStackParamList, 'MessageDetail'>;
+type Nav = NativeStackNavigationProp<AppStackParamList, 'MessageDetail'>;
+type Route = RouteProp<AppStackParamList, 'MessageDetail'>;
 
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
 export function MessageDetailScreen() {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
+  const { tokens, type } = useTheme();
   const navigation = useNavigation<Nav>();
-  const { messageId } = useRoute<Route>().params;
+  const { messageId, notice } = useRoute<Route>().params;
   const { state } = useApp();
   const event = state.currentEvent;
   const [message, setMessage] = useState<BroadcastMessage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const { flash, show: showFlash, dismiss: dismissFlash } = useFlash();
+
+  // A notice handed over by the preview (sent or scheduled) shows once; the
+  // preview already played the haptic.
+  useEffect(() => {
+    if (!notice) return;
+    showFlash('success', notice, { silent: true });
+    navigation.setParams({ notice: undefined });
+  }, [notice, showFlash, navigation]);
 
   const load = useCallback(async () => {
     if (!event) return;
@@ -60,13 +68,21 @@ export function MessageDetailScreen() {
     }, [load])
   );
 
-  useLayoutEffect(() => {
-    navigation.setOptions({ headerTitle: 'Message' });
-  }, [navigation]);
-
-  if (!event) return <ErrorView message="Pick an event on the Events tab first." />;
-  if (error && !message) return <ErrorView message={error} onRetry={load} />;
-  if (!message) return <LoadingView />;
+  // The message's subject is the page's heading, so the scaffold has no title
+  // once it has loaded.
+  if (!event || !message) {
+    return (
+      <Screen title="Message" scroll={false}>
+        {!event ? (
+          <ErrorView message="Pick an event on the Overview tab first." />
+        ) : error ? (
+          <ErrorView message={error} onRetry={load} />
+        ) : (
+          <LoadingView />
+        )}
+      </Screen>
+    );
+  }
 
   const refresh = async () => {
     setRefreshing(true);
@@ -80,19 +96,29 @@ export function MessageDetailScreen() {
     try {
       const result = await api.messageAction(event.id, message.id, action, params);
       setMessage(result.record);
-      if (result.notice) Alert.alert(result.notice);
+      if (result.notice) showFlash('success', result.notice);
+      else haptics.success();
     } catch (e) {
+      haptics.error();
       Alert.alert('Something went wrong', e instanceof Error ? e.message : 'Please try again.');
     } finally {
       setBusy(null);
     }
   };
 
-  const confirm = (title: string, body: string, onConfirm: () => void, destructive = false) =>
+  const confirm = (
+    title: string,
+    body: string,
+    onConfirm: () => void,
+    destructive = false,
+    dismissLabel = 'Cancel',
+  ) => {
+    if (destructive) haptics.warning();
     Alert.alert(title, body, [
-      { text: 'Cancel', style: 'cancel' },
+      { text: dismissLabel, style: 'cancel' },
       { text: title, style: destructive ? 'destructive' : 'default', onPress: onConfirm },
     ]);
+  };
 
   const remove = () =>
     confirm(
@@ -102,8 +128,10 @@ export function MessageDetailScreen() {
         setBusy('destroy');
         try {
           await api.deleteMessage(event.id, message.id);
+          haptics.success();
           navigation.goBack();
         } catch (e) {
+          haptics.error();
           Alert.alert('Not deleted', e instanceof Error ? e.message : 'Please try again.');
           setBusy(null);
         }
@@ -118,121 +146,181 @@ export function MessageDetailScreen() {
       ? `Scheduled for ${formatDateTime(message.scheduled_at)} by ${message.sent_by ?? 'someone'}`
       : `Sent by ${message.sent_by ?? 'someone'} · Draft`;
 
+  const counters: { label: string; value: number }[] = [
+    { label: 'Recipients', value: message.recipient_count },
+    { label: 'Delivered', value: message.sent_count },
+    ...(message.opened_count != null ? [{ label: 'Opened', value: message.opened_count }] : []),
+    { label: 'Failed', value: message.failed_count },
+    { label: 'Pending', value: message.pending_count },
+  ];
+
+  const menuActions: MenuAction[] = [
+    ...(permissions.edit
+      ? [{
+        key: 'edit',
+        title: 'Edit',
+        iosIcon: 'pencil',
+        onSelect: () => navigation.navigate('MessageCompose', { messageId: message.id }),
+      }]
+      : []),
+    ...(permissions.retry_failed
+      ? [{
+        key: 'retry_failed',
+        title: `Retry failed (${message.failed_count})`,
+        iosIcon: 'arrow.clockwise',
+        onSelect: () => void run('retry_failed'),
+      }]
+      : []),
+    ...(permissions.send_to_new_recipients
+      ? [{
+        key: 'send_to_new_recipients',
+        title: `Send to ${plural(message.new_recipient_count, 'new recipient')}`,
+        iosIcon: 'paperplane',
+        onSelect: () =>
+          confirm(
+            'Send',
+            `Send this message to ${plural(message.new_recipient_count, 'new recipient')}? They match this audience now but haven't received it.`,
+            () => run('send_to_new_recipients')
+          ),
+      }]
+      : []),
+    ...(permissions.cancel
+      ? [{
+        key: 'cancel',
+        title: 'Cancel message',
+        iosIcon: 'xmark.circle',
+        destructive: true,
+        onSelect: () =>
+          confirm(
+            'Cancel message',
+            'Are you sure you want to cancel this scheduled message?',
+            () => run('cancel'),
+            true,
+            'Keep',
+          ),
+      }]
+      : []),
+    ...(permissions.destroy
+      ? [{ key: 'destroy', title: 'Delete', iosIcon: 'trash', destructive: true, onSelect: remove }]
+      : []),
+  ];
+
+  // The message's other actions sit in a native ⋯ menu; while one runs, a
+  // spinner stands in for it.
+  const menu = busy ? (
+    <View style={styles.menuBusy}>
+      <ActivityIndicator color={tokens.muted} accessibilityLabel="Working" />
+    </View>
+  ) : menuActions.length ? (
+    <ActionMenu accessibilityLabel="Message actions" actions={menuActions} />
+  ) : undefined;
+
   return (
-    <ScrollView
-      style={styles.container}
-      contentInsetAdjustmentBehavior="automatic"
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.text.accent} />}
-    >
+    <Screen refreshing={refreshing} onRefresh={refresh} action={menu}>
       <View style={styles.header}>
-        <Text style={[styles.title, !message.subject && styles.muted]}>{message.subject || 'No subject'}</Text>
-        <Text style={styles.byline}>{byline}</Text>
+        <View style={styles.titleRow}>
+          <Text
+            style={[type.h1, styles.flex, { color: message.subject ? tokens.textH : tokens.muted }]}
+            accessibilityRole="header"
+          >
+            {message.subject || 'No subject'}
+          </Text>
+          {/* Centred on the title's first line, however tall the badge is. */}
+          <View style={[styles.badgeSlot, { height: type.h1.lineHeight }]}>
+            <Badge label={titleize(message.status)} color={MESSAGE_STATUS_BADGE[message.status] ?? 'grey'} />
+          </View>
+        </View>
+        <Text style={[type.body, { color: tokens.muted }]}>{byline}</Text>
       </View>
 
-      <View style={styles.actionRow}>
-        {permissions.send_now ? (
+      {flash ? <Flashbar type={flash.type} message={flash.message} onDismiss={dismissFlash} /> : null}
+
+      {permissions.send_now ? (
+        <View style={styles.actionRow}>
           <Button
             title={message.scheduled_at && new Date(message.scheduled_at) > new Date() ? 'Schedule' : 'Send now'}
             variant="primary"
             onPress={() => navigation.navigate('MessagePreview', { messageId: message.id })}
           />
-        ) : null}
-        {permissions.edit ? (
-          <Button title="Edit" onPress={() => navigation.navigate('MessageCompose', { messageId: message.id })} />
-        ) : null}
-        {permissions.cancel ? (
-          <Button
-            title="Cancel"
-            loading={busy === 'cancel'}
-            onPress={() => confirm('Cancel', 'Are you sure you want to cancel this scheduled message?', () => run('cancel'))}
-          />
-        ) : null}
-        {permissions.retry_failed ? (
-          <Button
-            title={`Retry failed (${message.failed_count})`}
-            loading={busy === 'retry_failed'}
-            onPress={() => run('retry_failed')}
-          />
-        ) : null}
-        {permissions.send_to_new_recipients ? (
-          <Button
-            title={`Send to ${plural(message.new_recipient_count, 'new recipient')}`}
-            loading={busy === 'send_to_new_recipients'}
-            onPress={() =>
-              confirm(
-                'Send',
-                `Send this message to ${plural(message.new_recipient_count, 'new recipient')}? They match this audience now but haven't received it.`,
-                () => run('send_to_new_recipients')
-              )
-            }
-          />
-        ) : null}
-        {permissions.destroy ? (
-          <Button title="Delete" variant="destructive" loading={busy === 'destroy'} onPress={remove} />
-        ) : null}
-      </View>
-
-      <Section title="Overview">
-        <View style={styles.kvRow}>
-          <KeyValue label="Status">
-            <StatusPill tone={MESSAGE_STATUS_TONES[message.status] ?? 'info'} label={titleize(message.status)} />
-          </KeyValue>
-          <KeyValue label="Audience">{message.audience_label}</KeyValue>
         </View>
-        <KeyValue label="Channels">
-          <View style={styles.tokens}>
-            {message.channels.map(c => (
-              <Badge key={c} label={CHANNEL_LABELS[c] ?? c} color={CHANNEL_COLORS[c]} />
-            ))}
-          </View>
-        </KeyValue>
-        <View style={styles.counters}>
-          <Counter label="Recipients" value={message.recipient_count} />
-          <Counter label="Delivered" value={message.sent_count} />
-          {message.opened_count != null ? <Counter label="Opened" value={message.opened_count} /> : null}
-          <Counter label="Failed" value={message.failed_count} />
-          <Counter label="Pending" value={message.pending_count} />
+      ) : null}
+
+      <Container title="Overview">
+        <KeyValue
+          label="Status"
+          value={
+            <StatusIndicator
+              type={statusType(MESSAGE_STATUS_TONES[message.status])}
+              label={titleize(message.status)}
+            />
+          }
+        />
+        <KeyValue label="Audience" value={message.audience_label} />
+        <KeyValue label="Channels" value={channelList(message.channels)} />
+        <View style={[styles.stats, { borderTopColor: tokens.div2 }]}>
+          {counters.map(c => (
+            <Stat key={c.label} label={c.label} value={c.value} style={styles.stat} />
+          ))}
         </View>
-      </Section>
+      </Container>
 
-      <Section title="Message content">
-        {message.body_html ? <RichText html={message.body_html} /> : <Text style={styles.muted}>No content yet.</Text>}
-      </Section>
+      <Container title="Message content">
+        {message.body_html ? (
+          <RichText html={message.body_html} />
+        ) : (
+          <Text style={[type.body, { color: tokens.muted }]}>No content yet.</Text>
+        )}
+      </Container>
 
-      <Section title="Delivery status">
+      <Container title="Delivery status" flush headerDivided>
         {message.recipients.length ? (
           message.recipients.map((recipient, i) => (
-            <View key={recipient.id} style={[styles.recipient, i > 0 && styles.divider]}>
+            <View
+              key={recipient.id}
+              style={[styles.recipient, i > 0 && { borderTopWidth: 1, borderTopColor: tokens.div2 }]}
+            >
               <View style={styles.recipientHeader}>
-                <Text style={styles.bold}>{recipient.name}</Text>
-                <Text style={styles.muted}>{recipient.kind === 'guardian' ? 'Guardian' : 'Attendee'}</Text>
+                <Text style={[type.label, { color: tokens.textH }]}>{recipient.name}</Text>
+                <Text style={[type.body, { color: tokens.muted }]}>
+                  {recipient.kind === 'guardian' ? 'Guardian' : 'Attendee'}
+                </Text>
                 {recipient.catch_up ? <Badge label="Sent later" /> : null}
               </View>
               {recipient.deliveries.map(delivery => (
                 <View key={delivery.id} style={styles.delivery}>
                   <View style={styles.deliveryRow}>
-                    <Badge label={CHANNEL_LABELS[delivery.channel] ?? delivery.channel} color={CHANNEL_COLORS[delivery.channel]} />
-                    <Text style={[styles.identifier, styles.flex]} numberOfLines={1}>
+                    <Text style={[type.label, styles.channel, { color: tokens.text }]}>
+                      {CHANNEL_LABELS[delivery.channel] ?? delivery.channel}
+                    </Text>
+                    <Text style={[type.body, styles.flex, { color: tokens.text2 }]} numberOfLines={1}>
                       {delivery.recipient_identifier ?? 'Hidden for your role'}
                     </Text>
-                    <StatusPill tone={DELIVERY_STATUS_TONES[delivery.status] ?? 'info'} label={titleize(delivery.status)} />
+                    <StatusIndicator
+                      type={statusType(DELIVERY_STATUS_TONES[delivery.status])}
+                      label={titleize(delivery.status)}
+                    />
                   </View>
                   {delivery.error_message ? (
-                    <Text style={styles.error} numberOfLines={3}>{delivery.error_message}</Text>
+                    <Text style={[type.body, { color: tokens.error }]} numberOfLines={3}>
+                      {delivery.error_message}
+                    </Text>
                   ) : null}
                   {delivery.status === 'failed' ? (
                     <Button
                       title="Retry"
                       variant="link"
+                      icon="refresh"
                       loading={busy === delivery.id}
                       onPress={() => run('retry_delivery', { delivery_id: delivery.id }, delivery.id)}
+                      style={styles.retry}
                     />
                   ) : delivery.status === 'delivered' && delivery.delivered_at ? (
                     delivery.channel === 'email' && delivery.read_at ? (
-                      <StatusPill tone="success" label={`Opened ${formatRelative(delivery.read_at)}`} />
+                      <StatusIndicator type="success" label={`Opened ${formatRelative(delivery.read_at)}`} />
                     ) : (
-                      <Text style={styles.muted}>Delivered {formatRelative(delivery.delivered_at)}</Text>
+                      <Text style={[type.body, { color: tokens.muted }]}>
+                        Delivered {formatRelative(delivery.delivered_at)}
+                      </Text>
                     )
                   ) : null}
                 </View>
@@ -240,44 +328,36 @@ export function MessageDetailScreen() {
             </View>
           ))
         ) : (
-          <EmptyState title="No deliveries yet" message="Send the message to see delivery status." />
+          <View style={styles.recipient}>
+            <Text style={[type.label, { color: tokens.textH }]}>No deliveries yet</Text>
+            <Text style={[type.body, { color: tokens.muted }]}>Send the message to see delivery status.</Text>
+          </View>
         )}
-      </Section>
-    </ScrollView>
+      </Container>
+    </Screen>
   );
 }
 
-function Counter({ label, value }: { label: string; value: number }) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.counter}>
-      <Text style={styles.counterLabel}>{label}</Text>
-      <Text style={styles.counterValue}>{value}</Text>
-    </View>
-  );
-}
-
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  flex: { flex: 1 },
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { paddingBottom: 40 },
-  header: { paddingHorizontal: 16, paddingTop: 10, gap: 4 },
-  title: { fontSize: 22, fontWeight: '800', color: colors.gray[900] },
-  byline: { fontSize: 14, color: colors.gray[600] },
-  muted: { fontSize: 13, color: colors.gray[500] },
-  bold: { fontSize: 15, fontWeight: '700', color: colors.gray[900] },
-  actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingTop: 12 },
-  kvRow: { flexDirection: 'row', gap: 24 },
-  tokens: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  counters: { flexDirection: 'row', flexWrap: 'wrap', gap: 18 },
-  counter: { gap: 2, minWidth: 70 },
-  counterLabel: { fontSize: 12, fontWeight: '600', color: colors.gray[500], textTransform: 'uppercase' },
-  counterValue: { fontSize: 22, fontWeight: '800', color: colors.gray[900] },
-  recipient: { gap: 8, paddingTop: 10 },
-  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.gray[200] },
-  recipientHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  delivery: { gap: 4, paddingLeft: 4 },
-  deliveryRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  identifier: { fontSize: 13, color: colors.gray[700] },
-  error: { fontSize: 13, color: colors.status.error },
+const styles = StyleSheet.create({
+  flex: { flex: 1, minWidth: 0 },
+  header: { gap: spacing.xs },
+  titleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md },
+  badgeSlot: { justifyContent: 'center' },
+  actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  menuBusy: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  stats: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    rowGap: spacing.lg,
+    marginTop: spacing.md,
+    paddingTop: spacing.lg,
+    borderTopWidth: 1,
+  },
+  stat: { flexBasis: '33%', flexGrow: 0 },
+  recipient: { gap: spacing.sm, paddingHorizontal: spacing.xl, paddingVertical: 14 },
+  recipientHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
+  delivery: { gap: spacing.xs },
+  deliveryRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  channel: { minWidth: 48 },
+  retry: { alignSelf: 'flex-start', paddingHorizontal: 0, minHeight: 32 },
 });

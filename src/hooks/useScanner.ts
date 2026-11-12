@@ -1,18 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import NetInfo from '@react-native-community/netinfo';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
 import { nfcService } from '../services/nfc';
 import { ParticipantIndex } from '../services/participantIndex';
 import {
   SameCodeGate,
+  cachedPriorScan,
   confirmingResult,
   createAttemptId,
   failedResult,
+  isRetryableScanError,
+  nfcScanTarget,
   parseQRCode,
+  queuedResult,
   resultFromResponse,
   scannableContexts,
   type ScannerResult,
 } from '../services/scannerCore';
+import { scanQueue } from '../services/scanQueue';
 import { syncService } from '../services/sync';
 import type { ScanContext, ScanSource } from '../types';
 
@@ -24,6 +30,12 @@ interface ScanRequest {
   scanContext?: ScanContext;
   attemptId?: string;
   startedAt?: string;
+}
+
+// The same-code gate keys NFC reads apart from camera frames, so a badge tap
+// and a QR code with the same text don't suppress each other.
+function gateKey(source: ScanSource, data: string): string {
+  return source === 'nfc' ? `nfc:${data}` : data;
 }
 
 export function useScanner(options: {
@@ -171,7 +183,56 @@ export function useScanner(options: {
     lastRequestRef.current = stableRequest;
     setLastScan(confirming);
 
+    const baseResult = {
+      attemptId,
+      rawData: request.rawData,
+      source: request.source,
+      participant: cachedParticipant,
+      scanContext,
+    };
+
+    // Attend can't be reached: save the scan for the queue to deliver with
+    // the same client_scan_id and scanned_at. The result says so; it never
+    // claims a check-in. Duplicates can only be judged from local data.
+    const saveOffline = async (): Promise<ScannerResult> => {
+      const queued = await scanQueue.findQueuedScan(eventId, {
+        identifier: request.identifier,
+        participantEventId: cachedParticipant?.participant_event_id,
+        scanContextId: scanContext?.id,
+      });
+      const prior = cachedPriorScan(cachedParticipant, scanContext?.id)
+        ?? (queued && queued.clientScanId !== attemptId ? { firstScannedAt: queued.scannedAt } : null);
+      await scanQueue.enqueue({
+        clientScanId: attemptId,
+        eventId,
+        kind: request.kind,
+        identifier: request.identifier,
+        scanContextId: scanContext?.id,
+        source: request.source,
+        scannedAt: startedAt,
+        participantEventId: cachedParticipant?.participant_event_id,
+      });
+      return queuedResult({
+        ...baseResult,
+        alreadyScannedLocally: !!prior,
+        firstScannedAt: prior?.firstScannedAt,
+      });
+    };
+
     try {
+      const netState = await NetInfo.fetch().catch(() => null);
+      if (requestController.signal.aborted || currentEventIdRef.current !== eventId) {
+        return null;
+      }
+      if (netState?.isConnected === false) {
+        const result = await saveOffline();
+        if (requestController.signal.aborted || currentEventIdRef.current !== eventId) {
+          return null;
+        }
+        setLastScan(result);
+        return result;
+      }
+
       const options = {
         scanContextId: scanContext?.id,
         clientScanId: attemptId,
@@ -203,18 +264,26 @@ export function useScanner(options: {
       if (requestController.signal.aborted || currentEventIdRef.current !== eventId) {
         return null;
       }
-      const result = failedResult(error, {
-        attemptId,
-        rawData: request.rawData,
-        source: request.source,
-        participant: cachedParticipant,
-        scanContext,
-      });
+      let result = failedResult(error, baseResult);
+      if (isRetryableScanError(error)) {
+        try {
+          result = await saveOffline();
+        } catch (queueError) {
+          console.warn('[Scanner] Failed to queue offline scan:', queueError);
+        }
+        if (requestController.signal.aborted || currentEventIdRef.current !== eventId) {
+          return null;
+        }
+      }
       setLastScan(result);
       return result;
     } finally {
       if (requestAbortRef.current === requestController) {
         requestAbortRef.current = null;
+        // Start the same-code window again from now: a request slower than
+        // the window would otherwise let the code still in front of the
+        // camera (or on the reader) straight back in.
+        codeGateRef.current.touch(gateKey(request.source, request.rawData));
         processingRef.current = false;
         setIsProcessing(false);
       }
@@ -238,11 +307,11 @@ export function useScanner(options: {
     data: string,
     source: ScanSource = 'qr'
   ): Promise<ScannerResult | null> => {
-    if (
-      processingRef.current ||
-      !contextsReady ||
-      !codeGateRef.current.accept(data)
-    ) return null;
+    if (processingRef.current) {
+      codeGateRef.current.touch(gateKey(source, data));
+      return null;
+    }
+    if (!contextsReady || !codeGateRef.current.accept(gateKey(source, data))) return null;
 
     const parsed = parseQRCode(data);
     if (!parsed) {
@@ -263,6 +332,34 @@ export function useScanner(options: {
       scanContext: selectedContext,
     });
   }, [contextsReady, runRequest, selectedContext]);
+
+  // The shared tail of every NFC read: a badge token goes to the badge
+  // endpoint, anything else must be an Attend QR payload.
+  const scanNfcPayload = useCallback(async (
+    payload: string,
+    isBadgeToken: boolean
+  ): Promise<ScannerResult | null> => {
+    if (!codeGateRef.current.accept(gateKey('nfc', payload))) return null;
+
+    const target = nfcScanTarget(payload, isBadgeToken);
+    if (!target) {
+      const result = failedResult(new Error('Not an Attend badge.'), {
+        attemptId: createAttemptId(),
+        rawData: payload,
+        source: 'nfc',
+      });
+      setLastScan(result);
+      return result;
+    }
+
+    return runRequest({
+      kind: target.kind,
+      identifier: target.identifier,
+      rawData: payload,
+      source: 'nfc',
+      scanContext: selectedContext,
+    });
+  }, [runRequest, selectedContext]);
 
   const handleNFCScan = useCallback(async (): Promise<ScannerResult | null> => {
     if (processingRef.current || !contextsReady) return null;
@@ -316,37 +413,27 @@ export function useScanner(options: {
       return result;
     }
 
-    if (!codeGateRef.current.accept(`nfc:${nfcResult.payload}`)) return null;
+    return scanNfcPayload(nfcResult.payload, nfcResult.type === 'external');
+  }, [contextRequiredResult, contextsReady, needsContext, scanNfcPayload]);
 
-    if (nfcResult.type === 'external') {
-      return runRequest({
-        kind: 'badge',
-        identifier: nfcResult.payload,
-        rawData: nfcResult.payload,
-        source: 'nfc',
-        scanContext: selectedContext,
-      });
+  // Android reads badges continuously (useNfcAutoRead) and hands over the
+  // token with its record type: `isBadge` only for the Attend external
+  // record. A URI/text record must be an Attend link; anything else (a
+  // business card, a transit tag) never reaches the server.
+  const handleNfcToken = useCallback(async (
+    token: string,
+    isBadge = false
+  ): Promise<ScannerResult | null> => {
+    const payload = token.trim();
+    if (!payload) return null;
+    if (processingRef.current) {
+      codeGateRef.current.touch(gateKey('nfc', payload));
+      return null;
     }
-
-    const parsed = parseQRCode(nfcResult.payload);
-    if (!parsed) {
-      const result = failedResult(new Error('Unrecognized Attend NFC data.'), {
-        attemptId: createAttemptId(),
-        rawData: nfcResult.payload,
-        source: 'nfc',
-      });
-      setLastScan(result);
-      return result;
-    }
-
-    return runRequest({
-      kind: 'participant',
-      identifier: parsed.id,
-      rawData: nfcResult.payload,
-      source: 'nfc',
-      scanContext: selectedContext,
-    });
-  }, [contextRequiredResult, contextsReady, needsContext, runRequest, selectedContext]);
+    if (!contextsReady) return null;
+    if (needsContext) return contextRequiredResult('nfc');
+    return scanNfcPayload(payload, isBadge);
+  }, [contextRequiredResult, contextsReady, needsContext, scanNfcPayload]);
 
   const retryLastScan = useCallback((): Promise<ScannerResult | null> => {
     const request = lastRequestRef.current;
@@ -363,6 +450,14 @@ export function useScanner(options: {
     codeGateRef.current.reset();
   }, [hideLastScan]);
 
+  // After an undo: hides that scan's card only if it is still the one shown
+  // (a newer scan may have landed during the request), and leaves the
+  // same-code gate alone, so a code still in frame isn't checked straight
+  // back in. Scanning it again takes moving it out of frame first.
+  const hideScan = useCallback((attemptId: string) => {
+    setLastScan(current => (current?.attemptId === attemptId ? null : current));
+  }, []);
+
   const selectContext = useCallback((contextId: string) => {
     if (lockedContextId) return;
     setSelectedContextId(contextId);
@@ -371,11 +466,13 @@ export function useScanner(options: {
   return {
     handleScan,
     handleNFCScan,
+    handleNfcToken,
     retryLastScan,
     isProcessing,
     lastScan,
     clearLastScan,
     hideLastScan,
+    hideScan,
     hasEvent: !!state.currentEvent,
     scanContexts,
     selectedContextId,

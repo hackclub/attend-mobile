@@ -1,79 +1,114 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { BackHandler, View, Text, StyleSheet, TextInput } from 'react-native';
+import { useTheme } from '../theme';
 import {
-  View,
-  Text,
-  StyleSheet,
-  Modal,
-  TouchableOpacity,
-  ScrollView,
-  TextInput,
-  FlatList,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
+  Button,
+  Divider,
+  Icon,
+  ListRow,
+  SegmentedControl,
+  Sheet,
+  TextField,
+  PressableSurface,
+  type IconName,
+} from './ui';
 import {
+  BASIC_STATES,
+  BASIC_TOGGLES,
+  basicFilterCount,
+  DEFAULT_SORT,
   FILTER_FIELDS,
   SORT_FIELDS,
   OPERATORS_BY_TYPE,
   OPERATOR_LABELS,
   getField,
-  getSortField,
   operatorNeedsValue,
-  applyFilters,
   newRuleId,
+  ruleIsComplete,
+  type SortRule,
   type FilterRule,
   type FilterOperator,
-  type Conjunction,
-  type SortRule,
-  type SavedView,
-  type FilterContext,
   type FieldOption,
 } from '../services/participantFilters';
+import { filterSheet, type FilterSheetData } from '../navigation/sheetData';
+import { useCloseSheet } from '../navigation/sheetPresenter';
+import { useSheetData } from '../screens/sheets/useSheetData';
+import { SelectField } from './forms';
+import type { SelectOption } from '../types';
+import { PARTICIPANT_STATE_LABELS, type ParticipantState } from '../services/participantStatus';
 
-interface FilterSheetProps {
-  visible: boolean;
-  onClose: () => void;
-  rules: FilterRule[];
-  onRulesChange: (rules: FilterRule[]) => void;
-  conjunction: Conjunction;
-  onConjunctionChange: (c: Conjunction) => void;
-  sort: SortRule | null;
-  onSortChange: (sort: SortRule | null) => void;
-  savedViews: SavedView[];
-  onSaveView: (name: string) => void;
-  onDeleteView: (viewId: string) => void;
-  filterContext: FilterContext;
-}
 
 type PickerTarget =
   | { kind: 'field'; ruleId: string }
   | { kind: 'operator'; ruleId: string }
-  | { kind: 'value'; ruleId: string }
-  | { kind: 'sort-field' };
+  | { kind: 'value'; ruleId: string };
 
-export function FilterSheet({
-  visible,
-  onClose,
+const SORT_OPTIONS: SelectOption[] = SORT_FIELDS.map(f => ({ value: f.key, label: f.label }));
+
+// What each direction means for each field, in words.
+const DIRECTION_LABELS: Record<string, { asc: string; desc: string }> = {
+  name: { asc: 'A to Z', desc: 'Z to A' },
+  checked_in_at: { asc: 'Earliest first', desc: 'Latest first' },
+  status: { asc: 'Here first', desc: 'Invited first' },
+  email: { asc: 'A to Z', desc: 'Z to A' },
+};
+
+// The direction a field starts in when picked: latest check-ins first.
+const FIRST_DIRECTION: Record<string, SortRule['direction']> = { checked_in_at: 'desc' };
+
+/** Name A to Z is the list's own order, kept as no sort at all. */
+function normaliseSort(sort: SortRule): SortRule | null {
+  return sort.field === DEFAULT_SORT.field && sort.direction === DEFAULT_SORT.direction ? null : sort;
+}
+
+type TriState = 'any' | 'yes' | 'no';
+const TRI_STATE_OPTIONS: { value: TriState; label: string }[] = [
+  { value: 'any', label: 'Any' },
+  { value: 'yes', label: 'Yes' },
+  { value: 'no', label: 'No' },
+];
+
+const PICKER_TITLES: Record<PickerTarget['kind'], string> = {
+  field: 'Select field',
+  operator: 'Select condition',
+  value: 'Select value',
+};
+
+/** People's filter & sort, a drawer opened through `filterSheet`. */
+export function FilterSheet() {
+  const data = useSheetData(filterSheet);
+  return data ? <FilterSheetBody {...data} /> : null;
+}
+
+function FilterSheetBody({
   rules,
   onRulesChange,
   conjunction,
   onConjunctionChange,
   sort,
   onSortChange,
+  basic,
+  onBasicChange,
+  onClearAll,
+  resultCount,
   savedViews,
   onSaveView,
   onDeleteView,
   filterContext,
-}: FilterSheetProps) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
+}: FilterSheetData) {
+  const { tokens, type, radii } = useTheme();
   const [picker, setPicker] = useState<PickerTarget | null>(null);
   const [viewName, setViewName] = useState('');
   const [isNamingView, setIsNamingView] = useState(false);
 
-  const matchCount = useMemo(
-    () => applyFilters(filterContext.participants, rules, conjunction, filterContext).length,
-    [filterContext, rules, conjunction],
+  const toggleState = useCallback(
+    (state: ParticipantState) => {
+      const states = basic.states.includes(state)
+        ? basic.states.filter(s => s !== state)
+        : [...basic.states, state];
+      onBasicChange({ ...basic, states });
+    },
+    [basic, onBasicChange],
   );
 
   const addRule = useCallback(() => {
@@ -100,9 +135,6 @@ export function FilterSheet({
     if (picker.kind === 'field') {
       return FILTER_FIELDS.map(f => ({ value: f.key, label: f.label }));
     }
-    if (picker.kind === 'sort-field') {
-      return SORT_FIELDS.map(f => ({ value: f.key, label: f.label }));
-    }
     const rule = rules.find(r => r.id === picker.ruleId);
     const field = rule ? getField(rule.field) : undefined;
     if (!rule || !field) return [];
@@ -112,12 +144,19 @@ export function FilterSheet({
     return field.getOptions?.(filterContext) ?? [];
   }, [picker, rules, filterContext]);
 
+  const pickerSelected = useMemo((): string | undefined => {
+    if (!picker) return undefined;
+    const rule = rules.find(r => r.id === picker.ruleId);
+    if (!rule) return undefined;
+    if (picker.kind === 'field') return rule.field;
+    if (picker.kind === 'operator') return rule.operator;
+    return rule.value;
+  }, [picker, rules]);
+
   const handlePickOption = useCallback(
     (value: string) => {
       if (!picker) return;
-      if (picker.kind === 'sort-field') {
-        onSortChange({ field: value, direction: sort?.direction ?? 'asc' });
-      } else if (picker.kind === 'field') {
+      if (picker.kind === 'field') {
         const field = getField(value);
         if (field) {
           // Changing field resets operator + value to valid defaults
@@ -138,7 +177,7 @@ export function FilterSheet({
       }
       setPicker(null);
     },
-    [picker, sort, onSortChange, updateRule],
+    [picker, updateRule],
   );
 
   const handleSaveView = useCallback(() => {
@@ -149,311 +188,377 @@ export function FilterSheet({
     }
   }, [viewName, onSaveView]);
 
-  const sortField = sort ? getSortField(sort.field) : undefined;
+  const handleClose = useCloseSheet();
 
-  return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Filter & Sort</Text>
-          <TouchableOpacity onPress={onClose} style={styles.doneButton}>
-            <Text style={styles.doneText}>Done</Text>
-          </TouchableOpacity>
-        </View>
+  // The back button leaves an option list for the filters, as the list's
+  // Back button does, rather than dismissing the whole sheet. This listener
+  // is newer than the navigator's, so it runs first. (Android's Material
+  // bottom sheet is a window of its own that takes back itself, so there
+  // back dismisses the sheet and this doesn't run.)
+  useEffect(() => {
+    if (!picker) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setPicker(null);
+      return true;
+    });
+    return () => sub.remove();
+  }, [picker]);
 
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Text style={styles.sectionTitle}>Filters</Text>
+  const effectiveSort = sort ?? DEFAULT_SORT;
+  const directionLabels = DIRECTION_LABELS[effectiveSort.field] ?? { asc: 'Ascending', desc: 'Descending' };
+  const filterCount = rules.filter(ruleIsComplete).length + basicFilterCount(basic);
+  const canSaveView = filterCount > 0 || sort !== null;
+  const canClear = rules.length > 0 || basicFilterCount(basic) > 0 || sort !== null;
 
-          {rules.length > 1 && (
-            <View style={styles.conjunctionRow}>
-              <Text style={styles.conjunctionLabel}>Match</Text>
-              <View style={styles.segmented}>
-                <TouchableOpacity
-                  style={[styles.segment, conjunction === 'and' && styles.segmentActive]}
-                  onPress={() => onConjunctionChange('and')}
-                >
-                  <Text style={[styles.segmentText, conjunction === 'and' && styles.segmentTextActive]}>
-                    All
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.segment, conjunction === 'or' && styles.segmentActive]}
-                  onPress={() => onConjunctionChange('or')}
-                >
-                  <Text style={[styles.segmentText, conjunction === 'or' && styles.segmentTextActive]}>
-                    Any
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.conjunctionLabel}>of the following</Text>
-            </View>
-          )}
+  const pickerContent = picker ? (
+    <Sheet
+      title={PICKER_TITLES[picker.kind]}
+      action={<Button variant="link" title="Back" icon="back" onPress={() => setPicker(null)} />}
+      contentContainerStyle={styles.pickerList}
+    >
+      {pickerOptions.length === 0 ? (
+        <Text style={[type.body, styles.emptyText, { color: tokens.text2 }]}>No options available</Text>
+      ) : (
+        pickerOptions.map((option, index) => (
+          <ListRow
+            key={option.value}
+            title={option.label}
+            onPress={() => handlePickOption(option.value)}
+            chevron={false}
+            trailing={
+              option.value === pickerSelected ? <Icon name="check" size={18} color={tokens.accent} /> : undefined
+            }
+            divider={index < pickerOptions.length - 1}
+          />
+        ))
+      )}
+    </Sheet>
+  ) : null;
 
-          {rules.length === 0 && (
-            <Text style={styles.emptyText}>No filters. Showing all participants.</Text>
-          )}
-
-          {rules.map(rule => {
-            const field = getField(rule.field);
-            const needsValue = !!field && operatorNeedsValue(rule.operator);
-            const isTextValue = !!field && field.type === 'text' && needsValue;
-            const valueLabel =
-              field?.getOptions?.(filterContext).find(o => o.value === rule.value)?.label ??
-              rule.value;
-
-            return (
-              <View key={rule.id} style={styles.ruleRow}>
-                <View style={styles.rulePills}>
-                  <TouchableOpacity
-                    style={[styles.pill, !field && styles.pillPlaceholder]}
-                    onPress={() => setPicker({ kind: 'field', ruleId: rule.id })}
-                  >
-                    <Text
-                      style={[styles.pillText, !field && styles.pillPlaceholderText]}
-                      numberOfLines={1}
-                    >
-                      {field?.label ?? 'Select field...'}
-                    </Text>
-                    <Ionicons name="chevron-down" size={14} color={colors.text.muted} />
-                  </TouchableOpacity>
-
-                  {field && (
-                    <TouchableOpacity
-                      style={styles.pill}
-                      onPress={() => setPicker({ kind: 'operator', ruleId: rule.id })}
-                    >
-                      <Text style={styles.pillText} numberOfLines={1}>
-                        {OPERATOR_LABELS[rule.operator]}
-                      </Text>
-                      <Ionicons name="chevron-down" size={14} color={colors.text.muted} />
-                    </TouchableOpacity>
-                  )}
-
-                  {needsValue && !isTextValue && (
-                    <TouchableOpacity
-                      style={[styles.pill, !rule.value && styles.pillPlaceholder]}
-                      onPress={() => setPicker({ kind: 'value', ruleId: rule.id })}
-                    >
-                      <Text
-                        style={[styles.pillText, !rule.value && styles.pillPlaceholderText]}
-                        numberOfLines={1}
-                      >
-                        {valueLabel || 'Select...'}
-                      </Text>
-                      <Ionicons name="chevron-down" size={14} color={colors.text.muted} />
-                    </TouchableOpacity>
-                  )}
-
-                  {isTextValue && (
-                    <TextInput
-                      style={styles.valueInput}
-                      placeholder="Value..."
-                      placeholderTextColor={colors.text.muted}
-                      value={rule.value ?? ''}
-                      onChangeText={text => updateRule(rule.id, { value: text })}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                    />
-                  )}
-                </View>
-
-                <TouchableOpacity onPress={() => removeRule(rule.id)} style={styles.removeButton}>
-                  <Ionicons name="close-circle" size={22} color={colors.text.muted} />
-                </TouchableOpacity>
-              </View>
-            );
-          })}
-
-          <TouchableOpacity style={styles.addButton} onPress={addRule}>
-            <Ionicons name="add" size={18} color={colors.text.accent} />
-            <Text style={styles.addButtonText}>Add filter</Text>
-          </TouchableOpacity>
-
-          <Text style={styles.sectionTitle}>Sort</Text>
-          <View style={styles.ruleRow}>
-            <View style={styles.rulePills}>
-              <TouchableOpacity
-                style={[styles.pill, !sortField && styles.pillPlaceholder]}
-                onPress={() => setPicker({ kind: 'sort-field' })}
-              >
-                <Text
-                  style={[styles.pillText, !sortField && styles.pillPlaceholderText]}
-                  numberOfLines={1}
-                >
-                  {sortField?.label ?? 'Default order'}
-                </Text>
-                <Ionicons name="chevron-down" size={14} color={colors.text.muted} />
-              </TouchableOpacity>
-
-              {sort && (
-                <TouchableOpacity
-                  style={styles.pill}
-                  onPress={() =>
-                    onSortChange({ ...sort, direction: sort.direction === 'asc' ? 'desc' : 'asc' })
-                  }
-                >
-                  <Ionicons
-                    name={sort.direction === 'asc' ? 'arrow-up' : 'arrow-down'}
-                    size={14}
-                    color={colors.text.secondary}
-                  />
-                  <Text style={styles.pillText}>
-                    {sort.direction === 'asc' ? 'Ascending' : 'Descending'}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {sort && (
-              <TouchableOpacity onPress={() => onSortChange(null)} style={styles.removeButton}>
-                <Ionicons name="close-circle" size={22} color={colors.text.muted} />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <Text style={styles.sectionTitle}>Saved Views</Text>
-          {savedViews.length === 0 && !isNamingView && (
-            <Text style={styles.emptyText}>
-              Save the current filters as a view to reuse them later.
-            </Text>
-          )}
-          {savedViews.map(view => (
-            <View key={view.id} style={styles.savedViewRow}>
-              <Ionicons name="bookmark" size={16} color={colors.text.accent} />
-              <Text style={styles.savedViewName} numberOfLines={1}>{view.name}</Text>
-              <Text style={styles.savedViewMeta}>
-                {view.rules.length} filter{view.rules.length === 1 ? '' : 's'}
-              </Text>
-              <TouchableOpacity onPress={() => onDeleteView(view.id)} style={styles.removeButton}>
-                <Ionicons name="trash-outline" size={18} color={colors.text.muted} />
-              </TouchableOpacity>
-            </View>
-          ))}
-
-          {isNamingView ? (
-            <View style={styles.saveViewRow}>
-              <TextInput
-                style={styles.viewNameInput}
-                placeholder="View name..."
-                placeholderTextColor={colors.text.muted}
-                value={viewName}
-                onChangeText={setViewName}
-                autoFocus
-                returnKeyType="done"
-                onSubmitEditing={handleSaveView}
-              />
-              <TouchableOpacity
-                style={[styles.saveViewButton, !viewName.trim() && styles.saveViewButtonDisabled]}
-                onPress={handleSaveView}
-                disabled={!viewName.trim()}
-              >
-                <Text style={styles.saveViewButtonText}>Save</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => {
-                  setIsNamingView(false);
-                  setViewName('');
-                }}
-                style={styles.removeButton}
-              >
-                <Ionicons name="close-circle" size={22} color={colors.text.muted} />
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={[styles.addButton, rules.length === 0 && !sort && styles.addButtonDisabled]}
-              onPress={() => setIsNamingView(true)}
-              disabled={rules.length === 0 && !sort}
-            >
-              <Ionicons
-                name="bookmark-outline"
-                size={16}
-                color={rules.length === 0 && !sort ? colors.text.muted : colors.red}
-              />
-              <Text
-                style={[
-                  styles.addButtonText,
-                  rules.length === 0 && !sort && styles.addButtonTextDisabled,
-                ]}
-              >
-                Save current as view
-              </Text>
-            </TouchableOpacity>
-          )}
-        </ScrollView>
-
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            {matchCount} of {filterContext.participants.length} participants match
+  const mainContent = (
+    <Sheet
+      title="Filter and sort"
+      footer={(
+        <>
+          <Text style={[type.body, styles.matchCount, { color: tokens.text2 }]} accessibilityLiveRegion="polite">
+            {resultCount} {resultCount === 1 ? 'participant' : 'participants'} shown
           </Text>
+          <Button variant="link" title="Clear all" onPress={onClearAll} disabled={!canClear} />
+          <Button variant="primary" title="Done" onPress={handleClose} />
+        </>
+      )}
+    >
+      <View style={styles.content}>
+        <Text style={[type.h3, styles.sectionTitle, { color: tokens.textH }]} accessibilityRole="header">
+          Status
+        </Text>
+        <View style={styles.stateChips}>
+          {BASIC_STATES.map(state => (
+            <OptionChip
+              key={state}
+              label={PARTICIPANT_STATE_LABELS[state]}
+              selected={basic.states.includes(state)}
+              onPress={() => toggleState(state)}
+            />
+          ))}
         </View>
 
-        {/* Option picker overlay */}
-        <Modal visible={picker !== null} transparent animationType="fade" onRequestClose={() => setPicker(null)}>
-          <TouchableOpacity style={styles.pickerBackdrop} activeOpacity={1} onPress={() => setPicker(null)}>
-            <View style={styles.pickerCard}>
-              <FlatList
-                data={pickerOptions}
-                keyExtractor={item => item.value}
-                renderItem={({ item }) => (
-                  <TouchableOpacity style={styles.pickerOption} onPress={() => handlePickOption(item.value)}>
-                    <Text style={styles.pickerOptionText}>{item.label}</Text>
-                  </TouchableOpacity>
-                )}
-                ItemSeparatorComponent={() => <View style={styles.pickerSeparator} />}
-                ListEmptyComponent={
-                  <Text style={styles.pickerEmpty}>No options available</Text>
+        {BASIC_TOGGLES.map(toggle => {
+          const value = basic[toggle.key];
+          return (
+            <View key={toggle.key} style={styles.toggleRow}>
+              <Text style={[type.body, styles.toggleLabel, { color: tokens.text }]}>{toggle.label}</Text>
+              <SegmentedControl
+                options={TRI_STATE_OPTIONS}
+                value={value === undefined ? 'any' : value ? 'yes' : 'no'}
+                onChange={(next: TriState) =>
+                  onBasicChange({ ...basic, [toggle.key]: next === 'any' ? undefined : next === 'yes' })
                 }
+                accessibilityLabel={toggle.label}
+                style={styles.toggleControl}
               />
             </View>
-          </TouchableOpacity>
-        </Modal>
+          );
+        })}
+
+        <Divider style={styles.divider} />
+
+        <Text style={[type.h3, styles.sectionTitle, { color: tokens.textH }]} accessibilityRole="header">
+          Sort
+        </Text>
+        <View style={styles.sortRow}>
+          <SelectField
+            title="Sort by"
+            value={effectiveSort.field}
+            options={SORT_OPTIONS}
+            onChange={(field) =>
+              onSortChange(normaliseSort({ field, direction: FIRST_DIRECTION[field] ?? 'asc' }))
+            }
+          />
+          <SegmentedControl
+            options={[
+              { value: 'asc', label: directionLabels.asc },
+              { value: 'desc', label: directionLabels.desc },
+            ]}
+            value={effectiveSort.direction}
+            onChange={(direction) => onSortChange(normaliseSort({ ...effectiveSort, direction }))}
+            accessibilityLabel="Sort direction"
+          />
+        </View>
+
+        <Divider style={styles.divider} />
+
+        <Text style={[type.h3, styles.sectionTitle, { color: tokens.textH }]} accessibilityRole="header">
+          Advanced filters
+        </Text>
+
+        {rules.length > 1 && (
+          <View style={styles.conjunctionRow}>
+            <Text style={[type.body, { color: tokens.text2 }]}>Match</Text>
+            <SegmentedControl
+              options={[
+                { value: 'and', label: 'All' },
+                { value: 'or', label: 'Any' },
+              ]}
+              value={conjunction}
+              onChange={onConjunctionChange}
+              accessibilityLabel="Match"
+              style={styles.conjunctionControl}
+            />
+            <Text style={[type.body, { color: tokens.text2 }]}>of the following</Text>
+          </View>
+        )}
+
+        {rules.length === 0 && (
+          <Text style={[type.body, styles.emptyText, { color: tokens.text2 }]}>
+            Build your own: any field, with All or Any matching.
+          </Text>
+        )}
+
+        {rules.map(rule => {
+          const field = getField(rule.field);
+          const needsValue = !!field && operatorNeedsValue(rule.operator);
+          const isTextValue = !!field && field.type === 'text' && needsValue;
+          const valueLabel =
+            field?.getOptions?.(filterContext).find(o => o.value === rule.value)?.label ??
+            rule.value;
+
+          return (
+            <View
+              key={rule.id}
+              style={[styles.ruleRow, { borderColor: tokens.box, borderRadius: radii.container }]}
+            >
+              <View style={styles.rulePills}>
+                <SelectPill
+                  label={field?.label ?? 'Select field...'}
+                  placeholder={!field}
+                  onPress={() => setPicker({ kind: 'field', ruleId: rule.id })}
+                />
+
+                {field && (
+                  <SelectPill
+                    label={OPERATOR_LABELS[rule.operator]}
+                    onPress={() => setPicker({ kind: 'operator', ruleId: rule.id })}
+                  />
+                )}
+
+                {needsValue && !isTextValue && (
+                  <SelectPill
+                    label={valueLabel || 'Select...'}
+                    placeholder={!rule.value}
+                    onPress={() => setPicker({ kind: 'value', ruleId: rule.id })}
+                  />
+                )}
+
+                {isTextValue && (
+                  <TextInput
+                    style={[
+                      type.body,
+                      styles.valueInput,
+                      { borderColor: tokens.input, borderRadius: radii.input, color: tokens.text },
+                    ]}
+                    placeholder="Value..."
+                    placeholderTextColor={tokens.muted}
+                    selectionColor={tokens.accent}
+                    cursorColor={tokens.accent}
+                    value={rule.value ?? ''}
+                    onChangeText={text => updateRule(rule.id, { value: text })}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    accessibilityLabel={`${field?.label ?? 'Filter'} value`}
+                  />
+                )}
+              </View>
+
+              <Button
+                variant="plain-icon"
+                icon="x"
+                title="Remove filter"
+                onPress={() => removeRule(rule.id)}
+              />
+            </View>
+          );
+        })}
+
+        <Button variant="link" icon="plus" title="Add filter" onPress={addRule} style={styles.linkButton} />
+
+        <Divider style={styles.divider} />
+
+        <Text style={[type.h3, styles.sectionTitle, { color: tokens.textH }]} accessibilityRole="header">
+          Saved views
+        </Text>
+        {savedViews.length === 0 && !isNamingView && (
+          <Text style={[type.body, styles.emptyText, { color: tokens.text2 }]}>
+            Save the current filters as a view to reuse them later.
+          </Text>
+        )}
+        {savedViews.map((view, index) => (
+          <ListRow
+            key={view.id}
+            icon="clipboard-list"
+            title={view.name}
+            value={`${view.rules.length} filter${view.rules.length === 1 ? '' : 's'}`}
+            trailing={
+              <Button
+                variant="plain-icon"
+                icon="trash"
+                title={`Delete ${view.name}`}
+                onPress={() => onDeleteView(view.id)}
+              />
+            }
+            divider={index < savedViews.length - 1}
+            style={styles.savedViewRow}
+          />
+        ))}
+
+        {isNamingView ? (
+          <View style={styles.saveViewRow}>
+            <TextField
+              placeholder="View name..."
+              value={viewName}
+              onChangeText={setViewName}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleSaveView}
+              accessibilityLabel="View name"
+              style={styles.viewNameField}
+            />
+            <Button
+              variant="primary"
+              title="Save"
+              onPress={handleSaveView}
+              disabled={!viewName.trim()}
+            />
+            <Button
+              variant="plain-icon"
+              icon="x"
+              title="Cancel"
+              onPress={() => {
+                setIsNamingView(false);
+                setViewName('');
+              }}
+            />
+          </View>
+        ) : (
+          <Button
+            variant="link"
+            icon="plus"
+            title="Save current as view"
+            onPress={() => setIsNamingView(true)}
+            disabled={!canSaveView}
+            style={styles.linkButton}
+          />
+        )}
       </View>
-    </Modal>
+    </Sheet>
+  );
+
+  // Choosing an option replaces the sheet's content rather than stacking a
+  // second sheet on top of it; Back returns to the filters.
+  return picker ? pickerContent : mainContent;
+}
+
+/** A multi-select chip: ticked and tinted when selected. */
+function OptionChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  const { tokens, type, radii } = useTheme();
+  const color = selected ? tokens.accent : tokens.text;
+  return (
+    <PressableSurface
+      onPress={onPress}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: selected }}
+      accessibilityLabel={label}
+      rippleColor={color}
+      hitSlop={{ top: 4, bottom: 4 }}
+      style={[
+        styles.optionChip,
+        {
+          borderRadius: radii.item,
+          borderColor: selected ? tokens.accent : tokens.input,
+          backgroundColor: selected ? tokens.selected : tokens.bg,
+        },
+      ]}
+      contentStyle={styles.optionChipContent}
+    >
+      {selected ? <Icon name="check" size={14} color={color} /> : null}
+      <Text style={[type.label, { color }]} numberOfLines={1}>{label}</Text>
+    </PressableSurface>
   );
 }
 
-const makeStyles = (colors: ThemeColors, theme: Theme) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray[200],
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: colors.text.primary,
-  },
-  doneButton: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-  },
-  doneText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text.accent,
-  },
+function SelectPill({
+  label,
+  icon,
+  placeholder = false,
+  onPress,
+}: {
+  label: string;
+  icon?: IconName;
+  placeholder?: boolean;
+  onPress: () => void;
+}) {
+  const { tokens, type, radii } = useTheme();
+  return (
+    <PressableSurface
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      rippleColor={tokens.text}
+      style={[
+        styles.pill,
+        {
+          borderRadius: radii.input,
+          borderColor: placeholder ? tokens.accent : tokens.input,
+          borderStyle: placeholder ? 'dashed' : 'solid',
+          backgroundColor: tokens.bg,
+        },
+      ]}
+      contentStyle={styles.pillContent}
+    >
+      {icon ? <Icon name={icon} size={14} color={tokens.text2} /> : null}
+      <Text
+        style={[type.body, styles.pillText, { color: placeholder ? tokens.muted : tokens.text }]}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+      <Icon name="chevron-down" size={14} color={tokens.muted} />
+    </PressableSurface>
+  );
+}
+
+const styles = StyleSheet.create({
   content: {
-    padding: 16,
-    paddingBottom: 32,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
   },
   sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.text.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop: 16,
+    marginTop: 8,
     marginBottom: 8,
+  },
+  conjunctionControl: {
+    flex: 1,
+    maxWidth: 200,
   },
   conjunctionRow: {
     flexDirection: 'row',
@@ -461,46 +566,18 @@ const makeStyles = (colors: ThemeColors, theme: Theme) => StyleSheet.create({
     marginBottom: 12,
     gap: 8,
   },
-  conjunctionLabel: {
-    fontSize: 14,
-    color: colors.text.secondary,
-  },
-  segmented: {
-    flexDirection: 'row',
-    backgroundColor: colors.gray[100],
-    borderRadius: 8,
-    padding: 2,
-  },
-  segment: {
-    paddingVertical: 5,
-    paddingHorizontal: 14,
-    borderRadius: 6,
-  },
-  segmentActive: {
-    backgroundColor: colors.surface,
-    shadowColor: colors.black,
-    shadowOpacity: 0.08 * theme.shadowOpacity,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1 * theme.elevation,
-  },
-  segmentText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.text.secondary,
-  },
-  segmentTextActive: {
-    color: colors.text.primary,
+  emptyText: {
+    marginBottom: 8,
   },
   ruleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.gray[200],
-    padding: 10,
+    paddingVertical: 6,
+    paddingLeft: 12,
+    paddingRight: 0,
     marginBottom: 8,
+    gap: 4,
   },
   rulePills: {
     flex: 1,
@@ -509,88 +586,35 @@ const makeStyles = (colors: ThemeColors, theme: Theme) => StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  pill: {
+  pill: { borderWidth: 1, maxWidth: 200 },
+  pillContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.gray[100],
-    borderRadius: 8,
-    paddingVertical: 7,
+    // 44 including the 1px border.
+    minHeight: 42,
     paddingHorizontal: 10,
     gap: 4,
-    maxWidth: 200,
   },
   pillText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.text.primary,
-  },
-  pillPlaceholder: {
-    borderWidth: 1,
-    borderColor: colors.red + '60',
-    borderStyle: 'dashed',
-    backgroundColor: colors.surface,
-  },
-  pillPlaceholderText: {
-    color: colors.text.muted,
+    flexShrink: 1,
   },
   valueInput: {
     flexGrow: 1,
     minWidth: 100,
-    backgroundColor: colors.gray[100],
-    borderRadius: 8,
-    paddingVertical: 7,
+    minHeight: 44,
+    borderWidth: 1,
+    paddingVertical: 6,
     paddingHorizontal: 10,
-    fontSize: 14,
-    color: colors.text.primary,
   },
-  removeButton: {
-    padding: 4,
-    marginLeft: 6,
+  linkButton: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 0,
   },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-  },
-  addButtonDisabled: {
-    opacity: 0.6,
-  },
-  addButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text.accent,
-  },
-  addButtonTextDisabled: {
-    color: colors.text.muted,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    marginBottom: 8,
+  divider: {
+    marginVertical: 12,
   },
   savedViewRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginBottom: 8,
-    gap: 8,
-  },
-  savedViewName: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '500',
-    color: colors.text.primary,
-  },
-  savedViewMeta: {
-    fontSize: 13,
-    color: colors.text.muted,
+    paddingHorizontal: 0,
   },
   saveViewRow: {
     flexDirection: 'row',
@@ -598,75 +622,43 @@ const makeStyles = (colors: ThemeColors, theme: Theme) => StyleSheet.create({
     gap: 8,
     marginTop: 4,
   },
-  viewNameInput: {
+  viewNameField: {
     flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    fontSize: 15,
-    color: colors.text.primary,
   },
-  saveViewButton: {
-    backgroundColor: colors.red,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+  sortRow: {
+    gap: 12,
   },
-  saveViewButtonDisabled: {
-    opacity: 0.4,
+  stateChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
   },
-  saveViewButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.white,
-  },
-  footer: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: colors.surface,
-    borderTopWidth: 1,
-    borderTopColor: colors.gray[200],
+  optionChip: { borderWidth: 1 },
+  optionChipContent: {
+    // 36 including the 1px border; hitSlop makes the target 44.
+    minHeight: 34,
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
   },
-  footerText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.text.secondary,
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
   },
-  pickerBackdrop: {
+  toggleLabel: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.35)',
-    justifyContent: 'center',
-    padding: 32,
   },
-  pickerCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    maxHeight: 420,
-    alignSelf: 'center',
-    width: '100%',
-    maxWidth: 400,
-    overflow: 'hidden',
+  toggleControl: {
+    width: 180,
   },
-  pickerOption: {
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+  matchCount: {
+    flex: 1,
   },
-  pickerOptionText: {
-    fontSize: 16,
-    color: colors.text.primary,
-  },
-  pickerSeparator: {
-    height: 1,
-    backgroundColor: colors.gray[100],
-  },
-  pickerEmpty: {
-    padding: 16,
-    fontSize: 14,
-    color: colors.text.muted,
-    textAlign: 'center',
+  pickerList: {
+    paddingBottom: 8,
   },
 });

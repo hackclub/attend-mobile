@@ -1,0 +1,63 @@
+#!/usr/bin/env node
+// Regenerate the tab bar icons (assets/tabs/*.svg) from react-native-heroicons,
+// so the native tab bar on iOS and Android draws the same heroicons as the rest
+// of the app: the outline icon for a tab at rest, the solid one when selected.
+// The bars tint the icons, so colours here don't matter.
+//
+// Usage: bin/tab-icons
+const fs = require('fs');
+const path = require('path');
+const Module = require('module');
+
+const root = path.resolve(__dirname, '..');
+const outDir = path.join(root, 'assets/tabs');
+
+// tab file name -> heroicon
+const TABS = {
+  home: 'HomeIcon',
+  scan: 'QrcodeIcon',
+  people: 'UsersIcon',
+  travel: 'PaperAirplaneIcon',
+};
+
+// Render the heroicon components with stand-ins for React and
+// react-native-svg that just record each element, then print that as SVG.
+const element = (type, props, ...children) => ({ type, props: props || {}, children: children.flat() });
+const svgStub = { __esModule: true, default: 'svg' };
+for (const name of ['Path', 'Rect', 'Circle', 'Ellipse', 'Line', 'Polygon', 'Polyline', 'G']) {
+  svgStub[name] = name.toLowerCase();
+}
+const reactStub = { __esModule: true, createElement: element, default: { createElement: element } };
+const load = Module._load;
+Module._load = function (request, ...rest) {
+  if (request === 'react') return reactStub;
+  if (request === 'react-native-svg') return svgStub;
+  return load.call(this, request, ...rest);
+};
+
+const ATTRS = {
+  fillRule: 'fill-rule',
+  clipRule: 'clip-rule',
+  strokeLinecap: 'stroke-linecap',
+  strokeLinejoin: 'stroke-linejoin',
+  strokeWidth: 'stroke-width',
+};
+
+function toSvg(node) {
+  const attrs = Object.entries(node.props)
+    .filter(([key, value]) => value != null && key !== 'aria-hidden' && key !== 'size')
+    .map(([key, value]) => `${ATTRS[key] ?? key}="${value === 'currentColor' ? 'black' : value}"`);
+  if (node.type === 'svg') attrs.unshift('xmlns="http://www.w3.org/2000/svg"');
+  const inner = node.children.map(toSvg).join('');
+  return `<${node.type} ${attrs.join(' ')}${inner ? `>${inner}</${node.type}>` : '/>'}`;
+}
+
+for (const [name, icon] of Object.entries(TABS)) {
+  for (const [variant, suffix] of [['outline', ''], ['solid', '-selected']]) {
+    const modulePath = require.resolve(`react-native-heroicons/${variant}/${icon}`, { paths: [root] });
+    const Icon = require(modulePath).default;
+    const svg = toSvg(Icon({ size: 24 }));
+    fs.writeFileSync(path.join(outDir, `${name}${suffix}.svg`), `${svg}\n`);
+    console.log(`assets/tabs/${name}${suffix}.svg`);
+  }
+}

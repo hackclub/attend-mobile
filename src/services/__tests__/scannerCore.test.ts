@@ -1,7 +1,12 @@
 import type { CreateScanResponse, Participant, ScanContext } from '../../types';
 import {
   SameCodeGate,
+  cachedPriorScan,
   failedResult,
+  isRetryableScanError,
+  kioskContextChoice,
+  queuedResult,
+  nfcScanTarget,
   parseQRCode,
   responseOutcome,
   resultFromResponse,
@@ -49,6 +54,16 @@ describe('parseQRCode', () => {
 });
 
 describe('SameCodeGate', () => {
+  it('touch keeps a code suppressed while it stays in view, and ignores other codes', () => {
+    const gate = new SameCodeGate(3000);
+    expect(gate.accept('A', 0)).toBe(true);
+    gate.touch('A', 2500);
+    gate.touch('B', 2600);
+    expect(gate.accept('A', 4000)).toBe(false);
+    expect(gate.accept('A', 8000)).toBe(true);
+    expect(gate.accept('B', 8100)).toBe(true);
+  });
+
   it('suppresses the same camera frame but accepts a different attendee immediately', () => {
     const gate = new SameCodeGate(3000);
 
@@ -188,5 +203,101 @@ describe('scannableContexts', () => {
 
     expect(scannableContexts([tomorrow, yesterday]).map(c => c.id))
       .toEqual(['yesterday', 'tomorrow']);
+  });
+});
+
+describe('queued offline outcome', () => {
+  const base = {
+    attemptId: 'attempt-1',
+    rawData: 'raw',
+    source: 'qr' as const,
+    participant: participant(),
+    scanContext: context,
+  };
+
+  it('is a distinct, non-retryable outcome that does not claim a check-in', () => {
+    const result = queuedResult({ ...base, alreadyScannedLocally: false, firstScannedAt: 'x' });
+
+    expect(result.outcome).toBe('queued');
+    expect(result.retryable).toBe(false);
+    expect(result.message).toBe('Will sync when back online');
+    expect(result.alreadyScannedLocally).toBe(false);
+    expect(result.firstScannedAt).toBeUndefined();
+  });
+
+  it('says when this device already has a scan of the person in the context', () => {
+    const result = queuedResult({
+      ...base,
+      alreadyScannedLocally: true,
+      firstScannedAt: '2026-08-24T09:00:00Z',
+    });
+
+    expect(result.outcome).toBe('queued');
+    expect(result.message).toBe('Already scanned here on this device. Will sync when back online');
+    expect(result.firstScannedAt).toBe('2026-08-24T09:00:00Z');
+  });
+
+  it('finds a prior scan in the cached roster for the same context only', () => {
+    const scanned = participant({
+      scans_by_context: [{
+        scan_context_id: context.id,
+        scan_context_name: context.name,
+        checks_in: true,
+        is_airport: false,
+        scan_count: 1,
+        first_scanned_at: '2026-08-24T09:00:00Z',
+      }],
+    });
+
+    expect(cachedPriorScan(scanned, context.id)).toEqual({ firstScannedAt: '2026-08-24T09:00:00Z' });
+    expect(cachedPriorScan(scanned, 'other-context')).toBeNull();
+    expect(cachedPriorScan(participant(), context.id)).toBeNull();
+    expect(cachedPriorScan(undefined, context.id)).toBeNull();
+    expect(cachedPriorScan(participant({ checked_in_at: '2026-08-24T08:00:00Z' }), undefined))
+      .toEqual({ firstScannedAt: '2026-08-24T08:00:00Z' });
+  });
+
+  it('queues only failures that may succeed later', () => {
+    expect(isRetryableScanError(new TypeError('Network request failed'))).toBe(true);
+    expect(isRetryableScanError(Object.assign(new Error('timeout'), { status: 0 }))).toBe(true);
+    expect(isRetryableScanError(Object.assign(new Error('busy'), { status: 503 }))).toBe(true);
+    expect(isRetryableScanError(Object.assign(new Error('missing'), { status: 404 }))).toBe(false);
+    expect(isRetryableScanError(new Error('Unrecognised QR code'))).toBe(false);
+  });
+});
+
+describe('nfcScanTarget', () => {
+  it('sends only the Attend external record to the badge endpoint', () => {
+    expect(nfcScanTarget('tok-123', true)).toEqual({ kind: 'badge', identifier: 'tok-123' });
+  });
+
+  it('accepts an Attend link from a URI or text record', () => {
+    expect(nfcScanTarget('attend://checkin/0a1b2c3d-0000-4000-8000-000000000001', false)).toEqual({
+      kind: 'participant',
+      identifier: '0a1b2c3d-0000-4000-8000-000000000001',
+    });
+  });
+
+  it('rejects any other NDEF content instead of treating it as a badge token', () => {
+    expect(nfcScanTarget('https://example.com/menu', false)).toBeNull();
+    expect(nfcScanTarget('hello world', false)).toBeNull();
+  });
+});
+
+describe('kioskContextChoice', () => {
+  const context = (id: string) => ({ id, name: id }) as ScanContext;
+
+  it('starts without a context when the event has none', () => {
+    expect(kioskContextChoice([])).toEqual({ kind: 'start' });
+  });
+
+  it('uses the only context', () => {
+    expect(kioskContextChoice([context('door')])).toEqual({ kind: 'start', context: context('door') });
+  });
+
+  it('asks staff to choose between several', () => {
+    const choice = kioskContextChoice([context('door'), context('lunch')]);
+    expect(choice.kind).toBe('choose');
+    expect(choice.kind === 'choose' && choice.contexts.map((c) => c.id).sort()).toEqual(['door', 'lunch']);
   });
 });

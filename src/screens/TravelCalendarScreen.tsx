@@ -1,46 +1,43 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  RefreshControl,
-  ScrollView,
   SectionList,
   StyleSheet,
   Text,
-  TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTabBarInset } from '../hooks/useTabBarInset';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
 import { ApiError, api } from '../services/api';
 import { useApp } from '../context/AppContext';
 import { useEventAccess } from '../hooks/useEventAccess';
-import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
-import { FilterChip, ScreenHeader, SearchField, makeCardSurface } from '../components/ui';
+import { travelClock } from '../services/travelTimes';
+import { useTheme, useThemedStyles, type Theme } from '../theme';
+import {
+  Badge,
+  Flashbar,
+  Icon,
+  SegmentedControl,
+  StatusGlyph,
+  TextField,
+  PressableSurface,
+  type StatusType,
+  RefreshControl,
+} from '../components/ui';
+import { CHROME_MAX_FONT_SCALE } from '../components/ui/fontScale';
 import type {
-  RootStackParamList,
+  AppStackParamList,
   TravelCalendarData,
   TravelCalendarEntry,
+  TravelDirection,
   TravelMode,
-  TravelPickupState,
 } from '../types';
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
-
-type ChipId = 'all' | 'inbound' | 'outbound' | 'awaiting_pickup' | 'collected' | 'ums';
+type NavigationProp = NativeStackNavigationProp<AppStackParamList>;
 
 const REFRESH_INTERVAL_MS = 60_000;
-
-const MODE_ICON: Record<TravelMode, keyof typeof Ionicons.glyphMap> = {
-  plane: 'airplane-outline',
-  train: 'train-outline',
-  bus: 'bus-outline',
-  car: 'car-outline',
-  other: 'navigate-circle-outline',
-};
 
 const MODE_LABEL: Record<TravelMode, string> = {
   plane: 'Plane',
@@ -49,8 +46,6 @@ const MODE_LABEL: Record<TravelMode, string> = {
   car: 'Car',
   other: 'Other',
 };
-
-const MODE_ORDER: TravelMode[] = ['plane', 'train', 'bus', 'car', 'other'];
 
 function entryMatchesSearch(entry: TravelCalendarEntry, query: string): boolean {
   if (!query) return true;
@@ -71,44 +66,17 @@ function entryMatchesSearch(entry: TravelCalendarEntry, query: string): boolean 
     .every((term) => haystack.includes(term));
 }
 
-const PICKUP_LABEL: Record<TravelPickupState, string> = {
-  awaiting_pickup: 'Awaiting pickup',
-  collected: 'Picked up',
-  checked_in: 'Checked in',
-  pickup_not_needed: 'No pickup',
-};
-
-const pickupTint = (colors: ThemeColors): Record<TravelPickupState, string> => ({
-  awaiting_pickup: colors.status.warning,
-  collected: colors.status.success,
-  checked_in: colors.status.info,
-  pickup_not_needed: colors.gray[500],
-});
-
 function displayName(entry: TravelCalendarEntry): string {
   return entry.participantPreferredName?.trim() || entry.participantName;
-}
-
-function formatTimeInZone(iso: string, tz?: string | null): string {
-  try {
-    return new Intl.DateTimeFormat('en-GB', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-      timeZone: tz || undefined,
-    }).format(new Date(iso));
-  } catch {
-    return new Date(iso).toISOString().slice(11, 16);
-  }
 }
 
 // agendaDate is a plain YYYY-MM-DD in the event's timezone. Anchor it at noon
 // UTC and format in UTC so the label never drifts a day in other timezones.
 function formatAgendaDate(date: string): string {
   return new Intl.DateTimeFormat('en-GB', {
-    weekday: 'long',
+    weekday: 'short',
     day: 'numeric',
-    month: 'long',
+    month: 'short',
     timeZone: 'UTC',
   }).format(new Date(`${date}T12:00:00Z`));
 }
@@ -133,115 +101,157 @@ function relativeDayLabel(date: string, tz?: string | null): string | null {
   return null;
 }
 
-function entryMatchesChip(entry: TravelCalendarEntry, chip: ChipId): boolean {
-  switch (chip) {
-    case 'all': return true;
-    case 'inbound': return entry.direction === 'inbound';
-    case 'outbound': return entry.direction === 'outbound';
-    case 'awaiting_pickup': return entry.pickupState === 'awaiting_pickup';
-    case 'collected': return entry.pickupState === 'collected' || entry.pickupState === 'checked_in';
-    case 'ums': return entry.isUnaccompaniedMinor;
+const isPickedUp = (e: TravelCalendarEntry) => e.pickupState === 'collected' || e.pickupState === 'checked_in';
+
+/** One journey at one time: everyone on the same flight, train or car. */
+interface Leg {
+  key: string;
+  /** "2:15" and "PM", in the event's timezone. */
+  time: { time: string; period: string } | null;
+  title: string;
+  route: string | null;
+  routeRedacted: boolean;
+  entries: TravelCalendarEntry[];
+  hasMinor: boolean;
+  pickup: { type: StatusType; label: string } | null;
+}
+
+// Collapse a day's entries into legs: same time, mode, reference and route.
+function buildLegs(entries: TravelCalendarEntry[], timezone?: string | null): Leg[] {
+  const sorted = [...entries].sort((a, b) => (a.primaryTimeAt ?? '').localeCompare(b.primaryTimeAt ?? ''));
+  const legs = new Map<string, Leg>();
+  for (const entry of sorted) {
+    const time = travelClock(entry.primaryTimeAt, timezone);
+    const key = [time ? `${time.time} ${time.period}` : '', entry.mode, entry.reference ?? '', entry.route ?? '', entry.routeRedacted ? 'r' : ''].join('|');
+    let leg = legs.get(key);
+    if (!leg) {
+      leg = {
+        key,
+        time,
+        title: entry.reference?.trim() || MODE_LABEL[entry.mode] || MODE_LABEL.other,
+        route: entry.route ?? null,
+        routeRedacted: !entry.route && Boolean(entry.routeRedacted),
+        entries: [],
+        hasMinor: false,
+        pickup: null,
+      };
+      legs.set(key, leg);
+    }
+    leg.entries.push(entry);
+    leg.hasMinor ||= entry.isUnaccompaniedMinor;
   }
+  for (const leg of legs.values()) leg.pickup = legPickup(leg.entries);
+  return [...legs.values()];
 }
 
-function DirectionBadge({ direction }: { direction: TravelCalendarEntry['direction'] }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
-  const inbound = direction === 'inbound';
+// The leg's pickup status: anyone still waiting wins, then picked up, then
+// "No pickup". Legs whose entries carry no pickup state show none.
+function legPickup(entries: TravelCalendarEntry[]): Leg['pickup'] {
+  const states = entries.map((e) => e.pickupState).filter(Boolean);
+  if (!states.length) return null;
+  if (states.includes('awaiting_pickup')) return { type: 'pending', label: 'Awaiting pickup' };
+  if (states.every((s) => s === 'checked_in')) return { type: 'success', label: 'Checked in' };
+  if (states.some((s) => s === 'collected' || s === 'checked_in')) return { type: 'success', label: 'Picked up' };
+  return { type: 'stopped', label: 'No pickup' };
+}
+
+/** Status glyph and label; "Awaiting pickup" uses the info colour, as on the console. */
+function PickupStatus({ type, label }: { type: StatusType; label: string }) {
+  const { tokens, type: typeScale } = useTheme();
+  const color = type === 'success' ? tokens.success : type === 'pending' ? tokens.info : tokens.inactive;
   return (
-    <View style={[styles.directionBadge, inbound ? styles.directionInbound : styles.directionOutbound]}>
-      <Ionicons
-        name={inbound ? 'arrow-down' : 'arrow-up'}
-        size={11}
-        color={inbound ? colors.green : colors.blue}
-      />
-      <Text style={[styles.directionText, { color: inbound ? colors.green : colors.blue }]}>
-        {inbound ? 'Arrives' : 'Departs'}
-      </Text>
+    <View style={pickupStyles.row} accessible accessibilityLabel={label}>
+      <StatusGlyph type={type} color={color} />
+      <Text style={[typeScale.body, { color }]}>{label}</Text>
     </View>
   );
 }
 
-function PickupPill({ state }: { state: TravelPickupState }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
-  const tint = pickupTint(colors)[state];
-  return (
-    <View style={[styles.pickupPill, { backgroundColor: `${tint}22`, borderColor: `${tint}55` }]}>
-      <Text style={[styles.pickupPillText, { color: tint }]}>{PICKUP_LABEL[state]}</Text>
-    </View>
-  );
-}
+const pickupStyles = StyleSheet.create({
+  row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+});
 
-function EntryRow({
-  entry,
-  timezone,
-  onPress,
+function LegRow({
+  leg,
+  onOpen,
 }: {
-  entry: TravelCalendarEntry;
-  timezone?: string | null;
-  // Absent when this role can't open participant records: the row still shows
-  // the journey, it just isn't a link into a 403.
-  onPress?: () => void;
+  leg: Leg;
+  // Absent when this role can't open participant records: the chips still
+  // name everyone, they just aren't links into a 403.
+  onOpen?: (entry: TravelCalendarEntry) => void;
 }) {
-  const { colors } = useTheme();
+  const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
-  const time = entry.primaryTimeAt ? formatTimeInZone(entry.primaryTimeAt, timezone) : null;
+  const done = leg.pickup?.type === 'success';
   return (
-    <TouchableOpacity
-      style={[styles.row, entry.isUnaccompaniedMinor && styles.rowUm]}
-      onPress={onPress}
-      disabled={!onPress}
-      activeOpacity={0.7}
-    >
-      <View style={styles.rowTime}>
-        {time ? (
-          <Text style={styles.timeText}>{time}</Text>
+    <View style={[styles.legRow, done && styles.legDone]}>
+      <View style={styles.legTime} accessible accessibilityLabel={leg.time ? `${leg.time.time} ${leg.time.period}` : 'No time'}>
+        {leg.time ? (
+          <>
+            <Text style={styles.timeText}>{leg.time.time}</Text>
+            <Text style={styles.timePeriod}>{leg.time.period}</Text>
+          </>
         ) : (
           <Text style={styles.timeMissing}>—:—</Text>
         )}
-        <Ionicons name={MODE_ICON[entry.mode] ?? MODE_ICON.other} size={18} color={colors.gray[500]} />
       </View>
-
-      <View style={styles.rowBody}>
-        <View style={styles.rowTitleLine}>
-          <Text style={styles.name} numberOfLines={1}>{displayName(entry)}</Text>
-          {entry.isUnaccompaniedMinor && (
-            <View style={styles.umBadge}>
-              <Text style={styles.umBadgeText}>UM</Text>
-            </View>
-          )}
-        </View>
-
-        {entry.route || entry.reference ? (
-          <Text style={styles.routeText} numberOfLines={1}>
-            {[entry.route, entry.reference].filter(Boolean).join(' · ')}
+      <View style={styles.legCard}>
+        <Text style={styles.legTitle} numberOfLines={1}>
+          {leg.title}
+        </Text>
+        {leg.route ? (
+          <Text style={styles.legRoute} numberOfLines={1}>
+            {leg.route}
           </Text>
-        ) : entry.routeRedacted ? (
-          <Text style={styles.routeRedactedText} numberOfLines={1}>
+        ) : leg.routeRedacted ? (
+          <Text style={styles.legRouteHidden} numberOfLines={1}>
             Pickup address hidden for your role
           </Text>
         ) : null}
-
-        <View style={styles.rowMetaLine}>
-          <DirectionBadge direction={entry.direction} />
-          {entry.pickupState ? <PickupPill state={entry.pickupState} /> : null}
-          {entry.groups.slice(0, 2).map((group) => (
-            <View key={group.id} style={styles.groupChip}>
-              <View style={[styles.groupDot, { backgroundColor: group.color || colors.gray[400] }]} />
-              <Text style={styles.groupText} numberOfLines={1}>{group.name}</Text>
-            </View>
-          ))}
+        <View style={styles.chips}>
+          {leg.entries.map((entry) =>
+            onOpen ? (
+              <PressableSurface
+                key={entry.id}
+                onPress={() => onOpen(entry)}
+                rippleColor={tokens.text}
+                style={styles.chipShape}
+                contentStyle={[styles.chipContent, styles.chipPressable]}
+                accessibilityRole="button"
+                accessibilityLabel={`${displayName(entry)}${entry.isUnaccompaniedMinor ? ', unaccompanied minor' : ''}`}
+                accessibilityHint="Opens their participant record"
+              >
+                <Text style={styles.chipText} numberOfLines={1} maxFontSizeMultiplier={CHROME_MAX_FONT_SCALE}>
+                  {displayName(entry)}
+                </Text>
+              </PressableSurface>
+            ) : (
+              <View key={entry.id} style={[styles.chipShape, styles.chipContent]}>
+                <Text style={styles.chipText} numberOfLines={1} maxFontSizeMultiplier={CHROME_MAX_FONT_SCALE}>
+                  {displayName(entry)}
+                </Text>
+              </View>
+            ),
+          )}
+          {leg.hasMinor ? <Badge label="Unaccompanied minor" color="yellow" /> : null}
         </View>
+        {leg.pickup ? <PickupStatus type={leg.pickup.type} label={leg.pickup.label} /> : null}
       </View>
-
-      {onPress ? <Ionicons name="chevron-forward" size={16} color={colors.gray[400]} /> : null}
-    </TouchableOpacity>
+    </View>
   );
 }
 
+interface DaySection {
+  key: string;
+  title: string;
+  badge: string | null;
+  pickedUp: number;
+  awaiting: number;
+  data: Leg[];
+}
+
 export function TravelCalendarScreen() {
-  const { colors } = useTheme();
+  const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<NavigationProp>();
   const { state } = useApp();
@@ -253,8 +263,7 @@ export function TravelCalendarScreen() {
   // `retryable` is false for an answer that won't change on a retry (a role
   // that has no access), so the banner doesn't invite a pointless tap.
   const [error, setError] = useState<{ message: string; retryable: boolean } | null>(null);
-  const [chip, setChip] = useState<ChipId>('all');
-  const [modeFilter, setModeFilter] = useState<TravelMode | 'all'>('all');
+  const [direction, setDirection] = useState<TravelDirection>('inbound');
   const [searchQuery, setSearchQuery] = useState('');
   const [isOpeningId, setIsOpeningId] = useState<string | null>(null);
   const eventId = state.currentEvent?.id ?? null;
@@ -286,16 +295,21 @@ export function TravelCalendarScreen() {
   }, [eventId]);
 
   // Refetch when the tab gains focus, and keep it fresh while visible.
+  // Coming back to the same event refreshes quietly, keeping the list, the
+  // search and the scroll position; only a different event starts over.
+  const shownEventRef = useRef<string | null>(null);
   useFocusEffect(
     useCallback(() => {
-      setData(null);
-      setChip('all');
-      setModeFilter('all');
-      setSearchQuery('');
-      fetchData();
+      const sameEvent = shownEventRef.current === eventId;
+      shownEventRef.current = eventId;
+      if (!sameEvent) {
+        setData(null);
+        setSearchQuery('');
+      }
+      fetchData(sameEvent);
       const interval = setInterval(() => fetchData(true), REFRESH_INTERVAL_MS);
       return () => clearInterval(interval);
-    }, [fetchData])
+    }, [eventId, fetchData])
   );
 
   const handleRefresh = useCallback(() => {
@@ -326,27 +340,10 @@ export function TravelCalendarScreen() {
 
   const trimmedQuery = searchQuery.trim();
 
-  const availableModes = useMemo(() => {
-    if (!data) return [];
-    const present = new Set(data.entries.map((entry) => entry.mode));
-    return MODE_ORDER.filter((mode) => present.has(mode));
-  }, [data]);
-
-  const modeCounts = useMemo(() => {
-    const counts = new Map<TravelMode, number>();
-    for (const entry of data?.entries ?? []) {
-      counts.set(entry.mode, (counts.get(entry.mode) ?? 0) + 1);
-    }
-    return counts;
-  }, [data]);
-
-  const sections = useMemo(() => {
+  const sections = useMemo<DaySection[]>(() => {
     if (!data) return [];
     const filtered = data.entries.filter(
-      (entry) =>
-        entryMatchesChip(entry, chip)
-        && (modeFilter === 'all' || entry.mode === modeFilter)
-        && entryMatchesSearch(entry, trimmedQuery)
+      (entry) => entry.direction === direction && entryMatchesSearch(entry, trimmedQuery)
     );
     const byDate = new Map<string, TravelCalendarEntry[]>();
     const unscheduled: TravelCalendarEntry[] = [];
@@ -359,158 +356,128 @@ export function TravelCalendarScreen() {
         unscheduled.push(entry);
       }
     }
+    const section = (key: string, title: string, badge: string | null, entries: TravelCalendarEntry[]): DaySection => ({
+      key,
+      title,
+      badge,
+      pickedUp: entries.filter(isPickedUp).length,
+      awaiting: entries.filter((e) => e.pickupState === 'awaiting_pickup').length,
+      data: buildLegs(entries, data.eventTimezone),
+    });
     const dated = [...byDate.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, entries]) => ({
-        key: date,
-        title: formatAgendaDate(date),
-        badge: relativeDayLabel(date, data.eventTimezone),
-        data: entries,
-      }));
+      .map(([date, entries]) => section(date, formatAgendaDate(date), relativeDayLabel(date, data.eventTimezone), entries));
     if (unscheduled.length > 0) {
-      dated.push({ key: 'unscheduled', title: 'Unscheduled', badge: null, data: unscheduled });
+      dated.push(section('unscheduled', 'Unscheduled', null, unscheduled));
     }
     return dated;
-  }, [data, chip, modeFilter, trimmedQuery]);
+  }, [data, direction, trimmedQuery]);
 
-  const chips: { id: ChipId; label: string; count?: number }[] = useMemo(() => {
-    const counts = data?.counts;
-    return [
-      { id: 'all', label: 'All', count: counts?.total },
-      { id: 'inbound', label: 'Arrivals', count: counts?.inbound },
-      { id: 'outbound', label: 'Departures', count: counts?.outbound },
-      { id: 'awaiting_pickup', label: 'Awaiting pickup', count: counts?.awaitingPickup },
-      { id: 'collected', label: 'Picked up', count: counts ? counts.collected + counts.checkedIn : undefined },
-      { id: 'ums', label: 'UMs', count: data ? data.entries.filter((e) => e.isUnaccompaniedMinor).length : undefined },
-    ];
-  }, [data]);
+  const directionOptions = useMemo(
+    () =>
+      [
+        { value: 'inbound', label: 'Arrivals', count: data?.counts.inbound },
+        { value: 'outbound', label: 'Departures', count: data?.counts.outbound },
+      ] as const,
+    [data]
+  );
 
   if (!state.currentEvent) {
     return (
       <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         <View style={styles.centered}>
-          <Ionicons name="airplane-outline" size={42} color={colors.gray[400]} />
+          <Icon name="travel" size={40} color={tokens.muted} />
           <Text style={styles.emptyTitle}>No event selected</Text>
-          <Text style={styles.emptyText}>Pick an event from the Events tab to see its travel calendar.</Text>
+          <Text style={styles.emptyText}>Pick an event from the Overview tab to see its travel calendar.</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
-      <ScreenHeader
-        title="Travel"
-        subtitle={state.currentEvent.name}
-        right={data?.eventTimezone ? (
-          <View style={styles.tzBadge}>
-            <Ionicons name="time-outline" size={13} color={colors.gray[600]} />
-            <Text style={styles.tzText}>{data.eventTimezone}</Text>
-          </View>
-        ) : undefined}
-      />
-
-      <SearchField
+  // The heading, then search, then the direction: the same order as People.
+  const header = (
+    <View style={styles.header}>
+      <View>
+        <Text style={styles.title} accessibilityRole="header">Travel</Text>
+        {data?.eventTimezone ? (
+          <Text style={styles.tzText} numberOfLines={1}>Times in {data.eventTimezone}</Text>
+        ) : null}
+      </View>
+      <TextField
+        icon="search"
         value={searchQuery}
         onChangeText={setSearchQuery}
         placeholder="Search name, route, or flight"
+        accessibilityLabel="Search travel"
+        clearable
+        autoCorrect={false}
+        returnKeyType="search"
       />
+      <SegmentedControl
+        options={directionOptions}
+        value={direction}
+        onChange={setDirection}
+        accessibilityLabel="Direction"
+        role="tab"
+      />
+      {error ? (
+        <Flashbar
+          type="error"
+          message={error.message}
+          action={error.retryable ? { label: 'Try again', onPress: () => fetchData() } : undefined}
+        />
+      ) : null}
+    </View>
+  );
 
-      <View style={styles.chipBar}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-          {chips.map((c) => (
-            <FilterChip
-              key={c.id}
-              label={c.label}
-              badge={c.count}
-              active={chip === c.id}
-              onPress={() => setChip(c.id)}
-            />
-          ))}
-        </ScrollView>
-      </View>
-
-      {availableModes.length > 1 && (
-        <View style={styles.chipBar}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-            <FilterChip
-              label="All transport"
-              active={modeFilter === 'all'}
-              onPress={() => setModeFilter('all')}
-            />
-            {availableModes.map((mode) => (
-              <FilterChip
-                key={mode}
-                label={MODE_LABEL[mode]}
-                icon={MODE_ICON[mode]}
-                badge={modeCounts.get(mode) ?? 0}
-                active={modeFilter === mode}
-                onPress={() => setModeFilter(modeFilter === mode ? 'all' : mode)}
-              />
-            ))}
-          </ScrollView>
-        </View>
-      )}
-
-      {error && (
-        <TouchableOpacity
-          style={styles.errorBanner}
-          onPress={() => fetchData()}
-          disabled={!error.retryable}
-        >
-          <Ionicons name="alert-circle-outline" size={16} color={colors.text.accent} />
-          <Text style={styles.errorText} numberOfLines={2}>
-            {error.retryable ? `${error.message} · Tap to retry` : error.message}
-          </Text>
-        </TouchableOpacity>
-      )}
-
+  return (
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      {header}
       {isLoading && !data ? (
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.text.accent} />
+          <ActivityIndicator size="large" color={tokens.accent} />
         </View>
       ) : (
         <SectionList
           sections={sections}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item.key}
           stickySectionHeadersEnabled
           keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={[styles.listContent, { paddingBottom: tabBarHeight + 24 }]}
           refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={colors.text.accent} />
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor={tokens.accent}
+              colors={[tokens.accent]}
+              progressBackgroundColor={tokens.bg}
+            />
           }
           renderSectionHeader={({ section }) => (
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{section.title}</Text>
-              {section.badge ? (
-                <View style={styles.sectionBadge}>
-                  <Text style={styles.sectionBadgeText}>{section.badge}</Text>
+            <View style={styles.dayHeader} accessibilityRole="header">
+              <Text style={styles.dayTitle}>{section.title}</Text>
+              {section.badge ? <Badge label={section.badge} color="blue" /> : null}
+              {section.pickedUp || section.awaiting ? (
+                <View style={styles.dayCounts}>
+                  <PickupStatus type="success" label={`${section.pickedUp} picked up`} />
+                  <PickupStatus type="pending" label={`${section.awaiting} awaiting pickup`} />
                 </View>
               ) : null}
-              <Text style={styles.sectionCount}>{section.data.length}</Text>
             </View>
           )}
           renderItem={({ item }) => (
-            <EntryRow
-              entry={item}
-              timezone={data?.eventTimezone}
-              onPress={canViewParticipantRecords ? () => openParticipant(item) : undefined}
-            />
+            <LegRow leg={item} onOpen={canViewParticipantRecords ? openParticipant : undefined} />
           )}
           ListEmptyComponent={
             <View style={styles.centered}>
-              <Ionicons name="airplane-outline" size={42} color={colors.gray[400]} />
+              <Icon name="travel" size={40} color={tokens.muted} />
               <Text style={styles.emptyTitle}>
-                {trimmedQuery
-                  ? `No matches for “${trimmedQuery}”`
-                  : chip === 'all' && modeFilter === 'all'
-                    ? 'No travel yet'
-                    : 'Nothing matches these filters'}
+                {trimmedQuery ? `No matches for “${trimmedQuery}”` : 'No travel yet'}
               </Text>
               <Text style={styles.emptyText}>
-                {trimmedQuery || chip !== 'all' || modeFilter !== 'all'
-                  ? 'Try a different search or filter to see more journeys.'
+                {trimmedQuery
+                  ? 'Try a different search to see more journeys.'
                   : 'Participant journeys appear here once travel details are added.'}
               </Text>
             </View>
@@ -520,121 +487,67 @@ export function TravelCalendarScreen() {
 
       {isOpeningId && (
         <View style={styles.openingOverlay} pointerEvents="none">
-          <ActivityIndicator color={colors.white} />
+          <ActivityIndicator color={tokens.accent} />
         </View>
       )}
     </SafeAreaView>
   );
 }
 
-const makeStyles = (colors: ThemeColors, theme: Theme) => StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray[50] },
-  tzBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.gray[200],
-  },
-  tzText: { fontSize: 12, color: colors.gray[600], fontWeight: '600' },
-  chipBar: { paddingTop: 8 },
-  chipRow: { paddingHorizontal: 16, gap: 8, flexDirection: 'row' },
-  errorBanner: {
-    marginHorizontal: 16,
-    marginBottom: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 11,
-    backgroundColor: `${colors.red}14`,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  errorText: { flex: 1, fontSize: 13, color: colors.text.accent, fontWeight: '600' },
-  listContent: { paddingHorizontal: 16, paddingTop: 4, flexGrow: 1 },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 9,
-    backgroundColor: colors.gray[50],
-  },
-  sectionTitle: { fontSize: 15, fontWeight: '800', color: colors.gray[900] },
-  sectionBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 9,
-    backgroundColor: `${colors.red}18`,
-  },
-  sectionBadgeText: { fontSize: 11, fontWeight: '800', color: colors.text.accent },
-  sectionCount: { marginLeft: 'auto', fontSize: 13, fontWeight: '700', color: colors.gray[400] },
-  row: {
-    ...makeCardSurface(colors, theme),
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-    marginBottom: 8,
-  },
-  rowUm: { borderColor: colors.orange, borderWidth: 1 },
-  rowTime: { width: 52, alignItems: 'center', gap: 5 },
-  timeText: { fontSize: 15, fontWeight: '800', color: colors.gray[900], fontVariant: ['tabular-nums'] },
-  timeMissing: { fontSize: 15, fontWeight: '700', color: colors.gray[300] },
-  rowBody: { flex: 1, gap: 4 },
-  rowTitleLine: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  name: { fontSize: 16, fontWeight: '700', color: colors.gray[900], flexShrink: 1 },
-  umBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 6,
-    backgroundColor: colors.orange,
-  },
-  umBadgeText: { fontSize: 10, fontWeight: '900', color: colors.white },
-  routeText: { fontSize: 13, color: colors.gray[500] },
-  routeRedactedText: { fontSize: 13, color: colors.gray[400], fontStyle: 'italic' },
-  rowMetaLine: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  directionBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  directionInbound: { backgroundColor: `${colors.green}16` },
-  directionOutbound: { backgroundColor: `${colors.blue}16` },
-  directionText: { fontSize: 11, fontWeight: '700' },
-  pickupPill: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  pickupPillText: { fontSize: 11, fontWeight: '700' },
-  groupChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 8,
-    backgroundColor: colors.gray[100],
-    maxWidth: 120,
-  },
-  groupDot: { width: 7, height: 7, borderRadius: 4 },
-  groupText: { fontSize: 11, fontWeight: '600', color: colors.gray[600] },
-  centered: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 10 },
-  emptyTitle: { fontSize: 17, fontWeight: '700', color: colors.gray[700] },
-  emptyText: { fontSize: 14, color: colors.gray[500], textAlign: 'center', maxWidth: 280, lineHeight: 20 },
-  openingOverlay: {
-    ...StyleSheet.absoluteFill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(15,23,42,0.25)',
-  },
-});
+const makeStyles = (theme: Theme) => {
+  const { tokens: t, type, spacing, radii } = theme;
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: t.bg },
+    header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm, gap: spacing.md },
+    title: { ...type.h1, color: t.textH },
+    tzText: { ...type.small, color: t.muted },
+    listContent: { paddingHorizontal: spacing.lg, flexGrow: 1 },
+    dayHeader: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      columnGap: 14,
+      rowGap: spacing.xs,
+      paddingTop: spacing.md,
+      paddingBottom: spacing.md,
+      backgroundColor: t.bg,
+    },
+    dayTitle: { ...type.label, color: t.textH },
+    dayCounts: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 14, rowGap: spacing.xs },
+    legRow: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.md },
+    legDone: { opacity: 0.6 },
+    legTime: { width: 52, alignItems: 'flex-end', paddingTop: spacing.md },
+    timeText: { ...type.label, color: t.textH, fontVariant: ['tabular-nums'] },
+    timePeriod: { ...type.body, color: t.muted },
+    timeMissing: { ...type.label, color: t.muted },
+    legCard: {
+      flex: 1,
+      minWidth: 0,
+      backgroundColor: t.bg,
+      borderWidth: 1,
+      borderColor: t.box,
+      borderRadius: radii.container,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.lg,
+      gap: spacing.sm,
+    },
+    legTitle: { ...type.h3, color: t.textH },
+    legRoute: { ...type.body, color: t.text2, marginTop: -spacing.xs },
+    legRouteHidden: { ...type.body, color: t.muted, fontStyle: 'italic', marginTop: -spacing.xs },
+    chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+    chipShape: { borderRadius: radii.badge, backgroundColor: t.shaded, maxWidth: '100%', overflow: 'hidden' },
+    chipContent: { paddingHorizontal: spacing.sm },
+    // A larger touch area around the 20pt chip without changing its look.
+    chipPressable: { minHeight: 28, justifyContent: 'center' },
+    chipText: { ...type.small, lineHeight: type.body.lineHeight, color: t.text },
+    centered: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xxxl, gap: 10 },
+    emptyTitle: { ...type.h3, color: t.textH, textAlign: 'center' },
+    emptyText: { ...type.body, color: t.text2, textAlign: 'center', maxWidth: 280 },
+    openingOverlay: {
+      ...StyleSheet.absoluteFill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: t.overlay,
+    },
+  });
+};

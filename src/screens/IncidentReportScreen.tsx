@@ -1,38 +1,46 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  KeyboardAvoidingView,
   Linking,
-  Platform,
-  ScrollView,
   StyleSheet,
+  Pressable,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { eventHomeState } from '../navigation/routes';
+import { resetRoot } from '../navigation/rootNavigation';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useApp } from '../context/AppContext';
+import { useDiscardGuard } from '../hooks/useDiscardGuard';
 import { api } from '../services/api';
 import {
   Button,
   CheckboxRow,
-  ErrorView,
   Field,
   LevelChart,
-  LoadingView,
   Notice,
   Section,
   SelectField,
   TextField,
 } from '../components/forms';
-import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
-import type { IncidentReportOptions, ReportAttachment, RootStackParamList } from '../types';
+import {
+  Button as KitButton,
+  Container,
+  ErrorView,
+  Icon,
+  LoadingView,
+  pressedStyle,
+  Screen,
+} from '../components/ui';
+import { useTheme, useThemedStyles, type Theme } from '../theme';
+import type { IncidentReportOptions, ReportAttachment, AppStackParamList } from '../types';
 
-type Nav = NativeStackNavigationProp<RootStackParamList, 'IncidentReport'>;
+type Nav = NativeStackNavigationProp<AppStackParamList, 'IncidentReport'>;
+
+const TITLE = 'Report an incident';
 
 const SUPPORT_EMAIL = 'attend@hackclub.com';
 const CONTACT_EMAIL = 'deven@hackclub.com';
@@ -42,7 +50,7 @@ const CONTACT_EMAIL = 'deven@hackclub.com';
  * anyone signed in: participants, parents, volunteers and staff.
  */
 export function IncidentReportScreen() {
-  const { colors } = useTheme();
+  const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<Nav>();
   const { state, selectEvent } = useApp();
@@ -83,10 +91,6 @@ export function IncidentReportScreen() {
     load();
   }, [load]);
 
-  useLayoutEffect(() => {
-    navigation.setOptions({ headerTitle: 'Report an incident' });
-  }, [navigation]);
-
   const eventOptions = useMemo(
     () => [...(options?.events ?? []), ...(options?.custom_events ?? [])],
     [options]
@@ -109,8 +113,21 @@ export function IncidentReportScreen() {
     if (!medical) setEmergencyServices(false);
   }, [medical]);
 
-  if (loadError) return <ErrorView message={loadError} onRetry={load} />;
-  if (!options) return <LoadingView />;
+  // Leaving a half-written report asks first; once it's sent there's
+  // nothing to lose.
+  const { allowLeave } = useDiscardGuard(
+    options && !submitted
+      ? JSON.stringify([name, email, phone, role, eventChoice, incidentType, emergencyServices, priority, summary, details, attachments])
+      : null
+  );
+
+  if (loadError || !options) {
+    return (
+      <Screen title={TITLE} scroll={false} modal modalBar={{}}>
+        {loadError ? <ErrorView message={loadError} onRetry={load} /> : <LoadingView />}
+      </Screen>
+    );
+  }
 
   const addFiles = (files: ReportAttachment[]) => {
     const tooBig = files.find(f => f.size != null && f.size > options.max_attachment_bytes);
@@ -214,25 +231,34 @@ export function IncidentReportScreen() {
     const target = state.events.find(e => e.id === eventId);
     if (!target) return;
     await selectEvent(target);
-    navigation.replace('IncidentForm', {});
+    // In the Overview's stack the form takes this screen's place; from the
+    // attendee stack it opens on the Overview, under the event tabs.
+    allowLeave();
+    if (navigation.getState().routeNames.includes('IncidentForm')) {
+      navigation.replace('IncidentForm', {});
+    } else {
+      resetRoot(navigation, eventHomeState('IncidentForm', {}));
+    }
   };
 
   if (submitted) {
     return (
-      <ScrollView style={styles.container} contentContainerStyle={styles.thanks}>
-        <View style={[styles.thanksIcon, { backgroundColor: `${colors.green}26` }]}>
-          <Ionicons name="checkmark" size={30} color={colors.green} />
+      <Screen title={TITLE} modal modalBar={{ cancelLabel: 'Done' }}>
+        <View style={styles.thanks}>
+          <View style={styles.thanksIcon}>
+            <Icon name="check" size={30} color={tokens.success} />
+          </View>
+          <Text style={styles.thanksTitle}>Thank you — your report has been received.</Text>
+          <Text style={styles.thanksText}>
+            Your report is confidential and has been sent directly to Hack Club HQ. Our average response time is 4–5 hours.
+          </Text>
+          <Text style={styles.thanksText}>
+            If you need to add anything or have questions, email{' '}
+            <Text style={styles.link} onPress={() => Linking.openURL(`mailto:${CONTACT_EMAIL}`)}>{CONTACT_EMAIL}</Text>.
+          </Text>
+          <Button title="File another report" variant="link" onPress={reset} />
         </View>
-        <Text style={styles.thanksTitle}>Thank you — your report has been received.</Text>
-        <Text style={styles.thanksText}>
-          Your report is confidential and has been sent directly to Hack Club HQ. Our average response time is 4–5 hours.
-        </Text>
-        <Text style={styles.thanksText}>
-          If you need to add anything or have questions, email{' '}
-          <Text style={styles.link} onPress={() => Linking.openURL(`mailto:${CONTACT_EMAIL}`)}>{CONTACT_EMAIL}</Text>.
-        </Text>
-        <Button title="File another report" variant="link" onPress={reset} />
-      </ScrollView>
+      </Screen>
     );
   }
 
@@ -240,16 +266,19 @@ export function IncidentReportScreen() {
   const linkableOrganizerEvents = options.organizer_events.filter(e => state.events.some(se => se.id === e.id));
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView
-        style={styles.container}
-        contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-      >
+    <Screen
+      title={TITLE}
+      modal
+      keyboardAware
+      modalBar={{
+        confirm: <Button title="Submit" variant="primary" onPress={submit} loading={submitting} />,
+      }}
+      scrollViewProps={{ keyboardShouldPersistTaps: 'handled' }}
+    >
+      {/* The form's sections and notices carry their own inset and spacing. */}
+      <View style={styles.sections}>
         <View style={styles.intro}>
-          <Text style={styles.title}>File a Confidential Incident Report</Text>
-          <Text style={[styles.response, { color: colors.status.success }]}>Average response time: 4–5 hours</Text>
+          <Text style={styles.response}>Average response time: 4–5 hours</Text>
         </View>
 
         <Notice tone="info">
@@ -259,7 +288,7 @@ export function IncidentReportScreen() {
             is not accessible to other Hack Club staff members. Please file your report freely and candidly — we
             assure you that we will fully and thoroughly investigate the incident.
           </Text>
-          <Text style={[styles.noticeText, styles.emergency, { color: colors.status.error }]}>
+          <Text style={[styles.noticeText, styles.emergency]}>
             For medical emergencies, call 911 (or your local emergency number) and get the affected person the help
             they need before filling out this form.
           </Text>
@@ -350,13 +379,22 @@ export function IncidentReportScreen() {
               isOptionDisabled={o => o.value === emergencyLevel && !emergencyAllowed}
             />
             {forced ? (
-              <Text style={[styles.hint, { color: colors.status.error }]}>Set to S0 because emergency services have been called.</Text>
+              <Text style={styles.hint}>Set to S0 because emergency services have been called.</Text>
             ) : null}
           </Field>
-          <TouchableOpacity onPress={() => setShowChart(v => !v)}>
-            <Text style={styles.link}>{showChart ? 'Hide the triage chart' : 'Which level? The triage chart'}</Text>
-          </TouchableOpacity>
-          {showChart ? <LevelChart levels={options.levels} /> : null}
+          <KitButton
+            title={showChart ? 'Hide the triage chart' : 'Which level? The triage chart'}
+            variant="link"
+            icon={showChart ? 'chevron-up' : 'chevron-down'}
+            iconPosition="end"
+            onPress={() => setShowChart(v => !v)}
+            style={styles.chartToggle}
+          />
+          {showChart ? (
+            <Container>
+              <LevelChart levels={options.levels} />
+            </Container>
+          ) : null}
           <Field label="Describe the incident in one line">
             <TextField value={summary} onChangeText={setSummary} />
           </Field>
@@ -371,19 +409,21 @@ export function IncidentReportScreen() {
         >
           {attachments.map((file, i) => (
             <View key={`${file.uri}-${i}`} style={styles.file}>
-              <Ionicons name={file.mimeType.startsWith('image/') ? 'image-outline' : 'document-outline'} size={18} color={colors.gray[600]} />
+              <Icon name={file.mimeType.startsWith('image/') ? 'photograph' : 'document'} size={18} color={tokens.text2} />
               <Text style={styles.fileName} numberOfLines={1}>{file.name}</Text>
-              <TouchableOpacity
+              <Pressable
                 onPress={() => setAttachments(list => list.filter((_, j) => j !== i))}
-                hitSlop={8}
+                hitSlop={12}
+                accessibilityRole="button"
                 accessibilityLabel={`Remove ${file.name}`}
+                style={({ pressed }) => pressedStyle(pressed)}
               >
-                <Ionicons name="close-circle" size={20} color={colors.gray[400]} />
-              </TouchableOpacity>
+                <Icon name="x-circle" size={20} color={tokens.muted} />
+              </Pressable>
             </View>
           ))}
           <View style={styles.pickers}>
-            <Button title="Add photos" icon="images-outline" onPress={pickPhotos} />
+            <Button title="Add photos" icon="photograph" onPress={pickPhotos} />
             <Button title="Add files" icon="attach" onPress={pickFiles} />
           </View>
         </Section>
@@ -392,7 +432,7 @@ export function IncidentReportScreen() {
           <Notice tone="error">
             <Text style={[styles.noticeText, styles.bold]}>Please fix the following:</Text>
             {errors.map(message => (
-              <Text key={message} style={[styles.noticeText, { color: colors.status.error }]}>{message}</Text>
+              <Text key={message} style={[styles.noticeText, styles.errorText]}>{message}</Text>
             ))}
           </Notice>
         ) : null}
@@ -400,31 +440,49 @@ export function IncidentReportScreen() {
         <View style={styles.actions}>
           <Button title="Submit report" variant="primary" onPress={submit} loading={submitting} />
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </View>
+    </Screen>
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  flex: { flex: 1 },
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { paddingBottom: 40 },
-  intro: { paddingHorizontal: 16, paddingTop: 10, gap: 4 },
-  title: { fontSize: 22, fontWeight: '800', color: colors.gray[900] },
-  response: { fontSize: 14, fontWeight: '700' },
-  noticeText: { fontSize: 14, color: colors.gray[800], lineHeight: 20, marginBottom: 6 },
-  emergency: { fontWeight: '600' },
-  bold: { fontWeight: '700', color: colors.gray[900] },
-  muted: { fontSize: 13, color: colors.gray[600] },
-  link: { color: colors.text.accent, fontWeight: '600' },
-  hint: { fontSize: 13 },
-  details: { minHeight: 160 },
-  file: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  fileName: { flex: 1, fontSize: 14, color: colors.gray[800] },
-  pickers: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  actions: { flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 16, paddingTop: 18 },
-  thanks: { alignItems: 'center', padding: 24, paddingTop: 48, gap: 12 },
-  thanksIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
-  thanksTitle: { fontSize: 21, fontWeight: '800', color: colors.gray[900], textAlign: 'center' },
-  thanksText: { fontSize: 15, color: colors.gray[700], textAlign: 'center', lineHeight: 21 },
-});
+const makeStyles = (theme: Theme) => {
+  const { tokens: t, type, spacing, radii } = theme;
+  return StyleSheet.create({
+    flex: { flex: 1 },
+    sections: { marginHorizontal: -spacing.lg, marginTop: -spacing.lg },
+    intro: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.xs },
+    response: { ...type.label, color: t.success },
+    noticeText: { ...type.body, color: t.text, marginBottom: 6 },
+    emergency: { fontWeight: type.label.fontWeight, color: t.error },
+    errorText: { color: t.error },
+    bold: { fontWeight: type.label.fontWeight, color: t.textH },
+    muted: { ...type.body, color: t.muted },
+    link: { color: t.accent, fontWeight: type.label.fontWeight },
+    hint: { ...type.body, color: t.error },
+    chartToggle: { alignSelf: 'flex-start', paddingHorizontal: 0 },
+    details: { minHeight: 160 },
+    file: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      minHeight: 44,
+      paddingHorizontal: spacing.md,
+      borderRadius: radii.item,
+      backgroundColor: t.shaded,
+    },
+    fileName: { ...type.body, flex: 1, color: t.text },
+    pickers: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap' },
+    actions: { flexDirection: 'row', paddingHorizontal: spacing.lg, paddingTop: spacing.xl },
+    thanks: { alignItems: 'center', paddingHorizontal: spacing.sm, paddingTop: spacing.xxl, gap: spacing.md },
+    thanksIcon: {
+      width: 56,
+      height: 56,
+      borderRadius: radii.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: t.successBg,
+    },
+    thanksTitle: { ...type.h2, color: t.textH, textAlign: 'center' },
+    thanksText: { ...type.body, color: t.text2, textAlign: 'center' },
+  });
+};
