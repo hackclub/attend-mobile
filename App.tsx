@@ -13,6 +13,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createNativeBottomTabNavigator } from '@bottom-tabs/react-navigation';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'expo-status-bar';
 import * as Linking from 'expo-linking';
 import * as ScreenOrientation from 'expo-screen-orientation';
@@ -425,15 +426,18 @@ const isScannerLink = (url: string) => /^attend:\/\/(--\/)?scan(ner)?(\/|\?|$)/.
 
 export default Sentry.wrap(function App() {
   return (
-    <SafeAreaProvider>
-      <KeyboardProvider>
-        <ThemeProvider>
-          <AppProvider>
-            <AppNavigation />
-          </AppProvider>
-        </ThemeProvider>
-      </KeyboardProvider>
-    </SafeAreaProvider>
+    // Gesture handler's root: the event banner's pull-to-switch needs it.
+    <GestureHandlerRootView style={rootStyles.gestureRoot}>
+      <SafeAreaProvider>
+        <KeyboardProvider>
+          <ThemeProvider>
+            <AppProvider>
+              <AppNavigation />
+            </AppProvider>
+          </ThemeProvider>
+        </KeyboardProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 });
 
@@ -527,4 +531,8 @@ const makeStyles = ({ tokens }: Theme) => StyleSheet.create({
     alignItems: 'center',
     backgroundColor: tokens.bg,
   },
+});
+
+const rootStyles = StyleSheet.create({
+  gestureRoot: { flex: 1 },
 });

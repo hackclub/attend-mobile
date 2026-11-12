@@ -55,6 +55,7 @@
     "react": "19.3.0",
     "react-native": "0.88.1",
     "react-native-bottom-tabs": "^1.4.0",
+    "react-native-gesture-handler": "~3.3.0",
     "react-native-heroicons": "2.2.0",
     "react-native-image-colors": "^2.6.1",
     "react-native-keyboard-controller": "1.22.7",
