@@ -67,6 +67,25 @@ export function rubberBand(distance: number): number {
   return (distance * 0.55 * limit) / (limit + distance * 0.55);
 }
 
+/**
+ * A pull on the list to close it: close to the finger, with a little
+ * resistance only further on, so the list feels held rather than elastic.
+ */
+export function followPull(distance: number): number {
+  'worklet';
+  if (distance <= 0) return 0;
+  const limit = 1400;
+  return (distance * 0.95 * limit) / (limit + distance * 0.95);
+}
+
+/**
+ * True while a finger is down on a switchable banner. The banner's screen
+ * turns its scrolling and pull-to-refresh off meanwhile (on the UI thread,
+ * at once), so they can't claim a pull before the switcher does; a drag
+ * upward fails the pull and turns them back on mid-drag.
+ */
+export const switcherBannerHeld = makeMutable(false);
+
 export type OverlayState =
   | { status: 'closed' }
   /** Mounted and following a pull, or animating open. */
@@ -125,7 +144,14 @@ export const switcherOverlay = {
    * way, or (`animateIn`, from a tap) playing the same opening by itself.
    */
   async open(key: string, animateIn: boolean): Promise<void> {
-    if (state.status !== 'closed') return;
+    // Already mounted (unseen) by the finger going down: a tap plays it.
+    if (state.status === 'open') {
+      if (animateIn && !state.animateIn && state.source.key === key) {
+        state = { ...state, animateIn: true };
+        emit();
+      }
+      return;
+    }
     const source = banners.get(key);
     if (!source) return;
     const opening = ++generation;
@@ -133,6 +159,18 @@ export const switcherOverlay = {
     if (!sourceRect || state.status !== 'closed' || opening !== generation) return;
     state = { status: 'open', source, sourceRect, animateIn };
     emit();
+  },
+
+  /**
+   * After a touch on the banner that didn't become a pull or a tap (e.g. it
+   * scrolled the page): unmounts the overlay it mounted, still unseen.
+   */
+  releaseUnused() {
+    setTimeout(() => {
+      if (state.status === 'open' && !state.animateIn && switcherProgress.value < 0.001) {
+        switcherOverlay.closed();
+      }
+    }, 150);
   },
 
   /**
@@ -175,4 +213,10 @@ export function closeSwitcherOverlay(): void {
 }
 export function switcherPullTick(): void {
   haptics.selection();
+}
+export function openSwitcherUnseen(key: string): void {
+  void switcherOverlay.open(key, false);
+}
+export function releaseUnusedSwitcher(): void {
+  switcherOverlay.releaseUnused();
 }

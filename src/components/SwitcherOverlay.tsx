@@ -30,7 +30,7 @@ import {
   SWITCHER_SPRING,
   bannerKey,
   closeSwitcherOverlay,
-  rubberBand,
+  followPull,
   switcherOverlay,
   switcherOverpull,
   switcherProgress,
@@ -271,6 +271,16 @@ function SwitcherOverlay({
   );
 
   const currentCardHeight = currentRow ? cardHeightOf(currentRow, metrics) : metrics.cardHeight;
+  // Mounted unseen as a finger goes down on the banner: it takes no
+  // touches until it's on its way open.
+  const [interactive, setInteractive] = useState(animateIn);
+  useAnimatedReaction(
+    () => progress.value > 0.05,
+    (shown, was) => {
+      if (shown !== was) scheduleOnRN(setInteractive, shown);
+    }
+  );
+
   const isCurrentOnScreen = useCallback(() => {
     const rowTop = currentTop.get();
     if (rowTop < 0) return false;
@@ -419,7 +429,7 @@ function SwitcherOverlay({
     listActive.value = false;
     const pulled = Math.abs(stretch.value);
     const flicked = Math.abs(listVelocity.value) > SWITCHER_FLICK_VELOCITY;
-    if (!canceled && (pulled > rubberBand(LIST_CLOSE_DISTANCE) || flicked)) {
+    if (!canceled && (pulled > followPull(LIST_CLOSE_DISTANCE) || flicked)) {
       scheduleOnRN(close);
     } else {
       stretch.value = withSpring(0, SWITCHER_SPRING);
@@ -437,7 +447,7 @@ function SwitcherOverlay({
     onUpdate: (e) => {
       'worklet';
       listVelocity.value = e.velocityY;
-      stretch.value = rubberBand(e.translationY);
+      stretch.value = followPull(e.translationY);
     },
     onFinalize: (e) => {
       'worklet';
@@ -456,7 +466,7 @@ function SwitcherOverlay({
     onUpdate: (e) => {
       'worklet';
       listVelocity.value = e.velocityY;
-      stretch.value = -rubberBand(-e.translationY);
+      stretch.value = -followPull(-e.translationY);
     },
     onFinalize: (e) => {
       'worklet';
@@ -477,7 +487,7 @@ function SwitcherOverlay({
   // A stretch fades the overlay a little, as a hint that letting go closes it.
   const stretchFade = () => {
     'worklet';
-    return 1 - STRETCH_FADE * Math.min(1, Math.abs(stretch.value) / rubberBand(LIST_CLOSE_DISTANCE * 2));
+    return 1 - STRETCH_FADE * Math.min(1, Math.abs(stretch.value) / followPull(LIST_CLOSE_DISTANCE * 2));
   };
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0, 0.6], [0, 1], Extrapolation.CLAMP) * stretchFade(),
@@ -533,7 +543,7 @@ function SwitcherOverlay({
   );
 
   return (
-    <View style={StyleSheet.absoluteFill} accessibilityViewIsModal>
+    <View style={StyleSheet.absoluteFill} accessibilityViewIsModal pointerEvents={interactive ? 'auto' : 'none'}>
       <Animated.View
         pointerEvents="none"
         style={[StyleSheet.absoluteFill, { backgroundColor: tokens.bg }, backdropStyle]}
@@ -815,7 +825,8 @@ function Hero({
     };
     const scale = 1 + (to.width / from.width - 1) * p;
     const shape = {
-      opacity: heroOn.value === 1 && ready.value === 1 && p < 0.999 ? 1 : 0,
+      // Unseen at 0: mounted as a finger goes down, before any pull.
+      opacity: heroOn.value === 1 && ready.value === 1 && p > 0.001 && p < 0.999 ? 1 : 0,
       // Corners as the card's once scaled.
       borderRadius: (radii.container * p) / scale,
       transform: [{ translateX: (to.x - from.x) * p }, { translateY: (to.y - from.y) * p }, { scale }],

@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View, useWindowDimensions, type StyleProp,
 import { Image } from 'expo-image';
 import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
-import Animated, { useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { useAnimatedProps, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import {
   SWITCHER_FLICK_VELOCITY,
@@ -17,6 +17,9 @@ import {
   switcherProgress,
   switcherPullTick,
   switcherOverpull,
+  switcherBannerHeld,
+  openSwitcherUnseen,
+  releaseUnusedSwitcher,
   type SwitcherBanner,
 } from '../navigation/switcherOverlay';
 import type { SwitcherCurrent } from '../services/switcherLayout';
@@ -307,6 +310,10 @@ export function EventBanner({
         new Promise((resolve) => {
           const view = viewRef.current;
           if (!view) return resolve(null);
+          // Synchronous where the new architecture offers it, so the overlay
+          // mounts the moment a finger goes down.
+          const rect = (view as { getBoundingClientRect?: () => DOMRect }).getBoundingClientRect?.();
+          if (rect && rect.width > 0) return resolve({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
           view.measureInWindow((x, y, w, h) => resolve(w > 0 && h > 0 ? { x, y, width: w, height: h } : null));
         }),
     });
@@ -370,23 +377,27 @@ export function EventBanner({
 export function useSwitcherPull(switcher: BannerSwitcher | undefined) {
   const key = switcher?.key;
   const past = useSharedValue(false);
-  const openFromPull = useCallback(() => {
-    if (key) void switcherOverlay.open(key, false);
-  }, [key]);
   const active = useSharedValue(false);
   const velocity = useSharedValue(0);
+  // Mounted (unseen) as the finger goes down, so it's there to follow the
+  // first movement.
+  const prepare = useCallback(() => {
+    if (key) openSwitcherUnseen(key);
+  }, [key]);
   return usePanGesture({
     enabled: !!switcher?.enabled,
-    // Before the page's ScrollView would claim the drag (its touch slop is
-    // 8dp, and once dragging it stops anything else taking the touch).
     activeOffsetY: 3,
     failOffsetY: -3,
     failOffsetX: [-16, 16],
+    onBegin: () => {
+      'worklet';
+      switcherBannerHeld.value = true;
+      scheduleOnRN(prepare);
+    },
     onActivate: () => {
       'worklet';
       active.value = true;
       past.value = false;
-      scheduleOnRN(openFromPull);
     },
     onUpdate: (e) => {
       'worklet';
@@ -401,11 +412,15 @@ export function useSwitcherPull(switcher: BannerSwitcher | undefined) {
         if (isPast) scheduleOnRN(switcherPullTick);
       }
     },
-    // On release or cancel alike (onFinalize runs for both), so a pull
-    // the system took over never leaves the overlay half open.
+    // On release, cancel or failure alike (onFinalize runs for all of them).
     onFinalize: () => {
       'worklet';
-      if (!active.value) return;
+      switcherBannerHeld.value = false;
+      if (!active.value) {
+        // A tap or a scroll: the tap opens it itself, a scroll leaves it.
+        scheduleOnRN(releaseUnusedSwitcher);
+        return;
+      }
       active.value = false;
       switcherOverpull.value = withSpring(0, SWITCHER_SPRING);
       // By how far it got, cancelled or not: the system can cancel the pull
@@ -421,6 +436,15 @@ export function useSwitcherPull(switcher: BannerSwitcher | undefined) {
       }
     },
   });
+}
+
+/**
+ * The banner's screen's ScrollView props that keep it still while a finger
+ * is down on the banner (see `switcherBannerHeld`). For an Animated
+ * (Reanimated) ScrollView's `animatedProps`.
+ */
+export function useBannerHeldScrollProps() {
+  return useAnimatedProps(() => ({ scrollEnabled: !switcherBannerHeld.value }));
 }
 
 interface EventCardProps {

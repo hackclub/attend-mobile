@@ -7,7 +7,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, type NavigationProp } from '@react-navigation/native';
 import { AccountButton } from '../components/AccountSheet';
-import { EventBanner, eventBannerText, useSwitcherPull } from '../components/EventBanner';
+import { EventBanner, eventBannerText, useBannerHeldScrollProps, useSwitcherPull } from '../components/EventBanner';
 import { RoleRestricted, roleRestrictedMessage } from '../components/RoleRestricted';
 import {
   Avatar,
@@ -57,8 +57,8 @@ import type { Event, MainTabParamList, AppStackParamList, TravelCalendarEntry } 
 import { SwitchEventList } from '../components/EventSwitcher';
 import { resetRoot } from '../navigation/rootNavigation';
 import type { PartialState } from '../navigation/routes';
-import { bannerKey } from '../navigation/switcherOverlay';
-import { ScrollView } from 'react-native-gesture-handler';
+import { bannerKey, switcherBannerHeld } from '../navigation/switcherOverlay';
+import Animated from 'react-native-reanimated';
 
 type Navigation = NavigationProp<AppStackParamList & MainTabParamList>;
 
@@ -145,6 +145,7 @@ function Overview({
     [canSwitch, event, navigation]
   );  // A pull on the banner opens the switcher; the page's scroll waits for it.
   const pull = useSwitcherPull(bannerSwitcher);
+  const heldScrollProps = useBannerHeldScrollProps();
 
 
   const participants = state.participants;
@@ -387,14 +388,14 @@ function Overview({
 
   return (
     <View style={[styles.screen, { backgroundColor: tokens.bg }]}>
-      <ScrollView
-        requireToFail={pull}
+      <Animated.ScrollView
+        animatedProps={heldScrollProps}
         contentContainerStyle={{ paddingBottom: tabBarInset + spacing.xxl }}
         onScroll={bannerStatusBar.onScroll}
         scrollEventThrottle={32}
         refreshControl={
           <RefreshControl
-            requireToFail={pull}
+            heldBy={switcherBannerHeld}
             refreshing={isRefreshing}
             onRefresh={handleRefresh}
             // The spinner shows on the page above the banner, not on the
@@ -443,7 +444,7 @@ function Overview({
 
           <LiveActivityRow key={event.id} />
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
       {bannerStatusBar.scrim}
     </View>
   );

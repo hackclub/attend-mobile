@@ -1,15 +1,17 @@
 import React from 'react';
 import { RefreshControl as RNRefreshControl, type RefreshControlProps as RNRefreshControlProps } from 'react-native';
-import { RefreshControl as GestureRefreshControl, type usePanGesture } from 'react-native-gesture-handler';
+import Animated, { useAnimatedProps, type SharedValue } from 'react-native-reanimated';
 import { haptics } from '../../services/haptics';
+
+const AnimatedRefreshControl = Animated.createAnimatedComponent(RNRefreshControl);
 
 export interface RefreshControlProps extends RNRefreshControlProps {
   /**
-   * A gesture the pull-to-refresh waits on, e.g. the banner's pull to open
-   * the event switcher, so a pull starting on the banner doesn't refresh.
-   * Needs the gesture handler's ScrollView around it.
+   * Off while this is true, switched on the UI thread: e.g. while a finger
+   * is down on the event banner, whose pull opens the switcher instead.
+   * Needs a Reanimated ScrollView around it.
    */
-  requireToFail?: ReturnType<typeof usePanGesture>;
+  heldBy?: SharedValue<boolean>;
 }
 
 /**
@@ -17,15 +19,18 @@ export interface RefreshControlProps extends RNRefreshControlProps {
  * onRefresh only fires for the user's pull, never when `refreshing` is set in
  * code, so a programmatic reload stays silent.
  */
-export function RefreshControl({ onRefresh, requireToFail, ...props }: RefreshControlProps) {
+export function RefreshControl({ onRefresh, heldBy, ...props }: RefreshControlProps) {
   const tickThenRefresh = onRefresh
     ? () => {
         haptics.impact('light');
         onRefresh();
       }
     : undefined;
-  if (requireToFail) {
-    return <GestureRefreshControl {...props} onRefresh={tickThenRefresh} requireToFail={requireToFail} />;
-  }
+  if (heldBy) return <HeldRefreshControl {...props} onRefresh={tickThenRefresh} heldBy={heldBy} />;
   return <RNRefreshControl {...props} onRefresh={tickThenRefresh} />;
+}
+
+function HeldRefreshControl({ heldBy, ...props }: RNRefreshControlProps & { heldBy: SharedValue<boolean> }) {
+  const animatedProps = useAnimatedProps(() => ({ enabled: !heldBy.value }));
+  return <AnimatedRefreshControl {...props} animatedProps={animatedProps} />;
 }
