@@ -321,7 +321,13 @@ export function EventBanner({
           if (!view) return resolve(null);
           const rect = (view as { getBoundingClientRect?: () => DOMRect }).getBoundingClientRect?.();
           if (rect && rect.width > 0) return resolve({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
-          view.measureInWindow((x, y, w, h) => resolve(w > 0 && h > 0 ? { x, y, width: w, height: h } : null));
+          // A banner on a screen that's mounted but not shown (detached) may
+          // never answer; give up rather than wait for ever.
+          const timer = setTimeout(() => resolve(null), 250);
+          view.measureInWindow((x, y, w, h) => {
+            clearTimeout(timer);
+            resolve(w > 0 && h > 0 ? { x, y, width: w, height: h } : null);
+          });
         }),
     });
   }, [blendInto, canSwitch, current, event, eyebrow, eyebrowIcon, key, laidOutHeight, meta, topInset]);

@@ -71,6 +71,8 @@ const CARD_SLIDE = 56;
 /** How long a switch waits for the new screen's banner before just fading. */
 const LANDING_WAIT_MS = 1500;
 const FADE_MS = 220;
+/** The longest a switch may keep the overlay before it closes regardless. */
+const SWITCH_GIVE_UP_MS = 3000;
 /** The longest a switch waits for the picked event's photo before growing. */
 const PHOTO_WAIT_MS = 150;
 /** A pull on the list this far (before resistance) closes the overlay. */
@@ -398,9 +400,19 @@ function SwitcherOverlay({
       // is there; it closes once both have happened.
       let grown = false;
       let landed = false;
+      let settled = false;
       const finishIfDone = () => {
-        if (grown && landed) closeSwitcherOverlay();
+        if (settled || !grown || !landed) return;
+        settled = true;
+        closeSwitcherOverlay();
       };
+      // However the switch goes, it never holds the overlay (busy, taking
+      // every touch) for longer than this.
+      setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        closeSwitcherOverlay();
+      }, SWITCH_GIVE_UP_MS);
       const markGrown = () => {
         grown = true;
         finishIfDone();
