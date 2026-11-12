@@ -53,6 +53,11 @@ export const switcherProgress = makeMutable(0);
  * close it. Rubber-banded (`rubberBand`), and sprung back to 0 on release.
  */
 export const switcherStretch = makeMutable(0);
+/**
+ * Points a pull on the banner has gone past fully open: the list follows on
+ * down, rubber-banded, without the stretch's fade (it isn't closing).
+ */
+export const switcherOverpull = makeMutable(0);
 
 /** A pull of `distance` points, resisted more the further it goes. */
 export function rubberBand(distance: number): number {
@@ -143,6 +148,7 @@ export const switcherOverlay = {
       if (state.status !== 'closed') return;
       switcherProgress.value = 0;
       switcherStretch.value = 0;
+      switcherOverpull.value = 0;
       emit();
     });
   },

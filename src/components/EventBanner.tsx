@@ -16,7 +16,7 @@ import {
   switcherOverlay,
   switcherProgress,
   switcherPullTick,
-  switcherStretch,
+  switcherOverpull,
   type SwitcherBanner,
 } from '../navigation/switcherOverlay';
 import type { SwitcherCurrent } from '../services/switcherLayout';
@@ -394,7 +394,7 @@ export function useSwitcherPull(switcher: BannerSwitcher | undefined) {
       const progress = Math.min(1, Math.max(0, e.translationY / SWITCHER_PULL_DISTANCE));
       switcherProgress.value = progress;
       // Past fully open, the list stretches on down after the finger.
-      switcherStretch.value = rubberBand(e.translationY - SWITCHER_PULL_DISTANCE);
+      switcherOverpull.value = rubberBand(e.translationY - SWITCHER_PULL_DISTANCE);
       const isPast = progress >= SWITCHER_OPEN_THRESHOLD;
       if (isPast !== past.value) {
         past.value = isPast;
@@ -403,14 +403,15 @@ export function useSwitcherPull(switcher: BannerSwitcher | undefined) {
     },
     // On release or cancel alike (onFinalize runs for both), so a pull
     // the system took over never leaves the overlay half open.
-    onFinalize: (e) => {
+    onFinalize: () => {
       'worklet';
       if (!active.value) return;
       active.value = false;
-      switcherStretch.value = withSpring(0, SWITCHER_SPRING);
+      switcherOverpull.value = withSpring(0, SWITCHER_SPRING);
+      // By how far it got, cancelled or not: the system can cancel the pull
+      // as the overlay appears over the banner.
       const opening =
-        !e.canceled &&
-        (switcherProgress.value >= SWITCHER_OPEN_THRESHOLD || velocity.value > SWITCHER_FLICK_VELOCITY);
+        switcherProgress.value >= SWITCHER_OPEN_THRESHOLD || velocity.value > SWITCHER_FLICK_VELOCITY;
       if (opening) {
         switcherProgress.value = withSpring(1, SWITCHER_SPRING);
       } else {

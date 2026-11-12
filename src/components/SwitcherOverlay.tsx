@@ -32,6 +32,7 @@ import {
   closeSwitcherOverlay,
   rubberBand,
   switcherOverlay,
+  switcherOverpull,
   switcherProgress,
   switcherStretch,
   type Rect,
@@ -122,13 +123,19 @@ interface HeroState {
   crop: number;
   /** Laid out here: the banner's rect, less the crop. */
   box: Rect;
+  /**
+   * Its height (unscaled) once it's the card: the box's for a full card; an
+   * ended event's shorter card is reached by animating the height.
+   */
+  endHeight: number;
   /** Turning into an ended event's (grey) card. */
   grey: boolean;
 }
 
 function heroFor(banner: SwitcherBanner, rect: Rect, cardHeight: number, cardWidth: number, grey: boolean): HeroState {
   const scale = cardWidth / rect.width;
-  const crop = Math.max(0, rect.height - cardHeight / scale);
+  // The status bar space above the photo, which cards leave out.
+  const crop = Math.min(banner.topInset, rect.height);
   return {
     event: banner.event,
     eyebrow: banner.eyebrow,
@@ -140,6 +147,7 @@ function heroFor(banner: SwitcherBanner, rect: Rect, cardHeight: number, cardWid
     faceHeight: rect.height,
     crop,
     box: { x: rect.x, y: rect.y + crop, width: rect.width, height: rect.height - crop },
+    endHeight: cardHeight / scale,
     grey,
   };
 }
@@ -162,6 +170,7 @@ function SwitcherOverlay({
   const current = source.current;
   const progress = switcherProgress;
   const stretch = switcherStretch;
+  const overpull = switcherOverpull;
 
   // Layout, all in fixed heights (services/switcherLayout). A card is the
   // banner scaled to the card's width, its status bar space cropped off.
@@ -265,9 +274,9 @@ function SwitcherOverlay({
   const isCurrentOnScreen = useCallback(() => {
     const rowTop = currentTop.get();
     if (rowTop < 0) return false;
-    const top = viewportTop + rowTop - scrollY.get() + stretch.get();
+    const top = viewportTop + rowTop - scrollY.get() + stretch.get() + overpull.get();
     return top + currentCardHeight > viewportTop && top < height;
-  }, [currentCardHeight, currentTop, height, scrollY, stretch, viewportTop]);
+  }, [currentCardHeight, currentTop, height, overpull, scrollY, stretch, viewportTop]);
 
   /** Back into the banner, or a fade when the current card is off-screen. */
   const close = useCallback(() => {
@@ -276,12 +285,13 @@ function SwitcherOverlay({
     const morph = !reduceMotion && isCurrentOnScreen();
     heroOn.set(morph ? 1 : 0);
     stretch.set(withTiming(0, SWITCHER_CLOSE_TIMING));
+    overpull.set(withTiming(0, SWITCHER_CLOSE_TIMING));
     progress.set(
       withTiming(0, morph ? SWITCHER_CLOSE_TIMING : { duration: FADE_MS }, (finished) => {
         if (finished) scheduleOnRN(closeSwitcherOverlay);
       })
     );
-  }, [heroOn, isCurrentOnScreen, progress, reduceMotion, stretch]);
+  }, [heroOn, isCurrentOnScreen, overpull, progress, reduceMotion, stretch]);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -308,7 +318,7 @@ function SwitcherOverlay({
       const pickedHeight = cardHeightOf(row, metrics);
       const cardRect: Rect = {
         x: SIDE,
-        y: viewportTop + offsets[index] - scrollY.get() + stretch.get(),
+        y: viewportTop + offsets[index] - scrollY.get() + stretch.get() + overpull.get(),
         width: cardWidth,
         height: pickedHeight,
       };
@@ -316,6 +326,7 @@ function SwitcherOverlay({
       // Fully covered while the screens change under it.
       progress.set(1);
       stretch.set(0);
+      overpull.set(0);
 
       if (row.kind === 'event') source.switchTo(eventHomeState(), () => void selectEvent(row.event));
       else source.switchTo(passHomeState(row.ticket));
@@ -351,7 +362,7 @@ function SwitcherOverlay({
     },
     [
       bannerRect, barStyle, cardWidth, close, heroOn, heroReady, landingCard, metrics, offsets, progress,
-      reduceMotion, scrollY, selectEvent, source, stretch, viewportTop,
+      overpull, reduceMotion, scrollY, selectEvent, source, stretch, viewportTop,
     ]
   );
 
@@ -477,7 +488,8 @@ function SwitcherOverlay({
   // With the hero off (reduced motion, a fade) the list fades as a whole.
   const listStyle = useAnimatedStyle(() => ({
     opacity: heroOn.value ? 1 : interpolate(progress.value, [0, 0.8], [0, 1], Extrapolation.CLAMP),
-    transform: [{ translateY: stretch.value }],
+    // A pull past fully open moves it too, without the fade.
+    transform: [{ translateY: stretch.value + overpull.value }],
   }));
 
   const renderItem = ({ item, index }: ListRenderItemInfo<SwitcherRow>) => {
@@ -597,6 +609,7 @@ function SwitcherOverlay({
         onReady={onHeroReady}
         ready={heroReady}
         stretch={stretch}
+        overpull={overpull}
         progress={progress}
         heroOn={heroOn}
         bannerRect={bannerRect}
@@ -766,6 +779,7 @@ function Hero({
   onReady,
   ready,
   stretch,
+  overpull,
   progress,
   heroOn,
   bannerRect,
@@ -779,6 +793,7 @@ function Hero({
   onReady: () => void;
   ready: SharedValue<number>;
   stretch: SharedValue<number>;
+  overpull: SharedValue<number>;
   progress: SharedValue<number>;
   heroOn: SharedValue<number>;
   bannerRect: SharedValue<Rect>;
@@ -788,22 +803,30 @@ function Hero({
   viewportTop: number;
   card: { x: number; width: number; height: number };
 }) {
+  const endHeight = hero.endHeight;
   const box = useAnimatedStyle(() => {
     const p = progress.value;
     const from = bannerRect.value;
     const to = landingCard.value ?? {
       x: card.x,
-      y: viewportTop + currentTop.value - scrollY.value + stretch.value,
+      y: viewportTop + currentTop.value - scrollY.value + stretch.value + overpull.value,
       width: card.width,
       height: card.height,
     };
     const scale = 1 + (to.width / from.width - 1) * p;
-    return {
+    const shape = {
       opacity: heroOn.value === 1 && ready.value === 1 && p < 0.999 ? 1 : 0,
       // Corners as the card's once scaled.
       borderRadius: (radii.container * p) / scale,
       transform: [{ translateX: (to.x - from.x) * p }, { translateY: (to.y - from.y) * p }, { scale }],
     };
+    // An ended event's card is shorter: the height animates to it, the
+    // bottom (its text) staying put.
+    return Math.abs(endHeight - from.height) < 0.5 ? shape : { ...shape, height: from.height + (endHeight - from.height) * p };
+  });
+  const faceShift = useAnimatedStyle(() => {
+    const h = bannerRect.value.height;
+    return { transform: [{ translateY: (h - endHeight) * progress.value * -1 }] };
   });
   const fadeOut = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0, 0.6], [1, 0], Extrapolation.CLAMP),
@@ -817,7 +840,7 @@ function Hero({
     >
       {/* The whole banner, its cropped top above the box. Keyed by event so
           a switch mounts a fresh photo, which reports when it's drawn. */}
-      <View style={[styles.heroFace, { top: -hero.crop, height: hero.faceHeight }]}>
+      <Animated.View style={[styles.heroFace, { top: -hero.crop, height: hero.faceHeight }, faceShift]}>
         <BannerFace
           key={hero.event.id}
           event={hero.event}
@@ -836,7 +859,7 @@ function Hero({
             </Animated.View>
           ) : null}
         </BannerFace>
-      </View>
+      </Animated.View>
       {hero.grey ? <Animated.View style={[StyleSheet.absoluteFill, styles.pastTint, greyIn]} /> : null}
       {hero.accessory ? (
         <Animated.View style={[styles.accessory, { top: hero.topInset + 8 - hero.crop }, fadeOut]}>
