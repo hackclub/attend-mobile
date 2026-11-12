@@ -7,9 +7,12 @@ import type { Event, Ticket } from '../types';
 import type { PartialState } from './routes';
 
 // The event switcher overlay, opened from an event's banner. Banners register
-// here while mounted (where they are, what they show, and their screen's way
-// to reset the root); the overlay host at the app root reads the open request
-// and animates between the banner and the list with `switcherProgress`.
+// here while mounted (what they show, how tall they are, and their screen's
+// way to reset the root). The overlay host at the app root stays mounted,
+// unseen, over the latest switchable banner, so a pull on it moves the
+// overlay from the first frame: everything that follows the finger runs on
+// the UI thread, from `switcherProgress` and the banner's rect, which the
+// pull measures there as the finger goes down.
 
 export interface Rect {
   x: number;
@@ -28,10 +31,14 @@ export interface SwitcherBanner {
   meta?: string;
   /** Space above the photo, for the status bar. */
   topInset: number;
+  /** Its laid-out height (a long name can make it taller than the photo). */
+  height: number;
   /** The page colour under it (its dark-mode fade). */
   blendInto?: string;
   /** Its top-right control (the account avatar), faded out by the hero. */
   accessory?: ReactNode;
+  /** Whether it opens the switcher (more than one event to switch to). */
+  enabled: boolean;
   /** Its rect in the window, now. */
   measure: () => Promise<Rect | null>;
   /** Its screen's root reset, run under the overlay when switching. */
@@ -47,10 +54,11 @@ export const bannerKey = {
 
 /** 0: the banner; 1: the list, fully open. Driven by gestures and springs. */
 export const switcherProgress = makeMutable(0);
+/** The banner's rect in the window as the overlay opens from it. */
+export const switcherSourceRect = makeMutable<Rect>({ x: 0, y: 0, width: 1, height: 1 });
 /**
- * Points the list is pulled down past where it rests: a pull that goes on
- * after the overlay has fully opened, or one that starts on the list to
- * close it. Rubber-banded (`rubberBand`), and sprung back to 0 on release.
+ * Points the list is pulled down (or up) past where it rests by a pull on
+ * the list to close it. Sprung back to 0 on release.
  */
 export const switcherStretch = makeMutable(0);
 /**
@@ -58,6 +66,13 @@ export const switcherStretch = makeMutable(0);
  * down, rubber-banded, without the stretch's fade (it isn't closing).
  */
 export const switcherOverpull = makeMutable(0);
+/**
+ * True while a finger is down on a switchable banner. The banner's screen
+ * turns its scrolling and pull-to-refresh off meanwhile (on the UI thread,
+ * at once), so they can't claim a pull before the switcher does; a drag
+ * upward fails the pull and turns them back on mid-drag.
+ */
+export const switcherBannerHeld = makeMutable(false);
 
 /** A pull of `distance` points, resisted more the further it goes. */
 export function rubberBand(distance: number): number {
@@ -78,28 +93,39 @@ export function followPull(distance: number): number {
   return (distance * 0.95 * limit) / (limit + distance * 0.95);
 }
 
-/**
- * True while a finger is down on a switchable banner. The banner's screen
- * turns its scrolling and pull-to-refresh off meanwhile (on the UI thread,
- * at once), so they can't claim a pull before the switcher does; a drag
- * upward fails the pull and turns them back on mid-drag.
- */
-export const switcherBannerHeld = makeMutable(false);
+export interface OverlayState {
+  /** The banner it's mounted over (unseen until opened), if any. */
+  source: SwitcherBanner | null;
+  /** Opening, open or closing: taking touches, back and screen readers. */
+  open: boolean;
+  /** Opened by a tap, so it plays the opening by itself. */
+  animateIn: boolean;
+  /** Bumped by every open, so the overlay can tell one from the next. */
+  openCount: number;
+}
 
-export type OverlayState =
-  | { status: 'closed' }
-  /** Mounted and following a pull, or animating open. */
-  | { status: 'open'; source: SwitcherBanner; sourceRect: Rect; animateIn: boolean };
-
-let state: OverlayState = { status: 'closed' };
-// Bumped by every open and close, so an open still measuring its banner
-// when the pull is let go (and closed) doesn't mount afterwards.
-let generation = 0;
+let state: OverlayState = { source: null, open: false, animateIn: false, openCount: 0 };
 const listeners = new Set<() => void>();
-const banners = new Map<string, SwitcherBanner>();
+/** Registered banners, oldest first; the overlay sits over the latest switchable one. */
+let banners: SwitcherBanner[] = [];
 const bannerWaiters = new Map<string, (banner: SwitcherBanner) => void>();
 
 const emit = () => listeners.forEach((listener) => listener());
+
+function latestSource(): SwitcherBanner | null {
+  for (let i = banners.length - 1; i >= 0; i--) if (banners[i].enabled) return banners[i];
+  return null;
+}
+
+/** While it's closed, follows the latest switchable banner. */
+function updateSource() {
+  if (state.open) return;
+  const source = latestSource();
+  if (source !== state.source) {
+    state = { ...state, source };
+    emit();
+  }
+}
 
 export const switcherOverlay = {
   subscribe(listener: () => void) {
@@ -110,22 +136,24 @@ export const switcherOverlay = {
   },
   get: () => state,
 
-  /** A banner, while mounted. Returns the unregister. */
+  /** A banner, while mounted (registered again when it changes). Returns the unregister. */
   registerBanner(banner: SwitcherBanner): () => void {
-    banners.set(banner.key, banner);
+    banners = [...banners.filter((b) => b.key !== banner.key), banner];
     const waiter = bannerWaiters.get(banner.key);
     if (waiter) {
       bannerWaiters.delete(banner.key);
       waiter(banner);
     }
+    updateSource();
     return () => {
-      if (banners.get(banner.key) === banner) banners.delete(banner.key);
+      banners = banners.filter((b) => b !== banner);
+      updateSource();
     };
   },
 
   /** The banner with `key` once it's mounted, or null after `timeoutMs`. */
   waitForBanner(key: string, timeoutMs: number): Promise<SwitcherBanner | null> {
-    const mounted = banners.get(key);
+    const mounted = banners.find((b) => b.key === key);
     if (mounted) return Promise.resolve(mounted);
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
@@ -140,55 +168,32 @@ export const switcherOverlay = {
   },
 
   /**
-   * Mounts the overlay over `key`'s banner: following a pull already under
-   * way, or (`animateIn`, from a tap) playing the same opening by itself.
+   * Opens it over `key`'s banner: following a pull already under way (its
+   * rect measured as the finger went down), or (`animateIn`, from a tap)
+   * playing the same opening by itself.
    */
   async open(key: string, animateIn: boolean): Promise<void> {
-    // Already mounted (unseen) by the finger going down: a tap plays it.
-    if (state.status === 'open') {
-      if (animateIn && !state.animateIn && state.source.key === key) {
-        state = { ...state, animateIn: true };
-        emit();
-      }
-      return;
-    }
-    const source = banners.get(key);
+    if (state.open) return;
+    const source = banners.find((b) => b.key === key);
     if (!source) return;
-    const opening = ++generation;
-    const sourceRect = await source.measure();
-    if (!sourceRect || state.status !== 'closed' || opening !== generation) return;
-    state = { status: 'open', source, sourceRect, animateIn };
+    if (animateIn) {
+      const rect = await source.measure();
+      if (!rect || state.open) return;
+      switcherSourceRect.value = rect;
+    }
+    state = { source, open: true, animateIn, openCount: state.openCount + 1 };
     emit();
   },
 
-  /**
-   * After a touch on the banner that didn't become a pull or a tap (e.g. it
-   * scrolled the page): unmounts the overlay it mounted, still unseen.
-   */
-  releaseUnused() {
-    setTimeout(() => {
-      if (state.status === 'open' && !state.animateIn && switcherProgress.value < 0.001) {
-        switcherOverlay.closed();
-      }
-    }, 150);
-  },
-
-  /**
-   * Unmounts it, once it has animated away: a frame later, so the
-   * animation's last frame is on screen before the views go (unmounting
-   * under a frame still being drawn could leave them there, untouchable).
-   */
+  /** Closed: unseen again, over the latest switchable banner. */
   closed() {
-    generation += 1;
-    if (state.status === 'closed') return;
-    state = { status: 'closed' };
-    requestAnimationFrame(() => {
-      if (state.status !== 'closed') return;
-      switcherProgress.value = 0;
-      switcherStretch.value = 0;
-      switcherOverpull.value = 0;
-      emit();
-    });
+    if (!state.open) return;
+    switcherProgress.value = 0;
+    switcherStretch.value = 0;
+    switcherOverpull.value = 0;
+    state = { ...state, open: false, animateIn: false };
+    emit();
+    updateSource();
   },
 };
 
@@ -201,8 +206,8 @@ export const SWITCHER_FLICK_VELOCITY = 800;
 export const SWITCHER_SPRING = { damping: 26, stiffness: 260, mass: 1 };
 /**
  * Closing and landing: a fixed-length ease rather than a spring, whose long
- * settle kept the overlay mounted (and the banner unable to reopen it) for
- * a while after it looked done.
+ * settle kept the overlay busy (and the banner unable to reopen it) for a
+ * while after it looked done.
  */
 export const SWITCHER_CLOSE_TIMING = { duration: 340, easing: Easing.bezier(0.2, 0, 0, 1) };
 
@@ -214,9 +219,6 @@ export function closeSwitcherOverlay(): void {
 export function switcherPullTick(): void {
   haptics.selection();
 }
-export function openSwitcherUnseen(key: string): void {
+export function openSwitcherFromPull(key: string): void {
   void switcherOverlay.open(key, false);
-}
-export function releaseUnusedSwitcher(): void {
-  switcherOverlay.releaseUnused();
 }

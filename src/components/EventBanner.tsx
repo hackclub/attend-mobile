@@ -1,25 +1,32 @@
-import React, { useCallback, useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
 import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
-import Animated, { useAnimatedProps, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, {
+  measure,
+  useAnimatedProps,
+  useAnimatedRef,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import {
+  SWITCHER_CLOSE_TIMING,
   SWITCHER_FLICK_VELOCITY,
   SWITCHER_OPEN_THRESHOLD,
   SWITCHER_PULL_DISTANCE,
-  SWITCHER_CLOSE_TIMING,
   SWITCHER_SPRING,
   closeSwitcherOverlay,
+  openSwitcherFromPull,
   rubberBand,
+  switcherBannerHeld,
   switcherOverlay,
+  switcherOverpull,
   switcherProgress,
   switcherPullTick,
-  switcherOverpull,
-  switcherBannerHeld,
-  openSwitcherUnseen,
-  releaseUnusedSwitcher,
+  switcherSourceRect,
   type SwitcherBanner,
 } from '../navigation/switcherOverlay';
 import type { SwitcherCurrent } from '../services/switcherLayout';
@@ -281,43 +288,59 @@ export function EventBanner({
   // The banner is the same height with or without the blend, so switching
   // theme doesn't move the page.
   const height = bannerHeight(width, topInset);
+  const [laidOutHeight, setLaidOutHeight] = useState(height);
   const label = [event.name, eyebrow, meta].filter(Boolean).join('. ');
-  const viewRef = useRef<React.ComponentRef<typeof View>>(null);
+  const viewRef = useRef<React.ComponentRef<typeof View> | null>(null);
   const canSwitch = !!switcher?.enabled;
 
-  // Registered while mounted, so the overlay can grow out of it, or land on
-  // it after a switch. The latest props are read through a ref.
-  const latest = useRef({ event, eyebrow, eyebrowIcon, meta, topInset, blendInto, accessory, switcher });
-  useLayoutEffect(() => {
-    latest.current = { event, eyebrow, eyebrowIcon, meta, topInset, blendInto, accessory, switcher };
-  });
+  // Registered while mounted, so the overlay can sit over it, grow out of it,
+  // or land on it after a switch; again whenever what it shows changes.
   const key = switcher?.key;
+  const current = switcher?.current;
+  // Read when used rather than registered: they're new on every render.
+  const switchToRef = useRef(switcher?.switchTo);
+  const accessoryRef = useRef(accessory);
+  useLayoutEffect(() => {
+    switchToRef.current = switcher?.switchTo;
+    accessoryRef.current = accessory;
+  });
   useEffect(() => {
-    if (!key) return;
-    const read = () => latest.current;
+    if (!key || !current) return;
     return switcherOverlay.registerBanner({
       key,
-      get event() { return read().event; },
-      get eyebrow() { return read().eyebrow ?? undefined; },
-      get eyebrowIcon() { return read().eyebrowIcon; },
-      get meta() { return read().meta ?? undefined; },
-      get topInset() { return read().topInset; },
-      get blendInto() { return read().blendInto; },
-      get accessory() { return read().accessory; },
-      get current() { return read().switcher?.current ?? {}; },
-      switchTo: (home, before) => read().switcher?.switchTo(home, before),
+      event,
+      eyebrow: eyebrow ?? undefined,
+      eyebrowIcon,
+      meta: meta ?? undefined,
+      topInset,
+      height: laidOutHeight,
+      blendInto,
+      get accessory() {
+        return accessoryRef.current;
+      },
+      enabled: canSwitch,
+      current,
+      switchTo: (home, before) => switchToRef.current?.(home, before),
       measure: () =>
         new Promise((resolve) => {
           const view = viewRef.current;
           if (!view) return resolve(null);
-          // Synchronous where the new architecture offers it, so the overlay
-          // mounts the moment a finger goes down.
           const rect = (view as { getBoundingClientRect?: () => DOMRect }).getBoundingClientRect?.();
           if (rect && rect.width > 0) return resolve({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
           view.measureInWindow((x, y, w, h) => resolve(w > 0 && h > 0 ? { x, y, width: w, height: h } : null));
         }),
     });
-  }, [key]);
+  }, [blendInto, canSwitch, current, event, eyebrow, eyebrowIcon, key, laidOutHeight, meta, topInset]);
+
+  // Both the pull's ref (measured on the UI thread) and this one.
+  const pullRef = pull?.bannerRef;
+  const setRef = useCallback(
+    (view: React.ComponentRef<typeof View> | null) => {
+      viewRef.current = view;
+      if (pullRef) (pullRef as unknown as (v: unknown) => void)(view);
+    },
+    [pullRef]
+  );
 
   const face = (
     <BannerFace
@@ -334,7 +357,12 @@ export function EventBanner({
   );
 
   const banner = (
-    <View ref={viewRef} collapsable={false} style={[styles.hero, style]}>
+    <Animated.View
+      ref={setRef}
+      collapsable={false}
+      style={[styles.hero, style]}
+      onLayout={(e) => setLaidOutHeight(e.nativeEvent.layout.height)}
+    >
       {canSwitch && key ? (
         <Pressable
           onPress={() => void switcherOverlay.open(key, true)}
@@ -359,32 +387,32 @@ export function EventBanner({
         />
       ) : null}
       {accessory ? <View style={[styles.accessory, { top: topInset + 8 }]}>{accessory}</View> : null}
-    </View>
+    </Animated.View>
   );
 
-  return pull ? <GestureDetector gesture={pull}>{banner}</GestureDetector> : banner;
+  return pull ? <GestureDetector gesture={pull.gesture}>{banner}</GestureDetector> : banner;
 }
 
 /**
- * Pulling a banner down to open the switcher, for its screen to hold: the
- * screen's ScrollView and RefreshControl wait for it (`requireToFail`), so a
- * pull that starts on the banner opens the switcher rather than scrolling or
- * refreshing. It follows the finger (`switcherProgress`), with a tick as it
- * passes the point where letting go opens it; let go past it (or flicked)
- * it springs open, short of it back. Only downward: a tap, or an upward drag
- * that scrolls the page, never starts it.
+ * Pulling a banner down to open the switcher, for its screen to hold (and
+ * pass to the banner as `pull`). As the finger goes down the page's scroll
+ * and refresh hold still (`switcherBannerHeld`) and the banner is measured on
+ * the UI thread; the overlay, already mounted unseen, then follows the
+ * finger (`switcherProgress`) both ways, with a tick as it passes the point
+ * where letting go opens it. Let go past it (or flicked down) it springs
+ * open; short of it, or dragged back, it springs back. A tap, or a drag
+ * upward that scrolls the page, never starts it.
  */
 export function useSwitcherPull(switcher: BannerSwitcher | undefined) {
   const key = switcher?.key;
+  const bannerRef = useAnimatedRef<Animated.View>();
   const past = useSharedValue(false);
   const active = useSharedValue(false);
   const velocity = useSharedValue(0);
-  // Mounted (unseen) as the finger goes down, so it's there to follow the
-  // first movement.
-  const prepare = useCallback(() => {
-    if (key) openSwitcherUnseen(key);
+  const markOpen = useCallback(() => {
+    if (key) openSwitcherFromPull(key);
   }, [key]);
-  return usePanGesture({
+  const gesture = usePanGesture({
     enabled: !!switcher?.enabled,
     activeOffsetY: 3,
     failOffsetY: -3,
@@ -392,12 +420,14 @@ export function useSwitcherPull(switcher: BannerSwitcher | undefined) {
     onBegin: () => {
       'worklet';
       switcherBannerHeld.value = true;
-      scheduleOnRN(prepare);
+      const m = measure(bannerRef);
+      if (m) switcherSourceRect.value = { x: m.pageX, y: m.pageY, width: m.width, height: m.height };
     },
     onActivate: () => {
       'worklet';
       active.value = true;
       past.value = false;
+      scheduleOnRN(markOpen);
     },
     onUpdate: (e) => {
       'worklet';
@@ -416,15 +446,12 @@ export function useSwitcherPull(switcher: BannerSwitcher | undefined) {
     onFinalize: () => {
       'worklet';
       switcherBannerHeld.value = false;
-      if (!active.value) {
-        // A tap or a scroll: the tap opens it itself, a scroll leaves it.
-        scheduleOnRN(releaseUnusedSwitcher);
-        return;
-      }
+      if (!active.value) return;
       active.value = false;
       switcherOverpull.value = withSpring(0, SWITCHER_SPRING);
-      // By how far it got, cancelled or not: the system can cancel the pull
-      // as the overlay appears over the banner.
+      // By where the finger left it, cancelled or not (the system can cancel
+      // the pull as the overlay appears over the banner): dragged back short
+      // of the threshold, it closes.
       const opening =
         switcherProgress.value >= SWITCHER_OPEN_THRESHOLD || velocity.value > SWITCHER_FLICK_VELOCITY;
       if (opening) {
@@ -436,6 +463,7 @@ export function useSwitcherPull(switcher: BannerSwitcher | undefined) {
       }
     },
   });
+  return { gesture, bannerRef };
 }
 
 /**
