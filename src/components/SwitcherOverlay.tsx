@@ -289,6 +289,19 @@ function SwitcherOverlay({
     reduceMotion, scrollY, source, targetOffset, width,
   ]);
 
+  // Safety net: fully open but not marked open (it then takes no touches,
+  // so it couldn't be closed or used) marks itself open, however it got there.
+  const ensureOpen = useCallback(() => {
+    if (!switcherOverlay.get().open) void switcherOverlay.open(source.key, false);
+  }, [source.key]);
+  useAnimatedReaction(
+    () => progress.value >= 0.999,
+    (full, was) => {
+      if (full && full !== was && !open) scheduleOnRN(ensureOpen);
+    },
+    [open, ensureOpen]
+  );
+
   // A tap plays the opening by itself; a pull is already driving it.
   useEffect(() => {
     if (!animateIn) return;
@@ -902,7 +915,6 @@ function SwitcherCard({
           eyebrow={text.eyebrow}
           eyebrowIcon={text.eyebrowIcon}
           meta={text.meta}
-          transition={0}
         />
       </View>
       {greyed ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.pastTint]} /> : null}
@@ -1012,7 +1024,6 @@ function Hero({
           eyebrowIcon={hero.eyebrowIcon}
           meta={hero.meta}
           chevron={<BannerChevron style={fadeOut} />}
-          transition={0}
           onReady={onReady}
         >
           {hero.blendInto ? (

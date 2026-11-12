@@ -202,6 +202,8 @@ export function TicketDetailScreen() {
           accessory: canGoBack ? undefined : <AccountButton onBanner />,
         }}
         onScrollY={bannerStatusBar.onScrollY}
+        // No pull-to-refresh here, so a pull anywhere opens the switcher.
+        pullAnywhere
         contentContainerStyle={{ paddingBottom: bottomInset + spacing.xxl }}
       >
         <View style={[{ padding: spacing.lg, gap: spacing.lg }]}>

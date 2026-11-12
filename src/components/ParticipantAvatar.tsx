@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Image } from 'expo-image';
-import { useReduceMotion } from '../hooks/useReduceMotion';
 import type { Participant } from '../types';
 import { overlayTokens, useThemedStyles, withAlpha, type Theme } from '../theme';
 
@@ -22,7 +21,6 @@ export function ParticipantAvatar({ participant, size = 84 }: ParticipantAvatarP
   const uri = participant?.headshot_url;
   const styles = useThemedStyles(makeStyles);
   const [imageFailed, setImageFailed] = useState(false);
-  const reduceMotion = useReduceMotion();
 
   useEffect(() => {
     setImageFailed(false);
@@ -42,7 +40,6 @@ export function ParticipantAvatar({ participant, size = 84 }: ParticipantAvatarP
         cachePolicy="memory-disk"
         contentFit="cover"
         recyclingKey={participant?.participant_event_id}
-        transition={reduceMotion ? 0 : 120}
         accessible
         accessibilityRole="image"
         accessibilityLabel={`Photo of ${name}`}

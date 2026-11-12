@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, type 
 import { Pressable, StyleSheet, Text, View, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native';
 import { Image } from 'expo-image';
 import Svg, { Defs, Pattern, Rect } from 'react-native-svg';
-import { GestureDetector, usePanGesture } from 'react-native-gesture-handler';
+import { GestureDetector, usePanGesture, type PanGestureActiveEvent } from 'react-native-gesture-handler';
 import Animated, {
   cancelAnimation,
   measure,
@@ -74,16 +74,10 @@ export function BannerBlend({ into, height = BLEND_HEIGHT }: { into: string; hei
 export function EventCover({
   event,
   children,
-  transition = 150,
   onReady,
 }: {
   event: Event;
   children?: ReactNode;
-  /**
-   * The photo's fade-in. 0 where covers mount mid-animation (the switcher):
-   * the fade shows the fill colour under the photo for a moment.
-   */
-  transition?: number;
   /** Once it's drawn: the photo is on screen, or there's no photo. */
   onReady?: () => void;
 }) {
@@ -110,7 +104,6 @@ export function EventCover({
             source={{ uri: event.banner_url }}
             style={StyleSheet.absoluteFill}
             contentFit="cover"
-            transition={transition}
             onDisplay={onReady}
             accessible={false}
           />
@@ -242,7 +235,6 @@ export function BannerFace({
   meta,
   chevron,
   children,
-  transition,
   onReady,
 }: {
   event: Event;
@@ -255,13 +247,11 @@ export function BannerFace({
   /** Drawn between the cover and the text, e.g. the dark-mode fade. */
   children?: ReactNode;
   /** See EventCover. */
-  transition?: number;
-  /** See EventCover. */
   onReady?: () => void;
 }) {
   return (
     <View style={{ height }}>
-      <EventCover event={event} transition={transition} onReady={onReady} />
+      <EventCover event={event} onReady={onReady} />
       {children}
       <View style={[styles.heroContent, { minHeight: height, paddingTop: topInset + 56 }]}>
         <BannerText name={event.name} eyebrow={eyebrow} eyebrowIcon={eyebrowIcon} meta={meta} chevron={chevron} />
@@ -406,6 +396,8 @@ export interface BannerPage {
   maxScroll: SharedValue<number>;
   /** A fling started from the banner, decaying; the page's own drag stops it. */
   fling: SharedValue<number>;
+  /** Whether it's scrolled to its top. */
+  atTop: SharedValue<boolean>;
 }
 
 /**
@@ -432,10 +424,7 @@ export function useSwitcherPull(switcher: BannerSwitcher | undefined, page: Bann
   const markOpen = useCallback(() => {
     if (key) openSwitcherFromPull(key);
   }, [key]);
-  const gesture = usePanGesture({
-    // Vertical either way: down opens (or scrolls back up the page), up scrolls.
-    activeOffsetY: [-3, 3],
-    failOffsetX: [-16, 16],
+  const callbacks = {
     onBegin: () => {
       'worklet';
       cancelAnimation(fling);
@@ -450,7 +439,7 @@ export function useSwitcherPull(switcher: BannerSwitcher | undefined, page: Bann
       full.value = false;
       startScroll.value = scrollY.value;
     },
-    onUpdate: (e) => {
+    onUpdate: (e: PanGestureActiveEvent) => {
       'worklet';
       velocity.value = e.velocityY;
       // The page takes the drag until it's at its top; past that, the pull.
@@ -506,8 +495,31 @@ export function useSwitcherPull(switcher: BannerSwitcher | undefined, page: Bann
         });
       }
     },
+  };
+  const gesture = usePanGesture({
+    // Vertical either way: down opens (or scrolls back up the page), up scrolls.
+    activeOffsetY: [-3, 3],
+    failOffsetX: [-16, 16],
+    onBegin: callbacks.onBegin,
+    onActivate: callbacks.onActivate,
+    onUpdate: callbacks.onUpdate,
+    onFinalize: callbacks.onFinalize,
   });
-  return { gesture, bannerRef };
+  // The same pull from anywhere on the page (see BannerScrollView's
+  // `pullAnywhere`): only downward, and only with the page at its top, so
+  // everything else scrolls the page as usual. It activates within 3dp,
+  // before the page's scroll view would take the drag.
+  const pageGesture = usePanGesture({
+    enabled: canSwitch ? page.atTop : false,
+    activeOffsetY: 3,
+    failOffsetY: -3,
+    failOffsetX: [-16, 16],
+    onBegin: callbacks.onBegin,
+    onActivate: callbacks.onActivate,
+    onUpdate: callbacks.onUpdate,
+    onFinalize: callbacks.onFinalize,
+  });
+  return { gesture, pageGesture, bannerRef };
 }
 
 interface EventCardProps {
