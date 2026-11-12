@@ -60,6 +60,7 @@ export function ScannerScreen() {
     handleNfcToken,
     retryLastScan,
     clearLastScan,
+    hideScan,
     isProcessing,
     lastScan,
     hasEvent,
@@ -253,14 +254,14 @@ export function ScannerScreen() {
       await api.undoCheckIn(eventId, participant.participant_event_id, contextId);
       updateParticipant(participantAfterUndo(participant, contextId));
       haptics.success();
-      clearLastScan();
+      hideScan(lastScan.attemptId);
     } catch {
       haptics.error();
       Alert.alert('Error', 'Failed to undo check-in');
     } finally {
       setUndoing(false);
     }
-  }, [clearLastScan, lastScan, recordScannerActivity, state.currentEvent?.id, undoing, updateParticipant]);
+  }, [hideScan, lastScan, recordScannerActivity, state.currentEvent?.id, undoing, updateParticipant]);
 
   if (!permission) {
     return <CenteredState icon="camera" title="Starting camera" loading />;

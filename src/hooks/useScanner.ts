@@ -435,6 +435,14 @@ export function useScanner(options: {
     codeGateRef.current.reset();
   }, [hideLastScan]);
 
+  // After an undo: hides that scan's card only if it is still the one shown
+  // (a newer scan may have landed during the request), and leaves the
+  // same-code gate alone, so a code still in frame isn't checked straight
+  // back in. Scanning it again takes moving it out of frame first.
+  const hideScan = useCallback((attemptId: string) => {
+    setLastScan(current => (current?.attemptId === attemptId ? null : current));
+  }, []);
+
   const selectContext = useCallback((contextId: string) => {
     if (lockedContextId) return;
     setSelectedContextId(contextId);
@@ -449,6 +457,7 @@ export function useScanner(options: {
     lastScan,
     clearLastScan,
     hideLastScan,
+    hideScan,
     hasEvent: !!state.currentEvent,
     scanContexts,
     selectedContextId,
