@@ -295,14 +295,21 @@ export function TravelCalendarScreen() {
   }, [eventId]);
 
   // Refetch when the tab gains focus, and keep it fresh while visible.
+  // Coming back to the same event refreshes quietly, keeping the list, the
+  // search and the scroll position; only a different event starts over.
+  const shownEventRef = useRef<string | null>(null);
   useFocusEffect(
     useCallback(() => {
-      setData(null);
-      setSearchQuery('');
-      fetchData();
+      const sameEvent = shownEventRef.current === eventId;
+      shownEventRef.current = eventId;
+      if (!sameEvent) {
+        setData(null);
+        setSearchQuery('');
+      }
+      fetchData(sameEvent);
       const interval = setInterval(() => fetchData(true), REFRESH_INTERVAL_MS);
       return () => clearInterval(interval);
-    }, [fetchData])
+    }, [eventId, fetchData])
   );
 
   const handleRefresh = useCallback(() => {
