@@ -131,4 +131,14 @@ export const notificationService = {
   ) {
     return Notifications.addNotificationResponseReceivedListener(callback);
   },
+
+  // The notification tap that opened the app, if any. The listener above can
+  // miss it on a cold start, before the app has mounted or signed in.
+  getLastNotificationResponse(): Notifications.NotificationResponse | null {
+    return Notifications.getLastNotificationResponse();
+  },
+
+  clearLastNotificationResponse() {
+    Notifications.clearLastNotificationResponse();
+  },
 };

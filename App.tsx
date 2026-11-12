@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useCallback, useState } from 'react';
+import React, { useEffect, useMemo, useCallback, useState, useRef } from 'react';
+import type * as Notifications from 'expo-notifications';
 import { ActivityIndicator, View, StyleSheet, Platform } from 'react-native';
 import { useAppShortcutLaunch } from './src/hooks/useAppShortcutLaunch';
 import {
@@ -457,9 +458,43 @@ function AppNavigation() {
   // Held until auth has loaded, the user is signed in and the navigator is
   // mounted: on a cold start RootNavigator first shows the auth spinner, and
   // a link opened then would be consumed and dropped.
-  useAppShortcutLaunch(
-    navigationReady && !state.auth.isLoading && state.auth.isAuthenticated
-  );
+  const routingReady = navigationReady && !state.auth.isLoading && state.auth.isAuthenticated;
+  useAppShortcutLaunch(routingReady);
+  const handledPushRef = useRef<string | null>(null);
+
+  // Tapping an organizer-message push opens that message in the inbox (it
+  // carries the message id); an older payload without one opens the
+  // participant's tickets as before. Taps that arrive before the app can
+  // route (a cold start, still signing in) are left as the "last response"
+  // and picked up by the effect below once it can (or once the user
+  // has signed in).
+  const openPush = useCallback((response: Notifications.NotificationResponse) => {
+    if (!routingReady || !navigationRef.isReady()) return;
+    const key = `${response.notification.request.identifier}:${response.notification.date}`;
+    if (handledPushRef.current === key) return;
+    handledPushRef.current = key;
+    notificationService.clearLastNotificationResponse();
+
+    const data = response.notification.request.content.data as { type?: string; message_id?: string } | undefined;
+    if (data?.type !== 'message' || isKioskLocked()) return;
+    if (data.message_id) {
+      // `initial: false` keeps the ticket list under it to go back to.
+      navigationRef.navigate('ParticipantMain', {
+        screen: 'InboxMessage',
+        params: { messageId: data.message_id },
+        initial: false,
+      });
+    } else {
+      navigationRef.navigate('ParticipantMain');
+    }
+  }, [routingReady]);
+
+  useEffect(() => {
+    const last = notificationService.getLastNotificationResponse();
+    if (last) openPush(last);
+    const subscription = notificationService.addNotificationResponseListener(openPush);
+    return () => subscription.remove();
+  }, [openPush]);
 
   const appReady = isAppReady({ authLoading: state.auth.isLoading, navigationReady });
   useEffect(() => {
@@ -481,27 +516,8 @@ function AppNavigation() {
     // Handle initial URL (app opened from Live Activity)
     Linking.getInitialURL().then(openScanner);
 
-    // Tapping an organizer-message push opens that message in the inbox
-    // (it carries the message id); an older payload without one opens the
-    // participant's tickets as before.
-    const notifSub = notificationService.addNotificationResponseListener((response) => {
-      const data = response.notification.request.content.data as { type?: string; message_id?: string } | undefined;
-      if (data?.type !== 'message' || !navigationRef.isReady() || isKioskLocked()) return;
-      if (data.message_id) {
-        // `initial: false` keeps the ticket list under it to go back to.
-        navigationRef.navigate('ParticipantMain', {
-          screen: 'InboxMessage',
-          params: { messageId: data.message_id },
-          initial: false,
-        });
-      } else {
-        navigationRef.navigate('ParticipantMain');
-      }
-    });
-
     return () => {
       subscription.remove();
-      notifSub.remove();
     };
   }, []);
 
