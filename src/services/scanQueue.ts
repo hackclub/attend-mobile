@@ -94,7 +94,8 @@ function errorStatus(error: unknown): number | null {
 /**
  * A rejection the server will give again for the same request. Everything
  * else (network errors, timeouts, an expired session, rate limits, server
- * errors, anything unrecognised) is worth retrying later.
+ * errors, anything unrecognised) is worth retrying later. A 5xx is retried
+ * without holding up the items queued behind it.
  */
 export function isPermanentRejection(error: unknown): boolean {
   const status = errorStatus(error);
@@ -342,10 +343,17 @@ export class ScanQueue {
       offline: false,
     };
 
+    // Items the server answered with a 5xx during this flush. A server error
+    // may be about that one request, so the rest of the queue still gets a
+    // go instead of waiting behind it; the item keeps its place and is
+    // retried on the next flush.
+    const skipped = new Set<string>();
+    const owned = this.ownedBy(userId);
+
     for (;;) {
       if (generation !== this.generation) break;
       // Never another user's scan, even one setUser() hasn't purged yet.
-      const item = (await this.read(eventId)).find(this.ownedBy(userId));
+      const item = (await this.read(eventId)).find(i => owned(i) && !skipped.has(i.clientScanId));
       if (!item) break;
 
       let response: CreateScanResponse;
@@ -381,6 +389,13 @@ export class ScanQueue {
             : i));
         });
         report.offline = true;
+        const status = errorStatus(error);
+        if (status !== null && status >= 500) {
+          skipped.add(item.clientScanId);
+          continue;
+        }
+        // No connection, an expired session or a rate limit: everything
+        // behind it would fail the same way, so stop here.
         break;
       }
 

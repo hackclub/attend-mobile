@@ -273,6 +273,24 @@ describe('scanQueue.flush', () => {
     expect(await queue.getFailed(EVENT_ID)).toEqual([]);
   });
 
+  it('sends the rest of the queue past an item the server answered with a 5xx', async () => {
+    await queue.enqueue(input('a1'));
+    await queue.enqueue(input('a2'));
+    await queue.enqueue(input('a3'));
+    mockCreateScan
+      .mockRejectedValueOnce(new StatusError('Internal Server Error', 500))
+      .mockResolvedValueOnce(response('scanned'))
+      .mockResolvedValueOnce(response('scanned'));
+
+    const [report] = await queue.flush(EVENT_ID);
+
+    expect(mockCreateScan).toHaveBeenCalledTimes(3);
+    expect(report).toMatchObject({ scanned: 2, remaining: 1, offline: true, failed: [] });
+    const pending = await queue.getPending(EVENT_ID);
+    expect(pending.map(item => item.clientScanId)).toEqual(['a1']);
+    expect(pending[0]).toMatchObject({ attempts: 1 });
+  });
+
   it('moves a permanent 4xx to the failed list and carries on with the rest', async () => {
     await queue.enqueue(input('a1'));
     await queue.enqueue(input('a2'));
