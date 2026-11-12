@@ -14,6 +14,7 @@ import { Icon, Spinner, type IconName } from './ui';
 import { useReduceMotion } from '../hooks/useReduceMotion';
 import type { ScannerResult } from '../services/scannerCore';
 import { overlayTokens, typography, useTheme, type ThemeTokens } from '../theme';
+import { slow, slowSpring } from '../theme/motion';
 import { firstName } from '../services/kioskGreeting';
 
 /** Where the bloom starts: the scan frame, in window coordinates. */
@@ -97,20 +98,20 @@ export function KioskWelcome({ result, origin }: { result: ScannerResult | null;
         mark.set(1);
         words.set(1);
         fade.set(0);
-        fade.set(withTiming(1, { duration: 180 }));
+        fade.set(withTiming(1, { duration: slow(180) }));
         return;
       }
       bloom.set(0);
       mark.set(0);
       words.set(0);
-      bloom.set(withTiming(1, { duration: 420, easing: Easing.bezier(0.2, 0, 0, 1) }));
-      mark.set(withDelay(140, withSpring(1, { damping: 12, stiffness: 180, mass: 0.8 })));
-      words.set(withDelay(220, withTiming(1, { duration: 260, easing: Easing.out(Easing.cubic) })));
+      bloom.set(withTiming(1, { duration: slow(420), easing: Easing.bezier(0.2, 0, 0, 1) }));
+      mark.set(withDelay(slow(140), withSpring(1, slowSpring({ damping: 12, stiffness: 180, mass: 0.8 }))));
+      words.set(withDelay(slow(220), withTiming(1, { duration: slow(260), easing: Easing.out(Easing.cubic) })));
       return;
     }
     // Cleared (or a new scan is being confirmed): fade what's there away.
     fade.set(
-      withTiming(0, { duration: 260 }, (finished) => {
+      withTiming(0, { duration: slow(260) }, (finished) => {
         if (finished) scheduleOnRN(setShown, null);
       })
     );

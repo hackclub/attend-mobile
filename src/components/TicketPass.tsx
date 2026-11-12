@@ -28,6 +28,7 @@ import { useOpenLink } from '../hooks/useOpenLink';
 import { passColorsFor } from '../services/eventPassColors';
 import { formatEventDay, formatEventTime } from '../services/eventStatus';
 import { lightTokens, typography, useTheme } from '../theme';
+import { slow, slowSpring } from '../theme/motion';
 import { Button, Icon, pressedStyle, ripple, STATE_LAYER_ALPHA } from './ui';
 import { DashedDivider } from './ui/DashedDivider';
 import type { Ticket } from '../types';
@@ -232,8 +233,8 @@ interface QrOrigin {
 /** How far a drag down goes before letting go closes the full-screen QR. */
 const DISMISS_DISTANCE = 120;
 const DISMISS_VELOCITY = 800;
-const OPEN_TIMING = { duration: 320, easing: Easing.bezier(0.2, 0, 0, 1) };
-const CLOSE_TIMING = { duration: 260, easing: Easing.bezier(0.3, 0, 0.2, 1) };
+const OPEN_TIMING = { duration: slow(320), easing: Easing.bezier(0.2, 0, 0, 1) };
+const CLOSE_TIMING = { duration: slow(260), easing: Easing.bezier(0.3, 0, 0.2, 1) };
 
 /**
  * The QR alone on white, as large as the screen allows and at full
@@ -320,7 +321,7 @@ function EnlargedQr({
       if (drag.value > DISMISS_DISTANCE || velocity.value > DISMISS_VELOCITY) {
         scheduleOnRN(close);
       } else {
-        drag.value = withSpring(0, { damping: 22, stiffness: 260 });
+        drag.value = withSpring(0, slowSpring({ damping: 22, stiffness: 260 }));
       }
     },
   });

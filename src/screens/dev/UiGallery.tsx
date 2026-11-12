@@ -35,6 +35,7 @@ import { overlayTokens, useTheme, useThemePreference, type ThemePreference } fro
 import type { Participant, ScanContext, SelectOption } from '../../types';
 import type { ScannerResult } from '../../services/scannerCore';
 import { KioskWelcome } from '../../components/KioskWelcome';
+import { slow } from '../../theme/motion';
 
 // Sample data only: the gallery never touches the network or the session.
 const PEOPLE = [
@@ -508,7 +509,7 @@ function KioskWelcomePreview({ onClose }: { onClose: () => void }) {
       message,
       retryable: false,
     });
-    if (outcome !== 'confirming') timer.current = setTimeout(() => setResult(null), 2500);
+    if (outcome !== 'confirming') timer.current = setTimeout(() => setResult(null), slow(2500));
   };
 
   return (
