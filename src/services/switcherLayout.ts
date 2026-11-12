@@ -68,7 +68,8 @@ export function switcherMetrics(width: number, bottomInset = 0): SwitcherMetrics
  */
 export function centredPaddingTop(rows: SwitcherRow[], metrics: SwitcherMetrics, viewportHeight: number): number {
   const content = contentHeight(rows, metrics);
-  return metrics.paddingTop + Math.max(0, (viewportHeight - content) / 2);
+  // Rounded down, so a centred list never comes out a fraction scrollable.
+  return metrics.paddingTop + Math.max(0, Math.floor((viewportHeight - content) / 2));
 }
 
 const PLACEHOLDERS = 4;

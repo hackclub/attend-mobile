@@ -437,9 +437,11 @@ function SwitcherOverlay({
   };
   const pullDown = usePanGesture({
     enabled: atTop,
-    activeOffsetY: 10,
-    failOffsetY: -10,
-    failOffsetX: [-24, 24],
+    // Before the list's own scroll view would claim the drag (8dp slop),
+    // and only in this direction: the other way it fails, and scrolls.
+    activeOffsetY: 3,
+    failOffsetY: -3,
+    failOffsetX: [-16, 16],
     onActivate: () => {
       'worklet';
       listActive.value = true;
@@ -456,9 +458,9 @@ function SwitcherOverlay({
   });
   const pullUpList = usePanGesture({
     enabled: atEnd,
-    activeOffsetY: -10,
-    failOffsetY: 10,
-    failOffsetX: [-24, 24],
+    activeOffsetY: -3,
+    failOffsetY: 3,
+    failOffsetX: [-16, 16],
     onActivate: () => {
       'worklet';
       listActive.value = true;
