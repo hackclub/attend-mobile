@@ -144,7 +144,10 @@ export function MessageDetailScreen() {
     ? `Sent ${formatRelative(message.sent_at)} by ${message.sent_by ?? 'someone'}`
     : message.scheduled_at
       ? `Scheduled for ${formatDateTime(message.scheduled_at)} by ${message.sent_by ?? 'someone'}`
-      : `Sent by ${message.sent_by ?? 'someone'} · Draft`;
+      : // Nothing's been sent yet, and the badge beside the title already says Draft.
+        message.sent_by
+        ? `Drafted by ${message.sent_by}`
+        : `Created ${formatRelative(message.created_at)}`;
 
   const counters: { label: string; value: number }[] = [
     { label: 'Recipients', value: message.recipient_count },
