@@ -136,7 +136,9 @@ export function TicketPass({ ticket, pageColor }: TicketPassProps) {
               </Pressable>
               {ticket.checked_in ? <CheckedInChip /> : null}
               <Text style={[type.body, styles.center, { color: tokens.muted }]}>
-                Show this at check-in · tap to enlarge
+                {/* Once they're in, the chip above says so; the code still
+                    gets scanned at meals and the like, so it stays. */}
+                {ticket.checked_in ? 'Tap to enlarge' : 'Show this at check-in · tap to enlarge'}
               </Text>
             </>
           ) : (
