@@ -62,6 +62,11 @@ const THEME_ITEMS = {
   colorOnSurfaceVariant: `@color/${PREFIX}on_surface_variant`,
   colorSurfaceContainer: `@color/${PREFIX}surface_container`,
   colorOutline: `@color/${PREFIX}outline`,
+  // Material 3 tints elevated surfaces with the primary colour. The bottom
+  // navigation bar is elevated, and the tabs library paints only its items in
+  // the bar colour, so the strip behind the gesture bar came out pink under a
+  // white bar. The app draws its own surfaces, so the overlay is off.
+  elevationOverlayEnabled: 'false',
 };
 
 function setColors(colors, palette) {
