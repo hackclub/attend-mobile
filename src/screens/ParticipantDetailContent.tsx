@@ -1051,6 +1051,19 @@ function Section({ title, actions, children }: { title: string; actions?: React.
   );
 }
 
+// The web titleizes the enum ("Not Required"); same words, sentence case.
+const VISA_STATUS_LABELS: Record<string, string> = {
+  not_required: 'Not required',
+  pending: 'Pending',
+  applied: 'Applied',
+  approved: 'Approved',
+  denied: 'Denied',
+};
+
+function visaStatusLabel(status: string): string {
+  return VISA_STATUS_LABELS[status] ?? status.replace(/_/g, ' ');
+}
+
 const TRAVEL_MODE_LABELS: Record<string, string> = {
   plane: 'Flight',
   train: 'Train',
@@ -1204,7 +1217,7 @@ function TravelSection({
         <View style={styles.subsection}>
           <Text style={[type.h3, { color: tokens.textH }]}>Visa</Text>
           {travel.passport_nationality && <InfoRow label="Passport" value={travel.passport_nationality} />}
-          {travel.visa_status && <InfoRow label="Status" value={travel.visa_status} />}
+          {travel.visa_status && <InfoRow label="Status" value={visaStatusLabel(travel.visa_status)} />}
           {travel.visa_type && <InfoRow label="Type" value={travel.visa_type} />}
           {travel.visa_number && <InfoRow label="Number" value={travel.visa_number} />}
         </View>
