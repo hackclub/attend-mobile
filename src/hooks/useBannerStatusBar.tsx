@@ -76,10 +76,14 @@ export function useBannerStatusBar(pageColor: string): BannerStatusBar {
 
 /** How far the page scrolls, in pt, before the scrim shows. */
 const SCROLLED_AFTER = 2;
-/** How much of the status bar's height the scrim holds its peak for. */
-const SOLID_SHARE = 0.25;
+/**
+ * How much of the status bar's height the scrim holds its peak for. All of
+ * it: fading out inside the bar left scrolled text legible right behind the
+ * clock and icons.
+ */
+const SOLID_SHARE = 1;
 /** The scrim's strongest opacity: the page shows through a little, never a solid bar. */
-const PEAK_ALPHA = 0.8;
+const PEAK_ALPHA = 0.9;
 /** How far below the status bar the scrim's fade reaches. */
 const SCRIM_TAIL = 48;
 /** Stops along the fade; enough that it reads as a curve, not bands. */
