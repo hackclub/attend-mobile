@@ -307,6 +307,7 @@ export function IncidentReportScreen() {
           <Button
             title="Get Support →"
             variant="link"
+            style={styles.noticeLink}
             onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('Support request')}`)}
           />
         </Notice>
@@ -460,6 +461,8 @@ const makeStyles = (theme: Theme) => {
     link: { color: t.accent, fontWeight: type.label.fontWeight },
     hint: { ...type.body, color: t.error },
     chartToggle: { alignSelf: 'flex-start', paddingHorizontal: 0 },
+    // Flush with the notice's text rather than inset by the pill's padding.
+    noticeLink: { alignSelf: 'flex-start', paddingHorizontal: 0 },
     details: { minHeight: 160 },
     file: {
       flexDirection: 'row',
