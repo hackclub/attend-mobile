@@ -35,7 +35,6 @@ import LocationMarkerIcon from 'react-native-heroicons/outline/LocationMarkerIco
 import LockClosedIcon from 'react-native-heroicons/outline/LockClosedIcon';
 import LogoutIcon from 'react-native-heroicons/outline/LogoutIcon';
 import MailIcon from 'react-native-heroicons/outline/MailIcon';
-import PaperAirplaneIcon from 'react-native-heroicons/outline/PaperAirplaneIcon';
 import PencilIcon from 'react-native-heroicons/outline/PencilIcon';
 import PlusIcon from 'react-native-heroicons/outline/PlusIcon';
 import QrcodeIcon from 'react-native-heroicons/outline/QrcodeIcon';
@@ -63,7 +62,9 @@ import { useTheme } from '../../theme';
 
 // Heroicons v1 outline (what the Attend admin uses), all at stroke 2 on a
 // 24px grid. Screens ask for icons by meaning, not by glyph, so swapping a
-// glyph later is a one-line change here.
+// glyph later is a one-line change here. Where the admin's side navigation
+// has an icon for the same thing (CS_ICONS in hackclub/attend's
+// app/helpers/console_helper.rb), the app uses that same glyph.
 
 type IconComponent = (props: SvgProps & { size?: number | string }) => React.JSX.Element;
 
@@ -86,6 +87,12 @@ const custom = (children: React.ReactNode): IconComponent =>
       </Svg>
     );
   };
+
+// The admin's Overview glyph: a dashboard of uneven tiles. Not a Heroicon.
+export const OVERVIEW_PATH =
+  'M4 5a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10-3a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1v-7z';
+
+const OverviewIcon = custom(<Path d={OVERVIEW_PATH} />);
 
 const TorchIcon = custom(
   <>
@@ -125,14 +132,14 @@ const NumberedListIcon = custom(
 );
 
 export const icons = {
-  overview: HomeIcon,
+  overview: OverviewIcon,
   home: HomeIcon,
   scan: QrcodeIcon,
   qrcode: QrcodeIcon,
-  people: UsersIcon,
+  people: UserGroupIcon,
   users: UsersIcon,
   'user-group': UserGroupIcon,
-  travel: PaperAirplaneIcon,
+  travel: CalendarIcon,
   search: SearchIcon,
   'chevron-left': ChevronLeftIcon,
   'arrow-left': ArrowLeftIcon,
@@ -157,7 +164,7 @@ export const icons = {
   inbox: InboxIcon,
   chat: ChatIcon,
   'shield-exclamation': ShieldExclamationIcon,
-  incident: ShieldExclamationIcon,
+  incident: ExclamationIcon,
   bell: BellIcon,
   cog: CogIcon,
   settings: CogIcon,

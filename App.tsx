@@ -278,7 +278,7 @@ function MainTabs() {
         component={OverviewTab}
         options={{
           tabBarLabel: 'Overview',
-          tabBarIcon: tabIcon(require('./assets/tabs/home.svg'), require('./assets/tabs/home-selected.svg')),
+          tabBarIcon: tabIcon(require('./assets/tabs/overview.svg'), require('./assets/tabs/overview-selected.svg')),
         }}
       />
       <Tab.Screen

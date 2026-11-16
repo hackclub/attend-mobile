@@ -2,6 +2,8 @@
 // Regenerate the tab bar icons (assets/tabs/*.svg) from react-native-heroicons,
 // so the native tab bar on iOS and Android draws the same heroicons as the rest
 // of the app: the outline icon for a tab at rest, the solid one when selected.
+// The glyphs match the Attend admin's side navigation (CS_ICONS in
+// hackclub/attend's app/helpers/console_helper.rb).
 // The bars tint the icons, so colours here don't matter.
 //
 // Usage: bin/tab-icons
@@ -14,10 +16,19 @@ const outDir = path.join(root, 'assets/tabs');
 
 // tab file name -> heroicon
 const TABS = {
-  home: 'HomeIcon',
   scan: 'QrcodeIcon',
-  people: 'UsersIcon',
-  travel: 'PaperAirplaneIcon',
+  people: 'UserGroupIcon',
+  travel: 'CalendarIcon',
+};
+
+// The admin's Overview glyph isn't a Heroicon, so it's drawn from its path
+// (kept in sync with src/components/ui/Icon.tsx): stroked at rest, and with
+// its tiles filled in when selected, like Heroicons' solid set.
+const OVERVIEW_PATH =
+  'M4 5a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10-3a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1v-7z';
+const CUSTOM = {
+  overview: (fill) =>
+    `<svg xmlns="http://www.w3.org/2000/svg" fill="${fill}" stroke="black" stroke-width="2" viewBox="0 0 24 24" width="24" height="24"><path stroke-linecap="round" stroke-linejoin="round" d="${OVERVIEW_PATH}"/></svg>`,
 };
 
 // Render the heroicon components with stand-ins for React and
@@ -58,6 +69,13 @@ for (const [name, icon] of Object.entries(TABS)) {
     const Icon = require(modulePath).default;
     const svg = toSvg(Icon({ size: 24 }));
     fs.writeFileSync(path.join(outDir, `${name}${suffix}.svg`), `${svg}\n`);
+    console.log(`assets/tabs/${name}${suffix}.svg`);
+  }
+}
+
+for (const [name, draw] of Object.entries(CUSTOM)) {
+  for (const [fill, suffix] of [['none', ''], ['black', '-selected']]) {
+    fs.writeFileSync(path.join(outDir, `${name}${suffix}.svg`), `${draw(fill)}\n`);
     console.log(`assets/tabs/${name}${suffix}.svg`);
   }
 }
