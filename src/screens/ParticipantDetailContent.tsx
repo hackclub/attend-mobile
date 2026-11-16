@@ -1237,7 +1237,10 @@ function TravelLegRow({ leg }: { leg: TravelLegSummary }) {
         <Text style={[type.label, { color: tokens.textH }]}>{leg.title}</Text>
         {leg.summary ? ` · ${leg.summary}` : ''}
       </Text>
-      {leg.status ? <Badge label={capitalize(leg.status)} color={legStatusColor(leg.status)} /> : null}
+      {leg.status ? (
+        // Badge pins itself to the top of a row; this row centres its items.
+        <Badge label={capitalize(leg.status)} color={legStatusColor(leg.status)} style={styles.legBadge} />
+      ) : null}
       {leg.pickedUpAt ? <Icon name="check-circle" size={16} color={tokens.success} /> : null}
       {expandable ? <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} color={tokens.muted} /> : null}
     </View>
@@ -1403,6 +1406,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  legBadge: { alignSelf: 'center' },
   legDetails: {
     paddingBottom: 6,
   },
