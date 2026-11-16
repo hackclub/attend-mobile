@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Alert, ImageBackground, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useAuth } from '../hooks/useAuth';
 import { HackClubFlag } from '../components/HackClubFlag';
 import { overlayTokens, typography, useTheme, withAlpha } from '../theme';
@@ -9,8 +10,12 @@ import { Button } from '../components/ui';
 
 const HERO = require('../../assets/login-hero.webp');
 
-// Number of bands used to fake a bottom-up dark gradient over the hero photo.
-const GRADIENT_STOPS = 18;
+// Stops for the bottom-up dark fade over the hero photo: opacity eases in as
+// t^1.4, up to 0.9 at the bottom edge.
+const GRADIENT_STOPS = Array.from({ length: 11 }, (_, i) => i / 10).map((t) => ({
+  offset: t,
+  opacity: t ** 1.4 * 0.9,
+}));
 
 // Dev-only sign-in shortcuts, matched to the backend's seeded users by email
 // (emails are stable across dev databases; UUIDs are not).
@@ -48,20 +53,20 @@ export function LoginScreen() {
   return (
     <ImageBackground source={HERO} style={styles.bg} resizeMode="cover">
       <StatusBar style="light" />
-      {/* Scrims: a light overall darken, plus a smooth bottom-up fade (faked
-          with stacked opacity bands since we don't bundle a gradient lib). */}
+      {/* Scrims: a light overall darken, plus a smooth bottom-up fade. One
+          SVG gradient rather than stacked bands: bands land on fractional
+          heights, and iOS draws a dark hairline where each pair meets. */}
       <View style={styles.scrim} />
-      <View style={styles.gradient} pointerEvents="none">
-        {Array.from({ length: GRADIENT_STOPS }).map((_, i) => (
-          <View
-            key={i}
-            style={{
-              flex: 1,
-              backgroundColor: withAlpha(overlayTokens.ink, (i / (GRADIENT_STOPS - 1)) ** 1.4 * 0.9),
-            }}
-          />
-        ))}
-      </View>
+      <Svg style={styles.gradient} pointerEvents="none">
+        <Defs>
+          <LinearGradient id="loginFade" x1="0" y1="0" x2="0" y2="1">
+            {GRADIENT_STOPS.map(({ offset, opacity }) => (
+              <Stop key={offset} offset={offset} stopColor={overlayTokens.ink} stopOpacity={opacity} />
+            ))}
+          </LinearGradient>
+        </Defs>
+        <Rect width="100%" height="100%" fill="url(#loginFade)" />
+      </Svg>
 
       <SafeAreaView style={styles.safe}>
         <View style={[styles.top, { paddingHorizontal: spacing.xxl }]}>
@@ -111,14 +116,13 @@ export function LoginScreen() {
 const styles = StyleSheet.create({
   bg: { flex: 1, backgroundColor: overlayTokens.ink },
   scrim: { ...StyleSheet.absoluteFill, backgroundColor: withAlpha(overlayTokens.ink, 0.32) },
-  // Smooth bottom-up fade (stacked bands) so the sign-in content stays legible.
+  // Smooth bottom-up fade so the sign-in content stays legible.
   gradient: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
     height: '85%',
-    flexDirection: 'column',
   },
   safe: { flex: 1, justifyContent: 'space-between' },
   top: { paddingTop: 16 },
