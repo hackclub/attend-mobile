@@ -46,5 +46,8 @@ export function Badge({ label, color = 'grey', style, testID }: BadgeProps) {
 
 const styles = StyleSheet.create({
   badge: { alignSelf: 'flex-start', paddingHorizontal: 8 },
-  label: { fontSize: 12, lineHeight: 20, fontWeight: '400' },
+  // Tabular figures, so codes like S0–S3 come out the same width and a column
+  // of them lines up (SF's default digits are proportional; Roboto's already
+  // aren't).
+  label: { fontSize: 12, lineHeight: 20, fontWeight: '400', fontVariant: ['tabular-nums'] },
 });
