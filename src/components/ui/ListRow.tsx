@@ -67,7 +67,7 @@ export function ListRow({
         </Text>
         {subtitle ? <Text style={[type.body, { color: tokens.text2 }]}>{subtitle}</Text> : null}
       </View>
-      {value ? <Text style={[type.body, { color: tokens.muted }]}>{value}</Text> : null}
+      {value ? <Text style={[type.body, styles.value, { color: tokens.muted }]}>{value}</Text> : null}
       {trailing}
       {toggle ? (
         <Toggle
@@ -149,5 +149,8 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   text: { flex: 1, flexShrink: 1, minWidth: 0 },
+  // A long value (the version's fingerprint hash) wraps in at most part of
+  // the row; uncapped, it took the whole width and squeezed the title out.
+  value: { flexShrink: 1, maxWidth: '60%', textAlign: 'right' },
   disabled: { opacity: 0.5 },
 });
