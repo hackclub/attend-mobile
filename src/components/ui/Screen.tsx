@@ -18,6 +18,7 @@ import { Button } from './Button';
 import { Icon } from './Icon';
 import { PressableSurface } from './PressableSurface';
 import { RefreshControl } from './RefreshControl';
+import { canGoBackPastSheets } from '../../navigation/sheets';
 
 /** Pushed screens' content column on a tablet. */
 const CONTENT_MAX_WIDTH = 620;
@@ -52,7 +53,7 @@ export interface ScreenHeadingProps {
 function useBackLabel(back: ScreenHeadingProps['back']): string | null {
   const navigation = useNavigation();
   const previous = useNavigationState((state) => previousRoute(state));
-  if (back === false || !navigation.canGoBack()) return null;
+  if (back === false || !canGoBackPastSheets(navigation)) return null;
   return back ?? backLabelFor(previous);
 }
 

@@ -28,7 +28,7 @@ describe('passHomeState', () => {
     const ticket = { id: 't1' } as Ticket;
     expect(passHomeState(ticket)).toEqual({
       index: 0,
-      routes: [{ name: 'ParticipantMain', state: { index: 0, routes: [{ name: 'TicketDetail', params: { ticket } }] } }],
+      routes: [{ name: 'ParticipantMain', state: { index: 0, routes: [{ name: 'TicketDetail', params: { ticket, home: true } }] } }],
     });
   });
 });

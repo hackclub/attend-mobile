@@ -1,6 +1,7 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AccountButton } from './AccountSheet';
 import { EventCard } from './EventBanner';
 import { EmptyState, ErrorView, GroupToggle, LoadingView, Screen, TextField } from './ui';
@@ -8,6 +9,9 @@ import { useApp } from '../context/AppContext';
 import type { useSwitcherEvents } from '../hooks/useSwitcherEvents';
 import { passHomeState } from '../navigation/routes';
 import { resetRoot } from '../navigation/rootNavigation';
+import { switcherOverlay } from '../navigation/switcherOverlay';
+import { useIsUnderSheet } from '../navigation/useIsUnderSheet';
+import { bannerHeight } from '../services/eventBanner';
 import { collapsibleGroup } from '../services/collapsibleGroup';
 import { eventPhaseLabel } from '../services/eventDates';
 import { eventRoleLabel } from '../services/eventRoles';
@@ -198,6 +202,63 @@ export function SwitchEventList({ switcher }: { switcher: ReturnType<typeof useS
   );
 }
 
+/** The home switcher's key in the overlay (it has no banner of its own). */
+const HOME_KEY = 'home';
+
+/**
+ * Where every launch and sign-in lands, for organizers and attendees alike:
+ * the event switcher overlay itself, open as the home screen (no tab bar, no
+ * way to close it), so it looks and behaves exactly like the switcher pulled
+ * down from a banner. Picking an event lands on its Overview or pass the
+ * same way, the card growing into the new banner.
+ *
+ * The overlay is shown while this screen is focused, and goes the moment it
+ * isn't (a link opened over it, signing out) unless a pick is under way. A
+ * drawer over it (the account sheet) doesn't count: the overlay stays, under
+ * the drawer, rather than leaving its blank screen showing.
+ */
+export function EventSwitcherScreen() {
+  const navigation = useNavigation();
+  const { tokens } = useTheme();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const { checkUnderSheet } = useIsUnderSheet();
+
+  useFocusEffect(
+    useCallback(() => {
+      switcherOverlay.openHome({
+        key: HOME_KEY,
+        event: null,
+        topInset: insets.top,
+        // Where the picked card grows to: the new screen's banner, at the top.
+        height: bannerHeight(width, insets.top),
+        enabled: true,
+        current: {},
+        // The new banner's avatar, carried in by the growing card.
+        accessory: <AccountButton onBanner />,
+        measure: () => Promise.resolve(null),
+        switchTo: (home, before) => {
+          before?.();
+          resetRoot(navigation, home);
+        },
+      });
+      // (Checked a frame on: as the screen blurs, the drawer isn't in the
+      // root state yet.)
+      return () => {
+        requestAnimationFrame(() => {
+          if (!checkUnderSheet()) switcherOverlay.dismissHome();
+        });
+      };
+    }, [checkUnderSheet, insets.top, navigation, width])
+  );
+  // Gone for good (signed out, a reset elsewhere): never left up.
+  useEffect(() => () => switcherOverlay.dismissHome(), []);
+
+  // Under the overlay, only ever seen at its edges as the app scales back.
+  return <View style={[styles.fill, { backgroundColor: tokens.bg }]} />;
+}
+
 const styles = StyleSheet.create({
+  fill: { flex: 1 },
   groupLabel: { marginTop: 8 },
 });

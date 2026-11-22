@@ -1,16 +1,25 @@
-import React, { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Animated, StyleSheet, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import React, { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { StyleSheet, useWindowDimensions } from 'react-native';
+import Animated, {
+  Extrapolation,
+  interpolate,
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useSharedValue,
+  type SharedValue,
+} from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
 import { setStatusBarStyle } from 'expo-status-bar';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { switcherOverlay } from '../navigation/switcherOverlay';
+import { useIsUnderSheet } from '../navigation/useIsUnderSheet';
+import { bannerHeight } from '../services/eventBanner';
 import { easedFade, linearGradient, useTheme, withAlpha } from '../theme';
-import { useReduceMotion } from './useReduceMotion';
 
 export interface BannerStatusBar {
-  /** On the ScrollView (with a scrollEventThrottle). */
-  onScroll: (e: NativeSyntheticEvent<NativeScrollEvent>) => void;
-  /** The same, given the scroll offset (e.g. from a Reanimated scroll handler). */
-  onScrollY: (y: number) => void;
+  /** The page's scroll offset: hand it to BannerScrollView's `scrollOffset`. */
+  scrollOffset: SharedValue<number>;
   /** Render after the ScrollView, inside a container that fills the screen. */
   scrim: ReactNode;
 }
@@ -18,64 +27,85 @@ export interface BannerStatusBar {
 /**
  * The status bar over a screen that opens with the event banner. The banner
  * is a dark photo or fill in both schemes, so at rest the status bar is light
- * over it. Once the page scrolls at all, a page-coloured scrim fades in behind
- * the status bar and it switches to the scheme's style. The scrim fades out
- * across the lower part of the status bar, so content scrolls away under it
- * rather than being cut off at a hard edge.
+ * over it. As the page scrolls the banner's lower edge up towards the status
+ * bar, a page-coloured scrim fades in behind it, following the scroll on the
+ * UI thread (it's there as the banner leaves, and gone as it comes back),
+ * and the status bar switches to the scheme's style once the scrim is mostly
+ * in. The scrim fades out across the lower part of the status bar, so
+ * content scrolls away under it rather than being cut off at a hard edge.
  */
 export function useBannerStatusBar(pageColor: string): BannerStatusBar {
   const { barStyle } = useTheme();
   const insets = useSafeAreaInsets();
-  const reduceMotion = useReduceMotion();
+  const { width } = useWindowDimensions();
+  const scrollOffset = useSharedValue(0);
   const [scrolled, setScrolled] = useState(false);
 
-  const onScrollY = useCallback((y: number) => {
-    const past = y > SCROLLED_AFTER;
-    setScrolled((prev) => (prev === past ? prev : past));
-  }, []);
-  const onScroll = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => onScrollY(e.nativeEvent.contentOffset.y),
-    [onScrollY]
+  // Where the banner's bottom reaches the status bar's: the scrim is fully in
+  // by then, having faded in over the FADE_RANGE before it.
+  const covered = Math.max(0, bannerHeight(width, insets.top) - insets.top);
+  const fadeFrom = Math.max(0, covered - FADE_RANGE);
+  const amount = (y: number) => {
+    'worklet';
+    return interpolate(y, [fadeFrom, covered], [0, 1], Extrapolation.CLAMP);
+  };
+  useAnimatedReaction(
+    () => amount(scrollOffset.value) > 0.5,
+    (now, was) => {
+      if (now !== was) scheduleOnRN(setScrolled, now);
+    },
+    [fadeFrom, covered]
   );
 
+  // While the event switcher is up (a switch landing here, under it) it sets
+  // the status bar itself; this screen's style applies again once it closes.
+  const overlayOpen = useSyncExternalStore(
+    switcherOverlay.subscribe,
+    () => switcherOverlay.get().open,
+    () => false
+  );
+  const isFocused = useIsFocused();
+  // A drawer over the screen leaves the banner showing above it, under the
+  // status bar: its style stays. Anything else that covers it sets its own.
+  const { checkUnderSheet } = useIsUnderSheet();
   useFocusEffect(
     useCallback(() => {
-      setStatusBarStyle(scrolled ? barStyle : 'light');
-      return () => setStatusBarStyle(barStyle);
-    }, [barStyle, scrolled]),
+      if (!switcherOverlay.get().open) setStatusBarStyle(scrolled ? barStyle : 'light');
+      // Reset as it goes, then put back a frame on if all that covered it was
+      // a drawer (as the screen blurs, the drawer isn't in the root state
+      // yet). Resetting late instead could undo the next screen's own style.
+      return () => {
+        setStatusBarStyle(barStyle);
+        requestAnimationFrame(() => {
+          if (checkUnderSheet()) setStatusBarStyle(scrolled ? barStyle : 'light');
+        });
+      };
+    }, [barStyle, checkUnderSheet, scrolled]),
   );
-
-  // The scrim stays mounted and fades in and out rather than popping.
-  const [opacity] = useState(() => new Animated.Value(0));
   useEffect(() => {
-    const fade = Animated.timing(opacity, {
-      toValue: scrolled ? 1 : 0,
-      duration: reduceMotion ? 0 : SCRIM_DURATION,
-      useNativeDriver: true,
-    });
-    fade.start();
-    return () => fade.stop();
-  }, [opacity, scrolled, reduceMotion]);
+    if (isFocused && !overlayOpen) setStatusBarStyle(scrolled ? barStyle : 'light');
+  }, [barStyle, isFocused, overlayOpen, scrolled]);
 
+  const scrimStyle = useAnimatedStyle(() => ({ opacity: amount(scrollOffset.value) }));
   const scrim = (
     <Animated.View
       pointerEvents="none"
       style={[
         styles.scrim,
         {
-          opacity,
           height: insets.top + SCRIM_TAIL,
           backgroundImage: scrimGradient(pageColor, insets.top * SOLID_SHARE, insets.top + SCRIM_TAIL),
         },
+        scrimStyle,
       ]}
     />
   );
 
-  return { onScroll, onScrollY, scrim };
+  return { scrollOffset, scrim };
 }
 
-/** How far the page scrolls, in pt, before the scrim shows. */
-const SCROLLED_AFTER = 2;
+/** How far (pt of scroll) the scrim takes to fade in, ending as the banner leaves the status bar. */
+const FADE_RANGE = 72;
 /** How much of the status bar's height the scrim holds its peak for. */
 const SOLID_SHARE = 0.25;
 /** The scrim's strongest opacity: the page shows through a little, never a solid bar. */
@@ -84,8 +114,6 @@ const PEAK_ALPHA = 0.8;
 const SCRIM_TAIL = 48;
 /** Stops along the fade; enough that it reads as a curve, not bands. */
 const FADE_STEPS = 24;
-/** How long the scrim takes to fade in or out, in ms. */
-const SCRIM_DURATION = 200;
 
 /** Strongest at the top, then eased out to nothing. */
 function scrimGradient(color: string, solid: number, height: number): string {

@@ -30,6 +30,7 @@ import {
 } from '../components/ui';
 import { useApp } from '../context/AppContext';
 import { useBannerStatusBar } from '../hooks/useBannerStatusBar';
+import { useStagedReveal } from '../hooks/useStagedReveal';
 import { useEventAccess } from '../hooks/useEventAccess';
 import { useEventScanContexts } from '../hooks/useEventScanContexts';
 import { useSwitcherEvents } from '../hooks/useSwitcherEvents';
@@ -109,7 +110,10 @@ export function EventHome() {
   }, [onlyEvent, selectEvent]);
 
   if (!event) return <SwitchEventList switcher={switcher} />;
-  return <Overview event={event} canSwitch={canSwitch} onRefreshEvents={refreshSwitcher} />;
+  // Keyed by event: a switch to another event mounts it afresh, so its
+  // sections are staged in under the switcher (see useStagedReveal) rather
+  // than all re-rendering in one long frame.
+  return <Overview key={event.id} event={event} canSwitch={canSwitch} onRefreshEvents={refreshSwitcher} />;
 }
 
 function Overview({
@@ -374,9 +378,11 @@ function Overview({
     ) : null,
   };
 
-  const ordered = overviewSectionOrder(live)
+  const allSections = overviewSectionOrder(live)
     .map((key) => ({ key, node: sections[key] }))
     .filter((section) => section.node != null);
+  const shownCount = useStagedReveal(allSections.length);
+  const ordered = allSections.slice(0, shownCount);
   const columns = twoColumns
     ? [ordered.filter((_, i) => i % 2 === 0), ordered.filter((_, i) => i % 2 === 1)]
     : [ordered];
@@ -405,7 +411,7 @@ function Overview({
             progressBackgroundColor={tokens.bg}
           />
         }
-        onScrollY={bannerStatusBar.onScrollY}
+        scrollOffset={bannerStatusBar.scrollOffset}
         contentContainerStyle={{ paddingBottom: tabBarInset + spacing.xxl }}
       >
         <View

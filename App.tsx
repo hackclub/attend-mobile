@@ -35,6 +35,7 @@ import { ScannerScreen } from './src/screens/ScannerScreen';
 import { SearchScreen } from './src/screens/SearchScreen';
 import { ParticipantDetailScreen } from './src/screens/ParticipantDetailScreen';
 import { MyTicketsScreen } from './src/screens/MyTicketsScreen';
+import { EventSwitcherScreen } from './src/components/EventSwitcher';
 import { TicketDetailScreen } from './src/screens/TicketDetailScreen';
 import { ThemeProvider, overlayTokens, useTheme, useThemedStyles, withAlpha, type Theme } from './src/theme';
 import type {
@@ -246,7 +247,13 @@ function PassStackNavigator() {
   return (
     <PassStack.Navigator screenOptions={STACK_OPTIONS}>
       <PassStack.Screen name="MyTickets" component={MyTicketsScreen} />
-      <PassStack.Screen name="TicketDetail" component={TicketDetailScreen} />
+      <PassStack.Screen
+        name="TicketDetail"
+        component={TicketDetailScreen}
+        // As a home it replaces the last one in place (a switch, under the
+        // switcher's own landing), as the Overview does: no push slide.
+        options={({ route }) => (route.params.home ? { animation: 'none' } : {})}
+      />
       <PassStack.Screen name="Inbox" getComponent={lazyScreens.Inbox} />
       <PassStack.Screen name="InboxMessage" getComponent={lazyScreens.InboxMessage} />
       <PassStack.Screen name="IncidentReport" getComponent={lazyScreens.IncidentReport} options={FORM_MODAL_OPTIONS} />
@@ -361,6 +368,9 @@ function RootNavigator() {
     <Stack.Navigator id={ROOT_NAVIGATOR} screenOptions={{ headerShown: false }}>
       {state.auth.isAuthenticated ? (
         <>
+          {/* First, so signing in and every launch open the switcher, not the
+              last event. Picking an event resets the root to its home. */}
+          <Stack.Screen name="EventSwitcher" component={EventSwitcherScreen} options={HOME_OPTIONS} />
           {isOrganizer && <Stack.Screen name="Main" component={MainTabs} options={HOME_OPTIONS} />}
           <Stack.Screen name="ParticipantMain" component={PassStackNavigator} options={HOME_OPTIONS} />
           {user?.global_admin ? (

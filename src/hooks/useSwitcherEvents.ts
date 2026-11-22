@@ -31,7 +31,12 @@ function ticketsFor(userId: LoadKey): Ticket[] {
 }
 
 /** Resolves to whether any part of the load failed. */
-function loadShared(key: LoadKey, setEvents: (events: Event[]) => void, force: boolean): Promise<boolean> {
+function loadShared(
+  key: LoadKey,
+  setEvents: (events: Event[]) => void,
+  force: boolean,
+  organizer: boolean
+): Promise<boolean> {
   if (switcherCache.inflight && switcherCache.inflight.key === key) return switcherCache.inflight.promise;
   if (!force && isFresh(key)) return Promise.resolve(switcherCache.lastLoad!.failed);
   const userId = key;
@@ -39,7 +44,9 @@ function loadShared(key: LoadKey, setEvents: (events: Event[]) => void, force: b
   const promise = (async () => {
     const cacheGeneration = syncService.getCacheGeneration();
     const results = await Promise.allSettled([
-      api.getEvents().then(async (fresh) => {
+      // Attendees organize nothing, so there's no event list to ask for (and
+      // a refusal would read as a failed load).
+      !organizer ? Promise.resolve() : api.getEvents().then(async (fresh) => {
         // Signed out (or the cache was cleared) while this was loading: the
         // events belong to the old session, so they're dropped, the same way
         // cacheEvents drops its write.
@@ -77,6 +84,7 @@ export function useSwitcherEvents() {
   const { state, setEvents } = useApp();
   const user = state.auth.user;
   const userId = user?.id ?? null;
+  const organizer = !!(user?.is_organizer ?? user?.global_admin);
   const [tickets, setTickets] = useState<Ticket[]>(() => ticketsFor(userId));
   // A recent shared load is already on screen: no spinner for it.
   const [isLoading, setIsLoading] = useState(() => !isFresh(userId));
@@ -85,12 +93,12 @@ export function useSwitcherEvents() {
 
   const load = useCallback(
     async (force: boolean) => {
-      const failed = await loadShared(userId, setEvents, force);
+      const failed = await loadShared(userId, setEvents, force, organizer);
       setTickets(ticketsFor(userId));
       setLoadFailed(failed);
       setIsLoading(false);
     },
-    [setEvents, userId]
+    [organizer, setEvents, userId]
   );
 
   useEffect(() => {

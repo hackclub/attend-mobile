@@ -35,7 +35,7 @@ interface StateLike {
  * when no sheet is open (the screen is simply focused) or when anything
  * else, such as a full-screen modal or another tab, covers it.
  */
-export function isRouteUnderSheets(rootState: StateLike | undefined, routeKey: string): boolean {
+export function isRouteUnderSheets(rootState: StateLike | undefined, routeKey: string, routeName?: string): boolean {
   if (!rootState?.routes.length) return false;
   let index = rootState.index ?? rootState.routes.length - 1;
   if (!isSheetRoute(rootState.routes[index]?.name ?? '')) return false;
@@ -43,6 +43,9 @@ export function isRouteUnderSheets(rootState: StateLike | undefined, routeKey: s
   let route = rootState.routes[index];
   while (route) {
     if (route.key === routeKey) return true;
+    // A state set by a root reset (resetRoot) keeps its partial routes, with
+    // no keys, until that stack next changes: matched by name instead.
+    if (route.key === undefined && routeName !== undefined && route.name === routeName && !route.state) return true;
     const child: StateLike | undefined = route.state;
     if (!child?.routes.length) return false;
     route = child.routes[child.index ?? 0];
@@ -76,4 +79,28 @@ export type ComposeSheetHeight = 'fit' | number;
 export function composeSheetHeight(detents: readonly number[] | 'fitToContents' | undefined): ComposeSheetHeight {
   if (!detents || detents === 'fitToContents' || detents.length === 0) return 'fit';
   return Math.min(1, Math.max(...detents));
+}
+
+interface NavigationLike {
+  getState: () => { type?: string; index?: number; routes: readonly { name: string }[] } | undefined;
+  getParent: () => unknown;
+}
+
+/**
+ * Whether there's a screen to go back to, not counting drawers. On iOS a
+ * drawer is a root-stack route, so while one is open React Navigation's own
+ * canGoBack() is true everywhere under it, and screens flipped to showing a
+ * back button the moment a drawer opened.
+ */
+export function canGoBackPastSheets(navigation: unknown): boolean {
+  let nav = navigation as NavigationLike | undefined;
+  while (nav) {
+    const state = nav.getState();
+    if (state && state.type === 'stack') {
+      const below = state.routes.slice(0, (state.index ?? state.routes.length - 1) + 1);
+      if (below.filter((route) => !isSheetRoute(route.name)).length > 1) return true;
+    }
+    nav = nav.getParent() as NavigationLike | undefined;
+  }
+  return false;
 }

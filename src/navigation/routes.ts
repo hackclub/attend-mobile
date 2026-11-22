@@ -53,7 +53,7 @@ export function passHomeState(ticket: Ticket): PartialState {
     routes: [
       {
         name: 'ParticipantMain',
-        state: { index: 0, routes: [{ name: 'TicketDetail', params: { ticket } }] },
+        state: { index: 0, routes: [{ name: 'TicketDetail', params: { ticket, home: true } }] },
       },
     ],
   };

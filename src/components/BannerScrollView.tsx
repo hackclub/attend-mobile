@@ -8,6 +8,7 @@ import Animated, {
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
+  type SharedValue,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { GestureDetector } from 'react-native-gesture-handler';
@@ -28,6 +29,7 @@ export function BannerScrollView({
   banner,
   refreshControl,
   onScrollY,
+  scrollOffset,
   pullAnywhere = false,
   contentContainerStyle,
   children,
@@ -42,6 +44,8 @@ export function BannerScrollView({
   refreshControl?: ReactElement<{ progressViewOffset?: number }>;
   /** The scroll offset as it changes, e.g. for the status bar. */
   onScrollY?: (y: number) => void;
+  /** The scroll offset, kept on the UI thread (e.g. for the status bar's scrim). */
+  scrollOffset?: SharedValue<number>;
   contentContainerStyle?: StyleProp<ViewStyle>;
   children: ReactNode;
 }) {
@@ -67,6 +71,7 @@ export function BannerScrollView({
   const onScroll = useAnimatedScrollHandler({
     onScroll: (e) => {
       scrollY.value = e.contentOffset.y;
+      scrollOffset?.set(e.contentOffset.y);
       atTop.value = e.contentOffset.y <= 0.5;
       maxScroll.value = e.contentSize.height - e.layoutMeasurement.height;
       if (onScrollY) scheduleOnRN(onScrollY, e.contentOffset.y);

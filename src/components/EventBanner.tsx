@@ -8,16 +8,15 @@ import Animated, {
   measure,
   scrollTo,
   useAnimatedRef,
+  useAnimatedStyle,
   useSharedValue,
   withDecay,
   withSpring,
-  withTiming,
   type AnimatedRef,
   type SharedValue,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import {
-  SWITCHER_CLOSE_TIMING,
   SWITCHER_FLICK_VELOCITY,
   SWITCHER_OPEN_THRESHOLD,
   SWITCHER_PULL_DISTANCE,
@@ -30,7 +29,12 @@ import {
   switcherOverpull,
   switcherProgress,
   switcherDetentTick,
+  switcherHeroKey,
+  switcherHeroOn,
+  switcherHeroReady,
+  switcherHeroShown,
   switcherPullTick,
+  switcherRelease,
   switcherSourceRect,
   type SwitcherBanner,
 } from '../navigation/switcherOverlay';
@@ -333,6 +337,21 @@ export function EventBanner({
     });
   }, [blendInto, canSwitch, current, event, eyebrow, eyebrowIcon, key, laidOutHeight, meta, topInset]);
 
+  // Hidden while the switcher's hero (its moving copy) stands in for it, so
+  // a pull or a landing never shows two banners at once.
+  const coverKey = key ?? '';
+  // (The shared values are read here, not only inside switcherHeroShown, so
+  // the style re-runs as they change: it tracks what its own closure reads.)
+  const covered = useAnimatedStyle(() => {
+    const hero = {
+      progress: switcherProgress.value,
+      on: switcherHeroOn.value,
+      ready: switcherHeroReady.value,
+      key: switcherHeroKey.value,
+    };
+    return { opacity: coverKey !== '' && switcherHeroShown(hero, coverKey) ? 0 : 1 };
+  });
+
   // Both the pull's ref (measured on the UI thread) and this one.
   const pullRef = pull?.bannerRef;
   const setRef = useCallback(
@@ -361,7 +380,7 @@ export function EventBanner({
     <Animated.View
       ref={setRef}
       collapsable={false}
-      style={[styles.hero, style]}
+      style={[styles.hero, style, covered]}
       onLayout={(e) => setLaidOutHeight(e.nativeEvent.layout.height)}
     >
       {canSwitch && key ? (
@@ -495,11 +514,13 @@ export function useSwitcherPull(switcher: BannerSwitcher | undefined, page: Bann
       // of the threshold, it closes.
       const opening =
         switcherProgress.value >= SWITCHER_OPEN_THRESHOLD || velocity.value > SWITCHER_FLICK_VELOCITY;
+      // Carrying on at the finger's speed (progress per second).
+      const progressVelocity = velocity.value / SWITCHER_PULL_DISTANCE;
       if (opening) {
         scheduleOnRN(markOpen);
-        switcherProgress.value = withSpring(1, SWITCHER_SPRING);
+        switcherProgress.value = switcherRelease(1, progressVelocity);
       } else {
-        switcherProgress.value = withTiming(0, SWITCHER_CLOSE_TIMING, (finished) => {
+        switcherProgress.value = switcherRelease(0, progressVelocity, (finished) => {
           if (finished) scheduleOnRN(closeSwitcherOverlay);
         });
       }

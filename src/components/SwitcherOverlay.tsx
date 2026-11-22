@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { BackHandler, StyleSheet, Text, View, useWindowDimensions, type ListRenderItemInfo } from 'react-native';
+import { BackHandler, Platform, StyleSheet, Text, View, useWindowDimensions, type ListRenderItemInfo } from 'react-native';
 import Animated, {
   Extrapolation,
   interpolate,
@@ -15,6 +15,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { GestureDetector, useCompetingGestures, usePanGesture } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { setStatusBarStyle } from 'expo-status-bar';
+import { AccountButton } from './AccountSheet';
 import { BannerBlend, BannerChevron, BannerFace } from './EventBanner';
 import { Button, EmptyState, ErrorView, Icon, PressableSurface, TextField } from './ui';
 import { CHROME_MAX_FONT_SCALE } from './ui/fontScale';
@@ -36,7 +37,12 @@ import {
   switcherOverlay,
   switcherOverpull,
   switcherPullTick,
+  switcherHeroKey,
+  switcherHeroOn,
+  switcherHeroReady,
+  switcherHeroShown,
   switcherProgress,
+  switcherRelease,
   switcherSourceRect,
   switcherStretch,
   type Rect,
@@ -73,6 +79,40 @@ const CARD_SLIDE = 56;
 /** How long a switch waits for the new screen's banner before just fading. */
 const LANDING_WAIT_MS = 1500;
 const FADE_MS = 220;
+/** How far through the grow (of its duration) a switch starts mounting the new screen. */
+const SWITCH_AT = 0.6;
+/** The skeleton page's card heights, roughly the Overview's and the pass's first cards. */
+const SKELETON_CARDS = [190, 130, 130, 130];
+/** The longest a switch waits for the new screen to finish drawing before showing it anyway. */
+const SETTLE_MAX_MS = 400;
+/**
+ * How many on-time frames in a row count as drawn. One: the first one after
+ * the mount's own long frame; waiting out every re-render as its data comes
+ * in kept the page blank for longer than any of them would show.
+ */
+const SMOOTH_FRAMES = 1;
+/** Frames this close together (ms) mean nothing heavy is being drawn. */
+const SMOOTH_FRAME_MS = 24;
+
+/**
+ * Resolves once frames come smoothly again (a few in a row on time), i.e.
+ * a screen that was mounting has been drawn; or after SETTLE_MAX_MS.
+ */
+function framesSettled(): Promise<void> {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    let last = start;
+    let smooth = 0;
+    const tick = () => {
+      const now = Date.now();
+      smooth = now - last <= SMOOTH_FRAME_MS ? smooth + 1 : 0;
+      last = now;
+      if (smooth >= SMOOTH_FRAMES || now - start >= SETTLE_MAX_MS) resolve();
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
 /** The longest a switch may keep the overlay before it closes regardless. */
 const SWITCH_GIVE_UP_MS = 3000;
 /** The longest a switch waits for the picked event's photo before growing. */
@@ -81,6 +121,15 @@ const PHOTO_WAIT_MS = 150;
 const LIST_CLOSE_DISTANCE = 110;
 /** How much a full stretch fades the overlay, as a hint it's closing. */
 const STRETCH_FADE = 0.35;
+/**
+ * iOS: the list's own bounce is its overscroll, at both ends and however it
+ * got there (a scroll that runs into the top keeps going into the bounce),
+ * and letting go of a bounce pulled this far closes the switcher. Android
+ * has no bounce, so a pull gesture there stretches the list instead.
+ */
+const NATIVE_BOUNCE = Platform.OS === 'ios';
+/** A bounce pulled this far (as the scroll view moves it, resisted) closes it. */
+const BOUNCE_CLOSE_DISTANCE = 64;
 /** Greys out an ended event's card. */
 const PAST_TINT = withAlpha(overlayTokens.ink, 0.45);
 const PAST_FILTER = [{ grayscale: 1 }];
@@ -99,6 +148,7 @@ export function SwitcherOverlayHost() {
       open={state.open}
       animateIn={state.animateIn}
       openCount={state.openCount}
+      home={state.home}
     />
   );
 }
@@ -126,7 +176,8 @@ function rowFace(row: SwitcherRow): { event: Event; text: ReturnType<typeof even
  * all transform, from the banner's rect (measured on the UI thread).
  */
 interface HeroState {
-  event: Event;
+  /** Null over the home switcher, which has no banner (the hero stays off). */
+  event: Event | null;
   eyebrow?: string | null;
   eyebrowIcon?: SwitcherBanner['eyebrowIcon'];
   meta?: string | null;
@@ -174,12 +225,15 @@ function SwitcherOverlay({
   open,
   animateIn,
   openCount,
+  home,
 }: {
   source: SwitcherBanner;
   /** Opening, open or closing; otherwise unseen, waiting for a pull. */
   open: boolean;
   animateIn: boolean;
   openCount: number;
+  /** The home switcher: the first screen, which only a pick leaves. */
+  home: boolean;
 }) {
   const { tokens, type, barStyle } = useTheme();
   const insets = useSafeAreaInsets();
@@ -242,11 +296,17 @@ function SwitcherOverlay({
 
   // The morphing card: the banner at `bannerRect` (progress 0), scaled into
   // a card (1): the current one's live place in the list, or `landingCard`.
-  const heroOn = useSharedValue(reduceMotion || currentIndex < 0 ? 0 : 1);
+  // Shared with the banners (navigation/switcherOverlay), so the one the hero
+  // stands in for can hide meanwhile. Set for each opening below.
+  const heroOn = switcherHeroOn;
   const currentCardHeight = currentRow ? cardHeightOf(currentRow, metrics) : metrics.cardHeight;
   // Hidden until its photo is drawn: until then the real banner under it
   // shows, rather than the fill behind a photo still decoding.
-  const heroReady = useSharedValue(0);
+  const heroReady = switcherHeroReady;
+  // The next overlay's hero photo isn't drawn yet, whatever this one's was.
+  // (Reset on the way out: a cached photo can report itself drawn before a
+  // reset on mount would run, and that reset would then hide it for good.)
+  useEffect(() => () => heroReady.set(0), [heroReady]);
   const [hero, setHero] = useState<HeroState>(() =>
     heroFor(source, width, currentCardHeight, cardWidth, false)
   );
@@ -279,11 +339,12 @@ function SwitcherOverlay({
     landingFrom.set(null);
     landingCard.set(null);
     backdropHold.set(0);
-    heroOn.set(reduceMotion || currentIndex < 0 ? 0 : 1);
+    heroOn.set(reduceMotion || currentIndex < 0 || !source.event ? 0 : 1);
+    switcherHeroKey.set(source.key);
     setHero((was) => {
       const next = heroFor(source, width, currentCardHeight, cardWidth, false);
       // A different photo mounts hidden until it's drawn.
-      if (was.event.id !== next.event.id || was.event.banner_url !== next.event.banner_url) heroReady.set(0);
+      if (was.event?.id !== next.event?.id || was.event?.banner_url !== next.event?.banner_url) heroReady.set(0);
       return next;
     });
     scrollY.set(targetOffset);
@@ -326,11 +387,17 @@ function SwitcherOverlay({
     () => progress.value > 0.5,
     (covered, was) => {
       if (covered === was || was === null) return;
+      // A switch landing: light once the card has grown most of the way into
+      // the new screen's banner, at the top of either home.
+      if (landingCard.value) {
+        scheduleOnRN(setStatusBarStyle, covered ? barStyle : 'light');
+        return;
+      }
       const banner = switcherSourceRect.value;
       const bannerUnder = banner.y + banner.height > statusBarHeight + 1;
       scheduleOnRN(setStatusBarStyle, covered || !bannerUnder ? barStyle : 'light');
     },
-    [barStyle, statusBarHeight]
+    [barStyle, landingCard, statusBarHeight]
   );
 
   const isCurrentOnScreen = useCallback(() => {
@@ -359,13 +426,14 @@ function SwitcherOverlay({
   }, [heroOn, isCurrentOnScreen, overpull, progress, reduceMotion, stretch]);
 
   useEffect(() => {
-    if (!open) return;
+    // The home switcher is a screen of its own: back leaves the app as usual.
+    if (!open || home) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       close();
       return true;
     });
     return () => sub.remove();
-  }, [close, open]);
+  }, [close, home, open]);
 
   /**
    * Grows the picked card straight away into where the new screen's banner
@@ -377,12 +445,15 @@ function SwitcherOverlay({
   const pick = useCallback(
     async (row: SwitcherRow, index: number) => {
       if (row.kind !== 'event' && row.kind !== 'ticket') return;
-      if (row.current) {
+      if (row.current && !home) {
         close();
         return;
       }
       if (busy.current) return;
       busy.current = true;
+      // From the home switcher, from here it's an ordinary switch: the home
+      // screen going away no longer dismisses it.
+      if (home) switcherOverlay.leaveHome();
       haptics.selection();
       const pickedHeight = cardHeightOf(row, metrics);
       const cardRect: Rect = {
@@ -400,13 +471,6 @@ function SwitcherOverlay({
         cardWidth,
         row.past
       );
-      const cropped = (rect: Rect, crop: number): Rect => ({
-        x: rect.x,
-        y: rect.y + crop,
-        width: rect.width,
-        height: rect.height - crop,
-      });
-
       // Landing: the card in front, the backdrop held until the new screen
       // is there; it closes once both have happened.
       let grown = false;
@@ -424,8 +488,14 @@ function SwitcherOverlay({
         settled = true;
         closeSwitcherOverlay();
       }, SWITCH_GIVE_UP_MS);
+      // Resolved once the grow is running on the UI thread (see below).
+      let onStarted: () => void = () => {};
+      const startedYet = new Promise<void>((resolve) => {
+        onStarted = resolve;
+      });
       const markGrown = () => {
         grown = true;
+        onStarted();
         finishIfDone();
       };
       backdropHold.set(1);
@@ -435,11 +505,12 @@ function SwitcherOverlay({
       if (reduceMotion) {
         heroOn.set(0);
         progress.set(1);
-        grown = true;
+        markGrown();
+        onStarted();
       } else {
         // The hero shows the picked event; it grows as soon as its photo is
         // drawn (a frame or two, it's cached), so it's seen from the start.
-        const samePhoto = hero.event.id === event.id && hero.event.banner_url === event.banner_url;
+        const samePhoto = hero.event?.id === event.id && hero.event?.banner_url === event.banner_url;
         const photoReady = samePhoto
           ? Promise.resolve()
           : new Promise<void>((resolve) => {
@@ -448,24 +519,37 @@ function SwitcherOverlay({
               setTimeout(resolve, PHOTO_WAIT_MS);
             });
         setHero(predicted);
-        landingFrom.set(cropped({ x: 0, y: 0, width, height: source.height }, predicted.crop));
+        switcherHeroKey.set(row.kind === 'event' ? bannerKey.event(row.event) : bannerKey.ticket(row.ticket));
+        landingFrom.set({ x: 0, y: 0, width, height: source.height });
         landingCard.set(cardRect);
         heroOn.set(1);
         progress.set(1);
-        void photoReady.then(() =>
+        void photoReady.then(() => {
           progress.set(
             withTiming(0, SWITCHER_CLOSE_TIMING, (finished) => {
               if (finished) scheduleOnRN(markGrown);
             })
-          )
-        );
+          );
+          // Most of the way through, the ease-out has the card about 97% of
+          // the way there: the new screen starts mounting then (a section a
+          // frame, see useStagedReveal), so the frames its mount takes from
+          // the UI thread fall in a tail that barely moves, and the page is
+          // filling in as the card lands.
+          setTimeout(onStarted, SWITCHER_CLOSE_TIMING.duration * SWITCH_AT);
+        });
       }
 
+      // The screens switch under the held backdrop near the end of the grow
+      // (or as it ends, whichever is first), so the new home is ready about
+      // when it lands. Not at the start: rendering the new home keeps the JS
+      // thread busy, so a grow started from JS after that began late and
+      // jumped to its end, and mounting it takes UI-thread frames too.
+      await startedYet;
       if (row.kind === 'event') source.switchTo(eventHomeState(), () => void selectEvent(row.event));
       else source.switchTo(passHomeState(row.ticket));
       // The new screen sets the banner's status bar as it focuses; it's
-      // still under the overlay.
-      requestAnimationFrame(() => setStatusBarStyle(barStyle));
+      // still under the overlay, which keeps the banner's light style.
+      if (reduceMotion) requestAnimationFrame(() => setStatusBarStyle(barStyle));
 
       const key = row.kind === 'event' ? bannerKey.event(row.event) : bannerKey.ticket(row.ticket);
       const target = await switcherOverlay.waitForBanner(key, LANDING_WAIT_MS);
@@ -484,8 +568,12 @@ function SwitcherOverlay({
         };
         // Only if it's not where it was expected: the grow carries on to it.
         const off = Math.abs(rect.y) > 1 || Math.abs(rect.height - source.height) > 1;
-        if (off) landingFrom.set(cropped(rect, Math.min(target!.topInset, rect.height)));
+        if (off) landingFrom.set(rect);
       }
+      // Mounting the new screen goes on for a few frames after its banner is
+      // in (sections, lists): wait for it to be drawn, or the backdrop's
+      // fade plays while nothing is being drawn and jumps to its end.
+      await framesSettled();
       // The new screen is there (or isn't coming): let the backdrop go.
       // (Defined here, on the JS side: a worklet can only hand back a
       // function that already exists there.)
@@ -508,8 +596,8 @@ function SwitcherOverlay({
       );
     },
     [
-      backdropHold, barStyle, cardWidth, close, height, hero, heroOn, heroReady, landingCard, landingFrom, metrics, offsets,
-      progress, overpull, reduceMotion, scrollY, selectEvent, source, stretch, viewportTop, width,
+      backdropHold, barStyle, cardWidth, close, height, hero, heroOn, heroReady, home, landingCard, landingFrom, metrics,
+      offsets, progress, overpull, reduceMotion, scrollY, selectEvent, source, stretch, viewportTop, width,
     ]
   );
 
@@ -518,6 +606,7 @@ function SwitcherOverlay({
   const headerVelocity = useSharedValue(0);
   const headerPast = useSharedValue(false);
   const pullUp = usePanGesture({
+    enabled: !home,
     activeOffsetY: -6,
     failOffsetY: 6,
     onActivate: () => {
@@ -551,12 +640,14 @@ function SwitcherOverlay({
       const closing =
         !e.canceled &&
         (progress.value < 1 - SWITCHER_OPEN_THRESHOLD || headerVelocity.value < -SWITCHER_FLICK_VELOCITY);
+      // Carrying on at the finger's speed (progress per second).
+      const velocity = headerVelocity.value / SWITCHER_PULL_DISTANCE;
       if (closing) {
-        progress.value = withTiming(0, SWITCHER_CLOSE_TIMING, (finished) => {
+        progress.value = switcherRelease(0, velocity, (finished) => {
           if (finished) scheduleOnRN(closeSwitcherOverlay);
         });
       } else {
-        progress.value = withSpring(1, SWITCHER_SPRING);
+        progress.value = switcherRelease(1, velocity);
       }
     },
   });
@@ -567,6 +658,9 @@ function SwitcherOverlay({
   const maxScroll = Math.max(0, content - viewportHeight);
   const atTop = useSharedValue(initialOffset <= 0.5);
   const atEnd = useSharedValue(initialOffset >= maxScroll - 0.5);
+  // How far the list's own bounce (iOS) is past either end, as it's drawn.
+  const bounce = useSharedValue(0);
+  const bouncePast = useSharedValue(false);
   const listActive = useSharedValue(false);
   const listVelocity = useSharedValue(0);
   const listPast = useSharedValue(false);
@@ -593,7 +687,7 @@ function SwitcherOverlay({
     }
   };
   const pullDown = usePanGesture({
-    enabled: atTop,
+    enabled: home || NATIVE_BOUNCE ? false : atTop,
     // Before the list's own scroll view would claim the drag (8dp slop),
     // and only in this direction: the other way it fails, and scrolls.
     activeOffsetY: 3,
@@ -616,7 +710,7 @@ function SwitcherOverlay({
     },
   });
   const pullUpList = usePanGesture({
-    enabled: atEnd,
+    enabled: home || NATIVE_BOUNCE ? false : atEnd,
     activeOffsetY: -3,
     failOffsetY: 3,
     failOffsetX: [-16, 16],
@@ -638,10 +732,35 @@ function SwitcherOverlay({
   });
   const listPull = useCompetingGestures(pullDown, pullUpList);
 
-  const onScroll = useAnimatedScrollHandler((e) => {
-    scrollY.value = e.contentOffset.y;
-    atTop.value = e.contentOffset.y <= 0.5;
-    atEnd.value = e.contentOffset.y + e.layoutMeasurement.height >= e.contentSize.height - 0.5;
+  const onScroll = useAnimatedScrollHandler({
+    onScroll: (e) => {
+      scrollY.value = e.contentOffset.y;
+      atTop.value = e.contentOffset.y <= 0.5;
+      atEnd.value = e.contentOffset.y + e.layoutMeasurement.height >= e.contentSize.height - 0.5;
+      if (!NATIVE_BOUNCE) return;
+      const end = Math.max(0, e.contentSize.height - e.layoutMeasurement.height);
+      bounce.value = Math.max(0, -e.contentOffset.y, e.contentOffset.y - end);
+      // A tick where letting go closes it (not on the home switcher, which
+      // only a pick leaves), while the finger's still on it.
+      if (!home && listActive.value) {
+        const isPast = bounce.value > BOUNCE_CLOSE_DISTANCE;
+        if (isPast !== bouncePast.value) {
+          bouncePast.value = isPast;
+          if (isPast) scheduleOnRN(switcherPullTick);
+        }
+      }
+    },
+    onBeginDrag: () => {
+      if (!NATIVE_BOUNCE) return;
+      listActive.value = true;
+      bouncePast.value = false;
+    },
+    onEndDrag: () => {
+      if (!NATIVE_BOUNCE || !listActive.value) return;
+      listActive.value = false;
+      // The list bounces back by itself; the overlay closes alongside.
+      if (!home && bounce.value > BOUNCE_CLOSE_DISTANCE) scheduleOnRN(close);
+    },
   });
 
   const listRef = useRef<Animated.FlatList<SwitcherRow>>(null);
@@ -650,7 +769,12 @@ function SwitcherOverlay({
   // A stretch fades the overlay a little, as a hint that letting go closes it.
   const stretchFade = () => {
     'worklet';
-    return 1 - STRETCH_FADE * Math.min(1, Math.abs(stretch.value) / followPull(LIST_CLOSE_DISTANCE * 2));
+    const pulled = Math.max(
+      Math.abs(stretch.value) / followPull(LIST_CLOSE_DISTANCE * 2),
+      // The home switcher's bounce is only a bounce: no hint it'll close.
+      home ? 0 : bounce.value / (BOUNCE_CLOSE_DISTANCE * 2)
+    );
+    return 1 - STRETCH_FADE * Math.min(1, pulled);
   };
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: Math.max(
@@ -752,9 +876,10 @@ function SwitcherOverlay({
             }}
             onScroll={onScroll}
             scrollEventThrottle={16}
-            // The list's own stretch would fight this one.
+            // Android: the list's own stretch would fight the pull gesture's.
             overScrollMode="never"
-            bounces={false}
+            bounces={NATIVE_BOUNCE}
+            alwaysBounceVertical={NATIVE_BOUNCE}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
             ListFooterComponent={footer}
@@ -772,9 +897,13 @@ function SwitcherOverlay({
               accessibilityRole="header"
               maxFontSizeMultiplier={CHROME_MAX_FONT_SCALE}
             >
-              Switch event
+              {home ? 'Choose an event' : 'Switch event'}
             </Text>
-            <Button variant="plain-icon" icon="close" title="Close" onPress={close} />
+            {home ? (
+              <View style={styles.account}>
+                <AccountButton size={40} />
+              </View>
+            ) : <Button variant="plain-icon" icon="close" title="Close" onPress={close} />}
           </View>
           {searchable ? (
             <View style={styles.search}>
@@ -794,6 +923,8 @@ function SwitcherOverlay({
         </Animated.View>
       </GestureDetector>
 
+      <LandingSkeleton landingFrom={landingFrom} landingCard={landingCard} hold={backdropHold} progress={progress} />
+
       <Hero
         hero={hero}
         onReady={onHeroReady}
@@ -811,6 +942,44 @@ function SwitcherOverlay({
         card={{ x: SIDE, width: cardWidth, height: currentCardHeight }}
       />
     </View>
+  );
+}
+
+/**
+ * While a switch waits for the new screen to be drawn: the shape of a page
+ * (a few cards) under the landed banner, so the wait reads as the page
+ * loading rather than a blank screen. It fades with the backdrop, as the
+ * real page fades in over it.
+ */
+function LandingSkeleton({
+  landingFrom,
+  landingCard,
+  hold,
+  progress,
+}: {
+  landingFrom: SharedValue<Rect | null>;
+  landingCard: SharedValue<Rect | null>;
+  hold: SharedValue<number>;
+  progress: SharedValue<number>;
+}) {
+  const { tokens, radii: r } = useTheme();
+  const style = useAnimatedStyle(() => {
+    const banner = landingFrom.value;
+    return {
+      // In as the card grows (the list fading out), out with the backdrop.
+      opacity:
+        landingCard.value && banner
+          ? hold.value * interpolate(progress.value, [0.2, 0.7], [1, 0], Extrapolation.CLAMP)
+          : 0,
+      transform: [{ translateY: banner ? banner.y + banner.height : 0 }],
+    };
+  });
+  return (
+    <Animated.View pointerEvents="none" style={[styles.skeleton, style]} importantForAccessibility="no-hide-descendants">
+      {SKELETON_CARDS.map((height, i) => (
+        <View key={i} style={{ height, borderRadius: r.container, backgroundColor: tokens.shaded }} />
+      ))}
+    </Animated.View>
   );
 }
 
@@ -951,6 +1120,10 @@ function SwitcherCard({
           eyebrow={text.eyebrow}
           eyebrowIcon={text.eyebrowIcon}
           meta={text.meta}
+          // The banner's chevron, unseen: it takes the same room, so a long
+          // name wraps here exactly as on the banner, and the morph between
+          // the two never re-wraps it.
+          chevron={<BannerChevron style={styles.hiddenChevron} />}
         />
       </View>
       {greyed ? <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.pastTint]} /> : null}
@@ -1001,16 +1174,13 @@ function Hero({
   viewportTop: number;
   card: { x: number; width: number; height: number };
 }) {
-  const { endHeight, crop, layoutWidth, layoutHeight } = hero;
+  const { endHeight, layoutWidth, faceHeight } = hero;
   const box = useAnimatedStyle(() => {
     const p = progress.value;
-    const banner = sourceRect.value;
-    const from = landingFrom.value ?? {
-      x: banner.x,
-      y: banner.y + crop,
-      width: banner.width,
-      height: banner.height - crop,
-    };
+    // The whole banner, status bar space and all: that strip is part of what
+    // moves, shrinking away as it becomes a card (cards leave it out) and
+    // growing back as it lands, rather than vanishing or popping in.
+    const from = landingFrom.value ?? sourceRect.value;
     const to = landingCard.value ?? {
       x: card.x,
       y: viewportTop + currentTop.value - scrollY.value + stretch.value + overpull.value,
@@ -1019,8 +1189,15 @@ function Hero({
     };
     const scale = (from.width / layoutWidth) * (1 + (to.width / from.width - 1) * p);
     const shape = {
-      // Unseen at 0, where it waits for a pull.
-      opacity: heroOn.value === 1 && ready.value === 1 && p > 0.001 && p < 0.999 ? 1 : 0,
+      // Unseen at 0, where it waits for a pull (the same test hides the
+      // banner it stands in for, so the two never show at once); but a
+      // switch's card, landed, stays until the overlay closes, in front of
+      // the new screen's banner while that screen is still being drawn.
+      opacity:
+        switcherHeroShown({ progress: p, on: heroOn.value, ready: ready.value, key: '' }) ||
+        (landingCard.value !== null && heroOn.value === 1 && ready.value === 1 && p <= 0.001)
+          ? 1
+          : 0,
       // Corners as the card's once scaled.
       borderRadius: (radii.container * p) / scale,
       transform: [
@@ -1029,15 +1206,11 @@ function Hero({
         { scale },
       ],
     };
-    // An ended event's card is shorter: the height animates to it, the
-    // bottom (its text) staying put.
-    return Math.abs(endHeight - layoutHeight) < 0.5
-      ? shape
-      : { ...shape, height: layoutHeight + (endHeight - layoutHeight) * p };
+    // From the banner's height to the card's (less its status bar space, and
+    // shorter again for an ended event's), the face pinned to the bottom so
+    // the photo and text stay put while the top closes in.
+    return { ...shape, height: faceHeight + (endHeight - faceHeight) * p };
   });
-  const faceShift = useAnimatedStyle(() => ({
-    transform: [{ translateY: -(layoutHeight - endHeight) * progress.value }],
-  }));
   const fadeOut = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0, 0.6], [1, 0], Extrapolation.CLAMP),
   }));
@@ -1045,12 +1218,14 @@ function Hero({
   return (
     <Animated.View
       pointerEvents="none"
-      style={[styles.hero, { width: layoutWidth, height: layoutHeight }, box]}
+      style={[styles.hero, { width: layoutWidth, height: faceHeight }, box]}
       importantForAccessibility="no-hide-descendants"
     >
-      {/* The whole banner, its cropped top above the box. Keyed by event so
-          a switch mounts a fresh photo, which reports when it's drawn. */}
-      <Animated.View style={[styles.heroFace, { top: -hero.crop, height: hero.faceHeight }, faceShift]}>
+      {/* The whole banner, pinned to the box's bottom as its top closes in.
+          Keyed by event so a switch mounts a fresh photo, which reports
+          when it's drawn. */}
+      <View style={[styles.heroFace, { height: hero.faceHeight }]}>
+        {hero.event ? (
         <BannerFace
           key={hero.event.id}
           event={hero.event}
@@ -1068,13 +1243,14 @@ function Hero({
             </Animated.View>
           ) : null}
         </BannerFace>
-      </Animated.View>
+        ) : null}
+        {hero.accessory ? (
+          <Animated.View style={[styles.accessory, { top: hero.topInset + 8 }, fadeOut]}>
+            {hero.accessory}
+          </Animated.View>
+        ) : null}
+      </View>
       {hero.grey ? <Animated.View style={[StyleSheet.absoluteFill, styles.pastTint, greyIn]} /> : null}
-      {hero.accessory ? (
-        <Animated.View style={[styles.accessory, { top: hero.topInset + 8 - hero.crop }, fadeOut]}>
-          {hero.accessory}
-        </Animated.View>
-      ) : null}
     </Animated.View>
   );
 }
@@ -1091,6 +1267,7 @@ const styles = StyleSheet.create({
   // The banner at full size, scaled from its top-left corner into the card.
   face: { position: 'absolute', left: 0, transformOrigin: 'top left' },
   pastTint: { backgroundColor: PAST_TINT },
+  hiddenChevron: { opacity: 0 },
   currentMark: {
     position: 'absolute',
     top: 12,
@@ -1103,6 +1280,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   hero: { position: 'absolute', top: 0, left: 0, overflow: 'hidden', transformOrigin: 'top left' },
-  heroFace: { position: 'absolute', left: 0, right: 0 },
+  heroFace: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  skeleton: { position: 'absolute', top: 0, left: 0, right: 0, padding: SIDE, gap: SIDE },
   accessory: { position: 'absolute', right: 16 },
+  // In line with the cards' right edge, where × sits in its button.
+  account: { marginRight: SIDE - 8 },
 });

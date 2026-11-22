@@ -483,6 +483,8 @@ type ParticipantDetailParams =
  */
 export type RootStackParamList = {
   Login: undefined;
+  /** The event switcher as the home screen: where launch and sign-in land. */
+  EventSwitcher: undefined;
   Main: NavigatorScreenParams<MainTabParamList> | undefined;
   ParticipantMain: NavigatorScreenParams<PassStackParamList> | undefined;
   IdCheck: { participant: Participant; eventId: string };
@@ -553,7 +555,8 @@ export type TravelStackParamList = {
  */
 export type PassStackParamList = {
   MyTickets: undefined;
-  TicketDetail: { ticket: Ticket };
+  /** `home`: opened as an event's home (a root reset), not pushed from the ticket list. */
+  TicketDetail: { ticket: Ticket; home?: boolean };
   Inbox: undefined;
   InboxMessage: { messageId: string };
   IncidentReport: undefined;

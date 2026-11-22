@@ -1,4 +1,4 @@
-import { Easing, makeMutable } from 'react-native-reanimated';
+import { Easing, makeMutable, withSpring } from 'react-native-reanimated';
 import { haptics } from '../services/haptics';
 import type { ReactNode } from 'react';
 import type { IconName } from '../components/ui/Icon';
@@ -25,7 +25,8 @@ export interface Rect {
 export interface SwitcherBanner {
   /** `event:<id>` on the Overview, `ticket:<id>` on a pass. */
   key: string;
-  event: Event;
+  /** Null for the home switcher (see `openHome`), which has no banner. */
+  event: Event | null;
   eyebrow?: string;
   eyebrowIcon?: IconName;
   meta?: string;
@@ -54,6 +55,32 @@ export const bannerKey = {
 
 /** 0: the banner; 1: the list, fully open. Driven by gestures and springs. */
 export const switcherProgress = makeMutable(0);
+/**
+ * The morphing card (the "hero"): whether it's in use for this opening or
+ * switch (1), whether its photo is drawn (1), and which banner it stands in
+ * for. Shared so that banner can hide while the hero covers it, rather than
+ * show through as a second banner.
+ */
+export const switcherHeroOn = makeMutable(0);
+export const switcherHeroReady = makeMutable(0);
+export const switcherHeroKey = makeMutable('');
+/** A snapshot of the hero's shared values, read by the caller's worklet. */
+export interface SwitcherHeroValues {
+  progress: number;
+  on: number;
+  ready: number;
+  key: string;
+}
+/**
+ * Whether the hero is on screen (standing in for `key`'s banner, if given).
+ * Takes the values rather than reading them, so an animated style that calls
+ * it reads them itself and re-runs when they change.
+ */
+export function switcherHeroShown(hero: SwitcherHeroValues, key?: string): boolean {
+  'worklet';
+  const p = hero.progress;
+  return (key === undefined || hero.key === key) && hero.on === 1 && hero.ready === 1 && p > 0.001 && p < 0.999;
+}
 /** The banner's rect in the window as the overlay opens from it. */
 export const switcherSourceRect = makeMutable<Rect>({ x: 0, y: 0, width: 1, height: 1 });
 /**
@@ -98,9 +125,23 @@ export interface OverlayState {
   animateIn: boolean;
   /** Bumped by every open, so the overlay can tell one from the next. */
   openCount: number;
+  /**
+   * The home switcher: the app's first screen, open with no banner under it
+   * and no way to close it, only to pick an event (see `openHome`).
+   */
+  home: boolean;
+  /** The home switcher's pick is under way: its screen going away no longer dismisses it. */
+  homePicked: boolean;
 }
 
-let state: OverlayState = { source: null, open: false, animateIn: false, openCount: 0 };
+let state: OverlayState = {
+  source: null,
+  open: false,
+  animateIn: false,
+  openCount: 0,
+  home: false,
+  homePicked: false,
+};
 const listeners = new Set<() => void>();
 /** Registered banners, oldest first; the overlay sits over the latest switchable one. */
 let banners: SwitcherBanner[] = [];
@@ -178,9 +219,41 @@ export const switcherOverlay = {
       if (!rect || state.open) return;
       switcherSourceRect.value = rect;
     }
-    state = { source, open: true, animateIn, openCount: state.openCount + 1 };
+    state = { source, open: true, animateIn, openCount: state.openCount + 1, home: false, homePicked: false };
     if (DEBUG_SWITCHER) console.log('[sw] open', key, animateIn, 'progress', switcherProgress.value);
     emit();
+  },
+
+  /**
+   * Shows it as the home screen, already open (no opening to play): the
+   * screen that holds it supplies `source` with its root reset, and a null
+   * event (there's no banner to grow out of or back into).
+   */
+  openHome(source: SwitcherBanner) {
+    if (state.open) return;
+    switcherHeroOn.value = 0;
+    switcherHeroKey.value = '';
+    switcherStretch.value = 0;
+    switcherOverpull.value = 0;
+    switcherProgress.value = 1;
+    state = { source, open: true, animateIn: false, openCount: state.openCount + 1, home: true, homePicked: false };
+    emit();
+  },
+
+  /**
+   * A pick from the home switcher: it lands and closes like any switch (still
+   * looking like the home one), and its screen going away as the root resets
+   * no longer dismisses it.
+   */
+  leaveHome() {
+    if (!state.home || state.homePicked) return;
+    state = { ...state, homePicked: true };
+    emit();
+  },
+
+  /** Its screen went away without a pick (a link, signing out): gone at once. */
+  dismissHome() {
+    if (state.home && state.open && !state.homePicked) this.closed();
   },
 
   /** Closed: unseen again, over the latest switchable banner. */
@@ -190,7 +263,7 @@ export const switcherOverlay = {
     switcherProgress.value = 0;
     switcherStretch.value = 0;
     switcherOverpull.value = 0;
-    state = { ...state, open: false, animateIn: false };
+    state = { ...state, open: false, animateIn: false, home: false, homePicked: false };
     emit();
     updateSource();
   },
@@ -214,6 +287,17 @@ export const SWITCHER_SPRING = { damping: 26, stiffness: 260, mass: 1 };
  * while after it looked done.
  */
 export const SWITCHER_CLOSE_TIMING = { duration: 340, easing: Easing.bezier(0.2, 0, 0, 1) };
+
+/**
+ * Letting go of a pull: a critically damped spring that starts at the
+ * finger's speed, as UIKit's spring timing does, so the release carries the
+ * drag on instead of stalling and restarting. `velocity` is in progress per
+ * second; its length is fixed (about 1.5 × 260 ms), like the close timing.
+ */
+export function switcherRelease(toValue: number, velocity: number, done?: (finished?: boolean) => void) {
+  'worklet';
+  return withSpring(toValue, { duration: 260, dampingRatio: 1, velocity, overshootClamping: true }, done);
+}
 
 // Plain functions for worklets to call back with scheduleOnRN, rather than
 // methods on the store object, which a worklet would have to copy over.

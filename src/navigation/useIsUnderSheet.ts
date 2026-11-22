@@ -15,14 +15,14 @@ import { sheetStack } from './sheetStack';
  */
 export function useIsUnderSheet(): { underSheet: boolean; checkUnderSheet: () => boolean } {
   const navigation = useNavigation();
-  const { key } = useRoute();
+  const { key, name } = useRoute();
   const root = navigation.getParent(ROOT_NAVIGATOR);
 
   const checkUnderSheet = useCallback(
     () =>
-      isRouteUnderSheets(root?.getState(), key) ||
+      isRouteUnderSheets(root?.getState(), key, name) ||
       (sheetStack.get().length > 0 && navigation.isFocused()),
-    [key, navigation, root]
+    [key, name, navigation, root]
   );
   const subscribe = useCallback(
     (onChange: () => void) => {

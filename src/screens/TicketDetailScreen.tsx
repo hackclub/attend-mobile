@@ -18,7 +18,8 @@ import { BannerScrollView } from '../components/BannerScrollView';
 import { EventStatusCard } from '../components/EventStatusCard';
 import { TicketPass } from '../components/TicketPass';
 import { WalletButtons } from '../components/WalletButtons';
-import { resetRoot, rootNavigation } from '../navigation/rootNavigation';
+import { resetRoot } from '../navigation/rootNavigation';
+import { canGoBackPastSheets } from '../navigation/sheets';
 import type { PartialState } from '../navigation/routes';
 import { bannerKey } from '../navigation/switcherOverlay';
 import {
@@ -110,11 +111,11 @@ export function TicketDetailScreen() {
   const ended = eventStatus(event, { now })?.phase === 'ended';
   // Pushed from the ticket list it has a way back; as an event's home (an
   // event the user only attends) it has the account avatar instead.
-  const canGoBack = navigation.canGoBack();
-  // As an organizer's home for an event they attend, the banner switches
-  // events like the Overview's does. (Only organizers have the switcher:
-  // they're the ones with the event tabs, Main.)
-  const canSwitch = !canGoBack && !!rootNavigation(navigation).getState()?.routeNames?.includes('Main');
+  // (A drawer open over the pass doesn't count: see canGoBackPastSheets.)
+  const canGoBack = canGoBackPastSheets(navigation);
+  // As the home for an event the user attends (organizer or not), the banner
+  // switches events like the Overview's does.
+  const canSwitch = !canGoBack;
   const bannerSwitcher = useMemo(
     () => ({
       key: bannerKey.ticket(ticket),
@@ -201,7 +202,7 @@ export function TicketDetailScreen() {
           switcher: bannerSwitcher,
           accessory: canGoBack ? undefined : <AccountButton onBanner />,
         }}
-        onScrollY={bannerStatusBar.onScrollY}
+        scrollOffset={bannerStatusBar.scrollOffset}
         // No pull-to-refresh here, so a pull anywhere opens the switcher.
         pullAnywhere
         contentContainerStyle={{ paddingBottom: bottomInset + spacing.xxl }}

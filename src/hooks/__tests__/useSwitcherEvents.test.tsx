@@ -5,9 +5,10 @@ import renderer, { act } from 'react-test-renderer';
   .IS_REACT_ACT_ENVIRONMENT = true;
 
 const mockSetEvents = jest.fn();
+let mockUser: { id: string; is_organizer?: boolean } = { id: 'u1', is_organizer: true };
 jest.mock('../../context/AppContext', () => ({
   useApp: () => ({
-    state: { auth: { user: { id: 'u1' } }, events: [], currentEvent: null },
+    state: { auth: { user: mockUser }, events: [], currentEvent: null },
     setEvents: mockSetEvents,
   }),
 }));
@@ -49,6 +50,7 @@ async function mount(out: { refresh?: () => Promise<void>; isLoading?: boolean }
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockUser = { id: 'u1', is_organizer: true };
   mockCacheGeneration = 1;
   resetSwitcherEventsCache();
   jest.mocked(api.getEvents).mockResolvedValue([]);
@@ -56,6 +58,13 @@ beforeEach(() => {
 });
 
 describe('useSwitcherEvents', () => {
+  it("doesn't ask an attendee's account for the events it organizes", async () => {
+    mockUser = { id: 'u2', is_organizer: false };
+    await mount();
+    expect(api.getEvents).not.toHaveBeenCalled();
+    expect(api.getMyTickets).toHaveBeenCalledTimes(1);
+  });
+
   it('shares one load between the Overview and the switcher', async () => {
     await act(async () => {
       renderer.create(
