@@ -19,6 +19,7 @@ const TABS = {
   scan: 'QrcodeIcon',
   people: 'UserGroupIcon',
   travel: 'CalendarIcon',
+  ticket: 'TicketIcon',
 };
 
 // The admin's Overview glyph isn't a Heroicon, so it's drawn from its path

@@ -519,6 +519,8 @@ export type MainTabParamList = {
   Scanner: NavigatorScreenParams<ScannerStackParamList> | undefined;
   Search: NavigatorScreenParams<PeopleStackParamList> | undefined;
   Travel: NavigatorScreenParams<TravelStackParamList> | undefined;
+  /** Only for an event the organizer also holds a ticket for. */
+  Ticket: NavigatorScreenParams<TicketTabParamList> | undefined;
 };
 
 export type OverviewStackParamList = {
@@ -563,6 +565,17 @@ export type PassStackParamList = {
 };
 
 /**
+ * An organizer's Ticket tab: their pass for the current event (from
+ * EventTicketContext, so no params), with the attendee screens it opens.
+ */
+export type TicketTabParamList = {
+  EventTicket: undefined;
+  Inbox: undefined;
+  InboxMessage: { messageId: string };
+  IncidentReport: undefined;
+};
+
+/**
  * Every screen in every navigator, by name, for typing a screen's own route
  * and navigation. Navigating to a screen outside the current stack goes
  * through its navigator (see src/navigation/routes.ts).
@@ -573,7 +586,8 @@ export type AppStackParamList = RootStackParamList &
   ScannerStackParamList &
   PeopleStackParamList &
   TravelStackParamList &
-  PassStackParamList;
+  PassStackParamList &
+  TicketTabParamList;
 
 export type QRCodeData = {
   type: 'participant';

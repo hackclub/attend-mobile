@@ -9,7 +9,10 @@ export type PastSwitcherEntry =
 export interface SwitcherGroups {
   /** Upcoming and running events the user staffs, from GET /events. */
   organising: Event[];
-  /** The user's own upcoming and running tickets, from GET /tickets. */
+  /**
+   * The user's own upcoming and running tickets, from GET /tickets, less any
+   * for an event already in `organising` (see groupSwitcherEvents).
+   */
   attending: Ticket[];
   /** Ended events from either source, most recent first. */
   past: PastSwitcherEntry[];
@@ -30,12 +33,19 @@ export const pastEntryEvent = (entry: PastSwitcherEntry): Event =>
  * What the event switcher lists: upcoming and running events, soonest first,
  * split into organizing and attending, then ended events from both in one
  * Past group, most recent first.
+ *
+ * An event the user both staffs and holds a ticket for is listed once, as one
+ * they organize: picking it opens the staff tabs, and their pass is in its
+ * Ticket tab. (A global admin's organizing list is every event, so without
+ * this each of their tickets would show twice.)
  */
 export function groupSwitcherEvents(
   events: Event[],
-  tickets: Ticket[],
+  allTickets: Ticket[],
   now = new Date()
 ): SwitcherGroups {
+  const organised = new Set(events.map((event) => event.id));
+  const tickets = allTickets.filter((ticket) => !organised.has(ticket.event.id));
   const past: PastSwitcherEntry[] = [
     ...events.filter((event) => isPastEvent(event, now)).map((event) => ({ kind: 'organising' as const, event })),
     ...tickets.filter((ticket) => isPastEvent(ticket.event, now)).map((ticket) => ({ kind: 'attending' as const, ticket })),
@@ -47,6 +57,15 @@ export function groupSwitcherEvents(
       .sort((a, b) => byStart(a.event, b.event)),
     past: past.sort((a, b) => byStart(pastEntryEvent(b), pastEntryEvent(a))),
   };
+}
+
+/**
+ * The user's ticket for `eventId`, if they hold one: the pass an organizer
+ * gets in that event's Ticket tab.
+ */
+export function ticketForEvent(tickets: readonly Ticket[], eventId: string | undefined): Ticket | null {
+  if (!eventId) return null;
+  return tickets.find((ticket) => ticket.event.id === eventId) ?? null;
 }
 
 export function switcherEventCount(groups: SwitcherGroups): number {

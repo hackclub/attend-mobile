@@ -9,7 +9,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BottomTabBarHeightContext } from 'react-native-bottom-tabs';
 import { AccountButton } from '../components/AccountSheet';
@@ -31,6 +31,7 @@ import {
 import { api } from '../services/api';
 import { eventStatus } from '../services/eventStatus';
 import { useBannerStatusBar } from '../hooks/useBannerStatusBar';
+import { useEventTicket } from '../hooks/useEventTicket';
 import { resolveTabBarInset } from '../hooks/useTabBarInset';
 import { typography, useTheme } from '../theme';
 import {
@@ -68,20 +69,36 @@ function formatFlightWhen(iso?: string): string {
  * not assume there is a screen to go back to or a tab bar below it.
  */
 export function TicketDetailScreen() {
-  const { tokens, spacing } = useTheme();
   const route = useRoute<TicketDetailRoute>();
+  return <PassView key={route.params.ticket.id} initial={route.params.ticket} />;
+}
+
+/**
+ * The pass in an organizer's Ticket tab: their ticket for the event whose
+ * tabs are showing. It follows the current event (see EventTicketContext);
+ * the tab is only there while there's a ticket to show.
+ */
+export function EventTicketScreen() {
+  const ticket = useEventTicket();
+  if (!ticket) return null;
+  return <PassView key={ticket.id} initial={ticket} inTabs />;
+}
+
+function PassView({ initial, inTabs = false }: { initial: Ticket; inTabs?: boolean }) {
+  const { tokens, spacing } = useTheme();
   const navigation = useNavigation<Nav>();
+  const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const { height: sceneHeight } = useWindowDimensions();
   // Only present when this screen sits inside the native tab navigator.
   const tabBarHeight = useContext(BottomTabBarHeightContext) ?? 0;
   const bottomInset = Math.max(insets.bottom, resolveTabBarInset(tabBarHeight, sceneHeight));
-  const [ticket, setTicket] = useState<Ticket>(route.params.ticket);
+  const [ticket, setTicket] = useState<Ticket>(initial);
 
   useEffect(() => {
     let cancelled = false;
     api
-      .getMyTicket(route.params.ticket.id)
+      .getMyTicket(initial.id)
       .then((fresh) => {
         if (!cancelled) setTicket(fresh);
       })
@@ -89,7 +106,7 @@ export function TicketDetailScreen() {
     return () => {
       cancelled = true;
     };
-  }, [route.params.ticket.id]);
+  }, [initial.id]);
 
   const bannerStatusBar = useBannerStatusBar(tokens.shaded);
 
@@ -114,19 +131,23 @@ export function TicketDetailScreen() {
   // (A drawer open over the pass doesn't count: see canGoBackPastSheets.)
   const canGoBack = canGoBackPastSheets(navigation);
   // As the home for an event the user attends (organizer or not), the banner
-  // switches events like the Overview's does.
-  const canSwitch = !canGoBack;
+  // switches events like the Overview's does. In the Ticket tab the
+  // Overview's banner stays mounted beside this one, and the switcher sits
+  // over the latest switchable banner, so this one only offers it while its
+  // tab is showing. There the event itself is current: the switcher lists it
+  // once, as organized (see groupSwitcherEvents).
+  const canSwitch = inTabs ? isFocused : !canGoBack;
   const bannerSwitcher = useMemo(
     () => ({
       key: bannerKey.ticket(ticket),
-      current: { eventId: ticket.event.id, ticketId: ticket.id },
+      current: inTabs ? { eventId: ticket.event.id } : { eventId: ticket.event.id, ticketId: ticket.id },
       enabled: canSwitch,
       switchTo: (home: PartialState, before?: () => void) => {
         before?.();
         resetRoot(navigation, home);
       },
     }),
-    [canSwitch, navigation, ticket]
+    [canSwitch, inTabs, navigation, ticket]
   );
 
   // Live Activity: let confirmed attendees pin their pass to the Lock Screen.

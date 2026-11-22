@@ -36,7 +36,10 @@ import { SearchScreen } from './src/screens/SearchScreen';
 import { ParticipantDetailScreen } from './src/screens/ParticipantDetailScreen';
 import { MyTicketsScreen } from './src/screens/MyTicketsScreen';
 import { EventSwitcherScreen } from './src/components/EventSwitcher';
-import { TicketDetailScreen } from './src/screens/TicketDetailScreen';
+import { EventTicketScreen, TicketDetailScreen } from './src/screens/TicketDetailScreen';
+import { useSwitcherEvents } from './src/hooks/useSwitcherEvents';
+import { EventTicketContext } from './src/hooks/useEventTicket';
+import { ticketForEvent } from './src/services/eventSwitcher';
 import { ThemeProvider, overlayTokens, useTheme, useThemedStyles, withAlpha, type Theme } from './src/theme';
 import type {
   MainTabParamList,
@@ -45,6 +48,7 @@ import type {
   PeopleStackParamList,
   RootStackParamList,
   ScannerStackParamList,
+  TicketTabParamList,
   TravelStackParamList,
 } from './src/types';
 import * as Sentry from '@sentry/react-native';
@@ -124,6 +128,7 @@ const ScannerStack = createNativeStackNavigator<ScannerStackParamList>();
 const PeopleStack = createNativeStackNavigator<PeopleStackParamList>();
 const TravelStack = createNativeStackNavigator<TravelStackParamList>();
 const PassStack = createNativeStackNavigator<PassStackParamList>();
+const TicketStack = createNativeStackNavigator<TicketTabParamList>();
 
 // Pushed screens draw their own back link and title (components/ui/Screen),
 // so no stack shows a native header.
@@ -261,60 +266,94 @@ function PassStackNavigator() {
   );
 }
 
+/**
+ * An organizer's own pass for the event they're running, when they also hold
+ * a ticket for it (a volunteer who registered, or a global admin attending).
+ * It brings the attendee screens the pass opens: on this event the switcher
+ * lands on the tabs, so there's no attendee stack to reach them from.
+ */
+function TicketTab() {
+  return (
+    <TicketStack.Navigator screenOptions={STACK_OPTIONS}>
+      <TicketStack.Screen name="EventTicket" component={EventTicketScreen} />
+      <TicketStack.Screen name="Inbox" getComponent={lazyScreens.Inbox} />
+      <TicketStack.Screen name="InboxMessage" getComponent={lazyScreens.InboxMessage} />
+      <TicketStack.Screen name="IncidentReport" getComponent={lazyScreens.IncidentReport} options={FORM_MODAL_OPTIONS} />
+    </TicketStack.Navigator>
+  );
+}
+
 function MainTabs() {
   // Every organizer gets Overview, Scan and People; Travel only shows for an
-  // event that runs travel.
+  // event that runs travel, and Ticket only for one they hold a ticket for.
+  // That's five at most, the native bars' limit (Android's refuses a sixth;
+  // iOS folds extras into More).
   const { showTravel } = useEventAccess();
+  const { state } = useApp();
+  const { tickets } = useSwitcherEvents();
+  const eventTicket = ticketForEvent(tickets, state.currentEvent?.id);
   const { tokens } = useTheme();
   const androidTabBarProps = useAndroidTabBarProps();
 
   return (
-    <Tab.Navigator
-      tabBarActiveTintColor={tokens.accent}
-      {...androidTabBarProps}
-      // A tick when a tap switches tabs; reselecting the current tab (which
-      // scrolls it to the top) stays silent.
-      screenListeners={({ navigation }) => ({
-        tabPress: () => {
-          if (!navigation.isFocused()) haptics.selection();
-        },
-      })}
-    >
-      <Tab.Screen
-        name="Overview"
-        component={OverviewTab}
-        options={{
-          tabBarLabel: 'Overview',
-          tabBarIcon: tabIcon(require('./assets/tabs/overview.svg'), require('./assets/tabs/overview-selected.svg')),
-        }}
-      />
-      <Tab.Screen
-        name="Scanner"
-        component={ScannerTab}
-        options={{
-          tabBarLabel: 'Scan',
-          tabBarIcon: tabIcon(require('./assets/tabs/scan.svg'), require('./assets/tabs/scan-selected.svg')),
-        }}
-      />
-      <Tab.Screen
-        name="Search"
-        component={PeopleTab}
-        options={{
-          tabBarLabel: 'People',
-          tabBarIcon: tabIcon(require('./assets/tabs/people.svg'), require('./assets/tabs/people-selected.svg')),
-        }}
-      />
-      {showTravel ? (
+    <EventTicketContext.Provider value={eventTicket}>
+      <Tab.Navigator
+        tabBarActiveTintColor={tokens.accent}
+        {...androidTabBarProps}
+        // A tick when a tap switches tabs; reselecting the current tab (which
+        // scrolls it to the top) stays silent.
+        screenListeners={({ navigation }) => ({
+          tabPress: () => {
+            if (!navigation.isFocused()) haptics.selection();
+          },
+        })}
+      >
         <Tab.Screen
-          name="Travel"
-          component={TravelTab}
+          name="Overview"
+          component={OverviewTab}
           options={{
-            tabBarLabel: 'Travel',
-            tabBarIcon: tabIcon(require('./assets/tabs/travel.svg'), require('./assets/tabs/travel-selected.svg')),
+            tabBarLabel: 'Overview',
+            tabBarIcon: tabIcon(require('./assets/tabs/overview.svg'), require('./assets/tabs/overview-selected.svg')),
           }}
         />
-      ) : null}
-    </Tab.Navigator>
+        <Tab.Screen
+          name="Scanner"
+          component={ScannerTab}
+          options={{
+            tabBarLabel: 'Scan',
+            tabBarIcon: tabIcon(require('./assets/tabs/scan.svg'), require('./assets/tabs/scan-selected.svg')),
+          }}
+        />
+        <Tab.Screen
+          name="Search"
+          component={PeopleTab}
+          options={{
+            tabBarLabel: 'People',
+            tabBarIcon: tabIcon(require('./assets/tabs/people.svg'), require('./assets/tabs/people-selected.svg')),
+          }}
+        />
+        {showTravel ? (
+          <Tab.Screen
+            name="Travel"
+            component={TravelTab}
+            options={{
+              tabBarLabel: 'Travel',
+              tabBarIcon: tabIcon(require('./assets/tabs/travel.svg'), require('./assets/tabs/travel-selected.svg')),
+            }}
+          />
+        ) : null}
+        {eventTicket ? (
+          <Tab.Screen
+            name="Ticket"
+            component={TicketTab}
+            options={{
+              tabBarLabel: 'Ticket',
+              tabBarIcon: tabIcon(require('./assets/tabs/ticket.svg'), require('./assets/tabs/ticket-selected.svg')),
+            }}
+          />
+        ) : null}
+      </Tab.Navigator>
+    </EventTicketContext.Provider>
   );
 }
 

@@ -126,6 +126,9 @@ export function useSwitcherEvents() {
 
   return {
     groups,
+    // Every ticket the user holds, including those merged into an event they
+    // organize (which `groups` lists once, as organized).
+    tickets,
     canSwitch,
     isLoading,
     loadFailed,

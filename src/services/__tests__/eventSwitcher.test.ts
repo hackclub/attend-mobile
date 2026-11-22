@@ -7,6 +7,7 @@ import {
   switcherEventCount,
   switcherPick,
   ticketBadge,
+  ticketForEvent,
 } from '../eventSwitcher';
 import type { Event, Ticket } from '../../types';
 
@@ -49,6 +50,33 @@ describe('groupSwitcherEvents', () => {
       { kind: 'attending', ticket: expect.objectContaining({ id: 't-past' }) },
     ]);
     expect(groups.past.map((entry) => pastEntryEvent(entry).id)).toEqual(['past', 'old']);
+  });
+
+  it('lists an event the user both staffs and holds a ticket for once, as organized', () => {
+    const staffed = event('staffed', '2026-11-20T00:00:00Z');
+    const ended = event('ended', '2026-10-01T00:00:00Z', '2026-10-02T00:00:00Z');
+    const merged = groupSwitcherEvents(
+      [staffed, ended],
+      [ticket('t-staffed', staffed), ticket('t-ended', ended), ticket('t-other', event('other', '2026-11-21T00:00:00Z'))],
+      now
+    );
+    expect(merged.organising.map((e) => e.id)).toEqual(['staffed']);
+    expect(merged.attending.map((t) => t.id)).toEqual(['t-other']);
+    expect(merged.past).toEqual([{ kind: 'organising', event: ended }]);
+    expect(switcherEventCount(merged)).toBe(3);
+  });
+});
+
+describe('ticketForEvent', () => {
+  const tickets = [ticket('t-a', event('a')), ticket('t-b', event('b'))];
+
+  it("finds the user's ticket for an event", () => {
+    expect(ticketForEvent(tickets, 'b')?.id).toBe('t-b');
+  });
+
+  it('has none for an event without one, or no event', () => {
+    expect(ticketForEvent(tickets, 'c')).toBeNull();
+    expect(ticketForEvent(tickets, undefined)).toBeNull();
   });
 });
 
