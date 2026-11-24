@@ -122,7 +122,8 @@
           "microphonePermission": false
         }
       ],
-      "./plugins/withScannerOrientationFix"
+      "./plugins/withScannerOrientationFix",
+      "./plugins/withOptionalHardwareFeatures"
     ],
     "extra": {
       "eas": {
