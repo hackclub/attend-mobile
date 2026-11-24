@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { AppState as RNAppState } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import { authService } from '../services/auth';
 import { syncService, SyncStatus } from '../services/sync';
 import { notificationService } from '../services/notifications';
@@ -8,6 +9,7 @@ import { mergeParticipant, type ParticipantUpdate } from '../services/participan
 import { forbiddenParticipants } from '../services/eventAccess';
 import { clearHeadshotCache, prefetchHeadshots } from '../services/headshotCache';
 import { activeParticipants } from '../services/participantStatus';
+import { offlineScans } from '../services/offlineScans';
 import type { User, Event, Participant, AuthState, SyncState } from '../types';
 
 // Withdrawn and rejected registrations are still in the synced roster but are
@@ -356,6 +358,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
     return persisted;
   }, [state.participants]);
+
+  const confirmParticipantRef = useRef(confirmParticipant);
+  useEffect(() => {
+    confirmParticipantRef.current = confirmParticipant;
+  }, [confirmParticipant]);
+
+  // Scans saved while offline go out as soon as there's a way to send them:
+  // on sign-in, when the connection comes back, and when the app is opened.
+  // Each one Attend accepts updates the roster like a live scan would.
+  useEffect(() => {
+    if (!state.auth.isAuthenticated) return;
+
+    void offlineScans.flush();
+    const unsubscribeNet = NetInfo.addEventListener(network => {
+      if (network.isConnected) void offlineScans.flush();
+    });
+    const appStateSub = RNAppState.addEventListener('change', next => {
+      if (next === 'active') void offlineScans.flush();
+    });
+    const unsubscribeSent = offlineScans.onSent((scan, response) => {
+      void confirmParticipantRef.current(scan.eventId, response.participant).catch(error => {
+        console.warn('[Scanner] Failed to persist a scan sent from the queue:', error);
+      });
+    });
+
+    return () => {
+      unsubscribeNet();
+      appStateSub.remove();
+      unsubscribeSent();
+    };
+  }, [state.auth.isAuthenticated]);
 
   const syncNow = useCallback(async (): Promise<void> => {
     if (!state.currentEvent) return;

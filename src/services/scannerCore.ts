@@ -7,8 +7,17 @@ import type {
   ScanSource,
 } from '../types';
 import { mergeParticipant } from './participantIndex';
+import { decodeSignedTicket } from './signedTicket';
 
-export type ScannerOutcome = 'confirming' | ScanOutcome | 'not_scanned';
+// The saved_* outcomes are scans kept on the device to send later (see
+// services/offlineScans), split by what the device could tell about the code.
+export type ScannerOutcome =
+  | 'confirming'
+  | ScanOutcome
+  | 'not_scanned'
+  | 'saved'
+  | 'saved_unchecked'
+  | 'saved_cancelled';
 
 export interface ScannerResult {
   attemptId: string;
@@ -22,32 +31,18 @@ export interface ScannerResult {
   retryable: boolean;
 }
 
-// A signed ticket from Attend (app/lib/checkin_code.rb there):
-// `ATTEND://CHECKIN/T.<base32>`, decoding to version (1) | key id (1) |
-// participant_event id (16) | signature (64). The app doesn't check the
-// signature; it sends the whole token and the server does.
+// A signed ticket from Attend: `ATTEND://CHECKIN/T.<base32>` (see
+// services/signedTicket). The whole token goes to the server as the id, which
+// checks the signature too.
 const SIGNED_TICKET = /^attend:\/\/checkin\/(T\.[A-Z2-7]+)$/i;
-const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-const SIGNED_TICKET_BYTES = 82;
-
-function signedTicketRegistration(token: string): string | null {
-  let bits = '';
-  for (const char of token.slice(2)) bits += BASE32.indexOf(char).toString(2).padStart(5, '0');
-  const bytes: number[] = [];
-  for (let i = 0; i + 8 <= bits.length; i += 8) bytes.push(parseInt(bits.slice(i, i + 8), 2));
-  if (bytes.length !== SIGNED_TICKET_BYTES || bytes[0] !== 1) return null;
-
-  const hex = bytes.slice(2, 18).map(byte => byte.toString(16).padStart(2, '0')).join('');
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
 
 export function parseQRCode(data: string): QRCodeData | null {
   const trimmed = data.trim();
   const signedMatch = trimmed.match(SIGNED_TICKET);
   if (signedMatch) {
     const token = signedMatch[1].toUpperCase();
-    const registrationId = signedTicketRegistration(token);
-    return registrationId ? { type: 'participant', id: token, registrationId } : null;
+    const ticket = decodeSignedTicket(token);
+    return ticket ? { type: 'participant', id: token, registrationId: ticket.registrationId, ticket } : null;
   }
 
   const checkinUrlMatch = trimmed.match(/^attend:\/\/checkin\/([0-9a-f-]+)$/i);
@@ -189,8 +184,18 @@ export function resultFromResponse(input: {
   };
 }
 
-function retryableFailure(error: unknown): boolean {
+// A request that never got an answer. React Native's fetch throws a TypeError;
+// Expo's (the global fetch since SDK 58) throws a FetchError instead, whose
+// message ("fetch failed: The Internet connection appears to be offline.")
+// is no use to staff. FetchError doesn't set a name and minification renames
+// the class, so its message prefix is the one reliable sign.
+export function isNetworkFailure(error: unknown): boolean {
   if (error instanceof TypeError) return true;
+  return error instanceof Error && error.message.startsWith('fetch failed');
+}
+
+export function retryableFailure(error: unknown): boolean {
+  if (isNetworkFailure(error)) return true;
   if (!error || typeof error !== 'object' || !('status' in error)) return false;
 
   const status = Number(error.status);
@@ -215,4 +220,38 @@ export function failedResult(error: unknown, input: BaseResultInput): ScannerRes
 
 export function createAttemptId(now = Date.now()): string {
   return `${now.toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+const SAVED: Record<'valid' | 'cancelled' | 'unverified', { outcome: ScannerOutcome; message: string }> = {
+  valid: {
+    outcome: 'saved',
+    message: 'No connection. Saved on this device and will be sent automatically.',
+  },
+  unverified: {
+    outcome: 'saved_unchecked',
+    message: "No connection, and this code can't be checked offline. Check their ticket another way. Saved and will be sent automatically.",
+  },
+  cancelled: {
+    outcome: 'saved_cancelled',
+    message: 'This registration was withdrawn or rejected. Check with the event team before letting them in. Saved and will be sent automatically.',
+  },
+};
+
+// A scan kept on the device because Attend couldn't be reached.
+export function savedResult(
+  verdict: 'valid' | 'cancelled' | 'unverified',
+  input: BaseResultInput
+): ScannerResult {
+  return { ...input, ...SAVED[verdict], retryable: false };
+}
+
+// A signed ticket whose signature fails for this event: forged, edited, or
+// another event's. Never sent.
+export function invalidTicketResult(input: BaseResultInput): ScannerResult {
+  return {
+    ...input,
+    outcome: 'not_scanned',
+    message: "This ticket wasn't issued by Attend for this event. It may be fake, or for a different event.",
+    retryable: false,
+  };
 }

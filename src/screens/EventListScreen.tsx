@@ -170,7 +170,13 @@ export function EventListScreen() {
   }, [loadEvents]);
 
   const handleLogout = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+    // Signing out deletes scans saved while offline: they'd otherwise go out
+    // under whoever signs in next.
+    const waiting = state.sync.pendingScans;
+    const message = waiting > 0
+      ? `${waiting} scan${waiting === 1 ? " hasn't" : "s haven't"} been sent yet. Signing out deletes ${waiting === 1 ? 'it' : 'them'}. Connect to the internet first to send ${waiting === 1 ? 'it' : 'them'}.`
+      : 'Are you sure you want to sign out?';
+    Alert.alert('Sign Out', message, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Sign Out', style: 'destructive', onPress: logout },
     ]);

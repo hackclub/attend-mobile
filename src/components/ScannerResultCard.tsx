@@ -41,6 +41,21 @@ const OUTCOME: Record<ScannerOutcome, {
     icon: 'close-circle',
     color: colors.red,
   },
+  saved: {
+    label: 'Valid · Saved Offline',
+    icon: 'cloud-done',
+    color: colors.green,
+  },
+  saved_unchecked: {
+    label: 'Saved Offline',
+    icon: 'cloud-offline',
+    color: colors.orange,
+  },
+  saved_cancelled: {
+    label: 'Cancelled Ticket',
+    icon: 'ban',
+    color: colors.red,
+  },
 };
 
 function formattedFirstScan(timestamp?: string): string | null {

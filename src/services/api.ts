@@ -1,6 +1,7 @@
 import { secureStorage } from './storage';
 import { forbiddenParticipants } from './eventAccess';
 import type { IdCheckPayload } from './idCheck/verdict';
+import type { CheckinCodeMaterial } from './signedTicket';
 import type {
   TravelCalendarData,
   TravelCalendarEntry,
@@ -281,6 +282,19 @@ class ApiClient {
       `/api/v1/events/${eventId}/scan_contexts`
     );
     return response.scan_contexts || [];
+  }
+
+  // Public keys and cancelled registrations for checking signed tickets on
+  // the device (see services/signedTicket).
+  async getCheckinCodes(eventId: string): Promise<CheckinCodeMaterial> {
+    const response = await this.request<Partial<CheckinCodeMaterial>>(
+      `/api/v1/events/${eventId}/checkin_codes`
+    );
+    return {
+      signing: response.signing ?? false,
+      keys: response.keys ?? {},
+      cancelled: response.cancelled ?? [],
+    };
   }
 
   async getScans(eventId: string, since?: string): Promise<ScansSyncPage> {

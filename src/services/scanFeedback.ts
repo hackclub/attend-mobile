@@ -20,6 +20,17 @@ export function feedbackForOutcome(outcome: ScannerOutcome): ScanFeedback | null
         sound: 'already-scanned',
         haptic: Haptics.NotificationFeedbackType.Warning,
       };
+    case 'saved':
+      return {
+        sound: 'scanned',
+        haptic: Haptics.NotificationFeedbackType.Success,
+      };
+    case 'saved_unchecked':
+      return {
+        sound: 'already-scanned',
+        haptic: Haptics.NotificationFeedbackType.Warning,
+      };
+    case 'saved_cancelled':
     case 'not_scanned':
       return {
         sound: 'not-scanned',

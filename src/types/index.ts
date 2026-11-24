@@ -1,3 +1,5 @@
+import type { SignedTicket } from '../services/signedTicket';
+
 export interface User {
   id: string;
   email: string;
@@ -512,8 +514,10 @@ export type QRCodeData = {
   // ticket token, which the server verifies.
   id: string;
   // For a signed ticket, the registration it names, read off the code so the
-  // cached attendee can show while the server confirms. Not verified here.
+  // cached attendee can show while the server confirms, and the decoded
+  // ticket for checking its signature on the device (services/signedTicket).
   registrationId?: string;
+  ticket?: SignedTicket;
 };
 
 // Travel calendar (the successor to "airport mode"): the API returns every

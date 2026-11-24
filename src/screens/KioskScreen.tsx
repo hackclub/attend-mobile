@@ -93,6 +93,9 @@ export function KioskScreen() {
       scanned: 'Scanned',
       already_scanned: 'Already Scanned',
       not_scanned: 'Not Scanned',
+      saved: 'Valid, saved offline',
+      saved_unchecked: 'Saved offline',
+      saved_cancelled: 'Cancelled ticket',
     }[lastScan.outcome];
     const name = lastScan.participant?.display_name || lastScan.participant?.full_name;
     AccessibilityInfo.announceForAccessibility([label, name, lastScan.message]
@@ -245,6 +248,9 @@ function KioskResult({ result }: { result: ScannerResult }) {
     scanned: { tint: colors.green, icon: 'checkmark-circle' as const, label: 'Scanned' },
     already_scanned: { tint: colors.orange, icon: 'time' as const, label: 'Already Scanned' },
     not_scanned: { tint: colors.redOnDark, icon: 'close-circle' as const, label: 'Not Scanned' },
+    saved: { tint: colors.green, icon: 'cloud-done' as const, label: 'Valid · Saved Offline' },
+    saved_unchecked: { tint: colors.orange, icon: 'cloud-offline' as const, label: 'Saved Offline' },
+    saved_cancelled: { tint: colors.redOnDark, icon: 'ban' as const, label: 'Cancelled Ticket' },
   }[result.outcome];
   const name = result.participant?.display_name || result.participant?.full_name || '';
 
