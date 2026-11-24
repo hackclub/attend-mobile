@@ -19,6 +19,9 @@ import type { ScanContext, ScanSource } from '../types';
 interface ScanRequest {
   kind: 'participant' | 'badge';
   identifier: string;
+  // Where to look the attendee up locally, when it isn't `identifier`
+  // (a signed ticket's registration id).
+  lookupId?: string;
   rawData: string;
   source: ScanSource;
   scanContext?: ScanContext;
@@ -152,7 +155,7 @@ export function useScanner(options: {
 
     const cachedParticipant = request.kind === 'badge'
       ? participantIndex.findByNfcToken(request.identifier)
-      : participantIndex.find(request.identifier);
+      : participantIndex.find(request.lookupId ?? request.identifier);
     const attemptId = request.attemptId ?? createAttemptId();
     const startedAt = request.startedAt ?? new Date().toISOString();
     const stableRequest = { ...request, attemptId, startedAt };
@@ -258,6 +261,7 @@ export function useScanner(options: {
     return runRequest({
       kind: 'participant',
       identifier: parsed.id,
+      lookupId: parsed.registrationId,
       rawData: data,
       source,
       scanContext: selectedContext,
@@ -342,6 +346,7 @@ export function useScanner(options: {
     return runRequest({
       kind: 'participant',
       identifier: parsed.id,
+      lookupId: parsed.registrationId,
       rawData: nfcResult.payload,
       source: 'nfc',
       scanContext: selectedContext,

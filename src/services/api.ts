@@ -37,6 +37,9 @@ import type {
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL || (__DEV__ ? 'http://192.168.0.218:3000' : 'https://attend.hackclub.com');
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const SCAN_REQUEST_TIMEOUT_MS = 8_000;
+// Bump when the scanner learns to read a new kind of code (see getHeaders).
+// 2: signed check-in tickets.
+export const SCANNER_VERSION = '2';
 
 // What the travel calendar sends instead of a car journey's route for a role
 // that can't see addresses. A sentinel, not data.
@@ -67,6 +70,10 @@ class ApiClient {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
+      // Tells Attend what this build's scanner can read. Once Attend signs
+      // tickets it refuses scans from builds below 2 with a 426 asking for
+      // an update, since those can't read a signed ticket at all.
+      'X-Attend-Scanner': SCANNER_VERSION,
     };
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;

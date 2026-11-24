@@ -22,8 +22,34 @@ export interface ScannerResult {
   retryable: boolean;
 }
 
+// A signed ticket from Attend (app/lib/checkin_code.rb there):
+// `ATTEND://CHECKIN/T.<base32>`, decoding to version (1) | key id (1) |
+// participant_event id (16) | signature (64). The app doesn't check the
+// signature; it sends the whole token and the server does.
+const SIGNED_TICKET = /^attend:\/\/checkin\/(T\.[A-Z2-7]+)$/i;
+const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+const SIGNED_TICKET_BYTES = 82;
+
+function signedTicketRegistration(token: string): string | null {
+  let bits = '';
+  for (const char of token.slice(2)) bits += BASE32.indexOf(char).toString(2).padStart(5, '0');
+  const bytes: number[] = [];
+  for (let i = 0; i + 8 <= bits.length; i += 8) bytes.push(parseInt(bits.slice(i, i + 8), 2));
+  if (bytes.length !== SIGNED_TICKET_BYTES || bytes[0] !== 1) return null;
+
+  const hex = bytes.slice(2, 18).map(byte => byte.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export function parseQRCode(data: string): QRCodeData | null {
   const trimmed = data.trim();
+  const signedMatch = trimmed.match(SIGNED_TICKET);
+  if (signedMatch) {
+    const token = signedMatch[1].toUpperCase();
+    const registrationId = signedTicketRegistration(token);
+    return registrationId ? { type: 'participant', id: token, registrationId } : null;
+  }
+
   const checkinUrlMatch = trimmed.match(/^attend:\/\/checkin\/([0-9a-f-]+)$/i);
   if (checkinUrlMatch) {
     return { type: 'participant', id: checkinUrlMatch[1] };
