@@ -46,6 +46,29 @@ describe('parseQRCode', () => {
   it('rejects unrelated qr data', () => {
     expect(parseQRCode('https://example.com')).toBeNull();
   });
+
+  // Signed by Attend's CheckinCode with a throwaway test key; the ids are made up.
+  const SIGNED = 'T.AED2VKVKVK53WTGMRXO653XO53XO5Z3XVB66Q34V2V72SPD3JRKHN4OXBNR25I7BTJUMJXLV5SVSFKINXVAFGF3TRFORE5QNYCF2XWIF6OCUGZV3LXX3WPJ5DBNJZOPQ3ZCA';
+
+  it.each([
+    `ATTEND://CHECKIN/${SIGNED}`,
+    `  attend://checkin/${SIGNED.toLowerCase()}\n`,
+  ])('sends a signed ticket whole, and reads its registration for the cache: %s', raw => {
+    expect(parseQRCode(raw)).toEqual({
+      type: 'participant',
+      id: SIGNED,
+      registrationId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+    });
+  });
+
+  it.each([
+    'ATTEND://CHECKIN/T.',
+    `ATTEND://CHECKIN/T.${'A'.repeat(20)}`,
+    `ATTEND://CHECKIN/T.${'B'.repeat(132)}`,
+    `ATTEND://CHECKIN/${SIGNED}!`,
+  ])('rejects something that only looks like a signed ticket: %s', raw => {
+    expect(parseQRCode(raw)).toBeNull();
+  });
 });
 
 describe('SameCodeGate', () => {

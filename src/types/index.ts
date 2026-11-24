@@ -508,7 +508,12 @@ export type ParticipantTabParamList = {
 
 export type QRCodeData = {
   type: 'participant';
+  // What the server is sent as participant_id: an id, or a whole signed
+  // ticket token, which the server verifies.
   id: string;
+  // For a signed ticket, the registration it names, read off the code so the
+  // cached attendee can show while the server confirms. Not verified here.
+  registrationId?: string;
 };
 
 // Travel calendar (the successor to "airport mode"): the API returns every
