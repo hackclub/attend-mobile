@@ -25,6 +25,10 @@ import type { QRCodeData, ScanContext, ScanSource } from '../types';
 // How stale the keys and cancelled list may get while the scanner is in use
 // online before a successful scan fetches them again.
 const CHECKIN_CODES_REFRESH_MS = 5 * 60_000;
+// Past this, a saved copy can't vouch for a ticket any more: someone may have
+// withdrawn since, or a key may have been retired. A ticket that checks out
+// against it is treated as unchecked. A forged one is still turned away.
+const CHECKIN_CODES_TRUSTED_MS = 24 * 60 * 60_000;
 
 interface ScanRequest {
   kind: 'participant' | 'badge';
@@ -139,11 +143,11 @@ export function useScanner(options: {
     async function loadCheckinCodes() {
       const cachedCodes = await checkinCodes.cached(activeEventId);
       if (!cancelled && cachedCodes) {
-        checkinCodesRef.current = { eventId: activeEventId, material: cachedCodes, fetchedAt: 0 };
+        checkinCodesRef.current = { eventId: activeEventId, ...cachedCodes };
       }
       try {
         const fresh = await checkinCodes.refresh(activeEventId);
-        if (!cancelled) checkinCodesRef.current = { eventId: activeEventId, material: fresh, fetchedAt: Date.now() };
+        if (!cancelled) checkinCodesRef.current = { eventId: activeEventId, ...fresh };
       } catch {
         // Offline, or an Attend without the endpoint yet: the saved copy, or
         // none, which leaves every code to the server.
@@ -163,16 +167,20 @@ export function useScanner(options: {
     const eventId = currentEventIdRef.current;
     const codes = checkinCodesRef.current;
     if (!eventId) return verifySignedTicket(undefined, '', null);
-    return verifySignedTicket(parsed.ticket, eventId, codes?.eventId === eventId ? codes.material : null);
+    const check = verifySignedTicket(parsed.ticket, eventId, codes?.eventId === eventId ? codes.material : null);
+    if (check.verdict === 'valid' && codes && Date.now() - codes.fetchedAt > CHECKIN_CODES_TRUSTED_MS) {
+      return { verdict: 'unverified' as const };
+    }
+    return check;
   }, []);
 
   const refreshCheckinCodesIfStale = useCallback((eventId: string) => {
     const codes = checkinCodesRef.current;
     if (codes?.eventId === eventId && Date.now() - codes.fetchedAt < CHECKIN_CODES_REFRESH_MS) return;
     void checkinCodes.refresh(eventId)
-      .then(material => {
+      .then(fresh => {
         if (currentEventIdRef.current === eventId) {
-          checkinCodesRef.current = { eventId, material, fetchedAt: Date.now() };
+          checkinCodesRef.current = { eventId, ...fresh };
         }
       })
       .catch(() => {});
@@ -189,6 +197,28 @@ export function useScanner(options: {
     });
     setLastScan(result);
     return result;
+  }, []);
+
+  // When this person was last scanned at this scan point, as far as the
+  // device knows: a scan still waiting to send, or one already synced down.
+  const earlierScan = useCallback(async (
+    eventId: string,
+    identifier: string,
+    registrationId: string | undefined,
+    scanContext: ScanContext | undefined
+  ): Promise<string | undefined> => {
+    const waiting = await offlineScans.findWaiting({
+      eventId,
+      scanContextId: scanContext?.id,
+      identifier,
+      registrationId,
+    });
+    if (waiting) return waiting.scannedAt;
+    if (!registrationId || !scanContext) return undefined;
+    const synced = (await syncService.getCachedScans(eventId)).find(scan =>
+      scan.participant_event_id === registrationId && scan.scan_context?.id === scanContext.id
+    );
+    return synced?.scanned_at;
   }, []);
 
   const runRequest = useCallback(async (
@@ -264,11 +294,16 @@ export function useScanner(options: {
       // later, under the same id so it can never be counted twice.
       if (retryableFailure(error)) {
         try {
+          const registrationId = request.lookupId ?? cachedParticipant?.participant_event_id;
+          // The same ticket shown twice (or a copy of it) at this scan point,
+          // caught on the device rather than only once the scans sync.
+          const earlier = await earlierScan(eventId, request.identifier, registrationId, scanContext);
           await offlineScans.enqueue({
             clientScanId: attemptId,
             eventId,
             kind: request.kind,
             identifier: request.identifier,
+            registrationId,
             scanContextId: scanContext?.id,
             source: request.source,
             scannedAt: startedAt,
@@ -281,7 +316,7 @@ export function useScanner(options: {
             source: request.source,
             participant: cachedParticipant,
             scanContext,
-          });
+          }, earlier);
           setLastScan(saved);
           return saved;
         } catch (saveError) {
@@ -307,6 +342,7 @@ export function useScanner(options: {
   }, [
     confirmParticipant,
     contextRequiredResult,
+    earlierScan,
     participantIndex,
     refreshCheckinCodesIfStale,
     scanContexts.length,

@@ -243,6 +243,14 @@ describe('offline results', () => {
     expect(savedResult('cancelled', input).message).toMatch(/withdrawn or rejected/);
   });
 
+  it('says when the device has already seen this person here, unless the ticket is cancelled', () => {
+    const repeat = savedResult('valid', input, '2026-11-24T10:00:00Z');
+    expect(repeat).toMatchObject({ outcome: 'already_scanned', firstScannedAt: '2026-11-24T10:00:00Z', retryable: false });
+    expect(repeat.message).toMatch(/already scanned here/i);
+    expect(savedResult('unverified', input, '2026-11-24T10:00:00Z').outcome).toBe('already_scanned');
+    expect(savedResult('cancelled', input, '2026-11-24T10:00:00Z').outcome).toBe('saved_cancelled');
+  });
+
   it('turns away a ticket whose signature fails, with nothing to retry', () => {
     expect(invalidTicketResult(input)).toMatchObject({ outcome: 'not_scanned', retryable: false });
     expect(invalidTicketResult(input).message).toMatch(/wasn't issued by Attend for this event/);

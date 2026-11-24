@@ -13,9 +13,15 @@ export interface QueuedScan {
   // recorded, so a scan that got through just before the connection dropped
   // is never counted twice.
   clientScanId: string;
+  // Who made the scan. Only they send it: if a session lapses and someone
+  // else signs in, their login must not be the one recording these.
+  userId: string;
   eventId: string;
   kind: 'participant' | 'badge';
   identifier: string;
+  // The registration the code names, when the device could read it (a signed
+  // ticket, or a cached attendee), for spotting the same person twice.
+  registrationId?: string;
   scanContextId?: string;
   source: ScanSource;
   // When the scan happened, which Attend records rather than when it arrived.
@@ -37,6 +43,10 @@ type SentListener = (scan: QueuedScan, response: CreateScanResponse) => void;
 // every event, stored under pending_scans and cleared on sign-out.
 export class OfflineScanQueue {
   private scans: QueuedScan[] | null = null;
+  private userId: string | null = null;
+  // Bumped by clear(), so a flush that was mid-request when someone signed
+  // out can't write the list it read back over the cleared one.
+  private generation = 0;
   private writes: Promise<unknown> = Promise.resolve();
   private flushing: Promise<void> | null = null;
   private listeners = new Set<() => void>();
@@ -59,24 +69,58 @@ export class OfflineScanQueue {
   private async save(scans: QueuedScan[]): Promise<void> {
     this.scans = scans;
     await asyncStorage.set(STORAGE_KEYS.PENDING_SCANS, scans);
+    this.notify();
+  }
+
+  private notify(): void {
     this.listeners.forEach(listener => listener());
   }
 
-  enqueue(scan: Omit<QueuedScan, 'failures'>): Promise<void> {
+  // The person signed in now, or null. Scans are saved as theirs, and only
+  // theirs are sent or counted.
+  setUser(userId: string | null): void {
+    if (this.userId === userId) return;
+    this.userId = userId;
+    this.notify();
+  }
+
+  enqueue(scan: Omit<QueuedScan, 'failures' | 'userId'>): Promise<void> {
     return this.serial(async () => {
+      const userId = this.userId;
+      if (!userId) throw new Error('No one is signed in to save this scan for.');
       const scans = await this.load();
       if (scans.some(existing => existing.clientScanId === scan.clientScanId)) return;
-      await this.save([...scans, { ...scan, failures: 0 }]);
+      await this.save([...scans, { ...scan, userId, failures: 0 }]);
     });
   }
 
+  // The current user's scans, optionally for one event.
   async all(eventId?: string): Promise<QueuedScan[]> {
-    const scans = await this.load();
-    return eventId ? scans.filter(scan => scan.eventId === eventId) : [...scans];
+    return (await this.load()).filter(scan =>
+      scan.userId === this.userId && (!eventId || scan.eventId === eventId)
+    );
   }
 
   async pendingCount(): Promise<number> {
-    return (await this.load()).filter(scan => !scan.rejected).length;
+    return (await this.all()).filter(scan => !scan.rejected).length;
+  }
+
+  // A scan of the same person (or the same code) at the same scan point,
+  // still waiting on this device.
+  async findWaiting(match: {
+    eventId: string;
+    scanContextId?: string;
+    identifier: string;
+    registrationId?: string;
+  }): Promise<QueuedScan | undefined> {
+    return (await this.all(match.eventId)).find(scan =>
+      !scan.rejected
+      && scan.scanContextId === match.scanContextId
+      && (
+        scan.identifier === match.identifier
+        || (!!match.registrationId && scan.registrationId === match.registrationId)
+      )
+    );
   }
 
   dismiss(clientScanId: string): Promise<void> {
@@ -86,8 +130,13 @@ export class OfflineScanQueue {
     });
   }
 
-  private update(clientScanId: string, change: (scan: QueuedScan) => QueuedScan | null): Promise<void> {
+  private update(
+    clientScanId: string,
+    generation: number,
+    change: (scan: QueuedScan) => QueuedScan | null
+  ): Promise<void> {
     return this.serial(async () => {
+      if (generation !== this.generation) return;
       const scans = await this.load();
       const next = scans.flatMap(scan => {
         if (scan.clientScanId !== clientScanId) return [scan];
@@ -121,11 +170,16 @@ export class OfflineScanQueue {
   }
 
   private async run(): Promise<void> {
-    const waiting = (await this.load())
+    const generation = this.generation;
+    const userId = this.userId;
+    if (!userId) return;
+
+    const waiting = (await this.all())
       .filter(scan => !scan.rejected)
       .sort((a, b) => a.scannedAt.localeCompare(b.scannedAt));
 
     for (const scan of waiting) {
+      if (generation !== this.generation || userId !== this.userId) return;
       try {
         const options = {
           scanContextId: scan.scanContextId,
@@ -136,8 +190,10 @@ export class OfflineScanQueue {
         const response = scan.kind === 'badge'
           ? await api.createNfcScan(scan.eventId, scan.identifier, options)
           : await api.createScan(scan.eventId, scan.identifier, options);
-        await this.update(scan.clientScanId, () => null);
-        this.sentListeners.forEach(listener => listener(scan, response));
+        await this.update(scan.clientScanId, generation, () => null);
+        if (generation === this.generation) {
+          this.sentListeners.forEach(listener => listener(scan, response));
+        }
       } catch (error) {
         const status = error instanceof ApiError ? error.status : null;
         // Offline, timed out, signed out, told to update the app, or rate
@@ -147,10 +203,10 @@ export class OfflineScanQueue {
         }
         if (status >= 400 && status < 500) {
           const message = error instanceof Error ? error.message : 'Attend turned this scan down.';
-          await this.update(scan.clientScanId, current => ({ ...current, rejected: message }));
+          await this.update(scan.clientScanId, generation, current => ({ ...current, rejected: message }));
           continue;
         }
-        await this.update(scan.clientScanId, current => {
+        await this.update(scan.clientScanId, generation, current => {
           const failures = current.failures + 1;
           return failures >= MAX_SERVER_FAILURES
             ? { ...current, failures, rejected: 'Attend kept failing on this scan.' }
@@ -160,10 +216,15 @@ export class OfflineScanQueue {
     }
   }
 
-  // After sign-out, which deletes pending_scans along with the other caches.
-  forget(): void {
-    this.scans = null;
-    this.listeners.forEach(listener => listener());
+  // Sign-out: drops every saved scan, in turn with any write already queued,
+  // and stops a flush in progress from writing anything back.
+  clear(): Promise<void> {
+    return this.serial(async () => {
+      this.generation += 1;
+      this.scans = [];
+      await asyncStorage.remove(STORAGE_KEYS.PENDING_SCANS);
+      this.notify();
+    });
   }
 }
 

@@ -366,9 +366,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Scans saved while offline go out as soon as there's a way to send them:
   // on sign-in, when the connection comes back, and when the app is opened.
-  // Each one Attend accepts updates the roster like a live scan would.
+  // Only the signed-in person's go; each one Attend accepts updates the
+  // roster like a live scan would.
+  const signedInUserId = state.auth.isAuthenticated ? state.auth.user?.id ?? null : null;
   useEffect(() => {
-    if (!state.auth.isAuthenticated) return;
+    offlineScans.setUser(signedInUserId);
+    if (!signedInUserId) return;
 
     void offlineScans.flush();
     const unsubscribeNet = NetInfo.addEventListener(network => {
@@ -388,7 +391,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       appStateSub.remove();
       unsubscribeSent();
     };
-  }, [state.auth.isAuthenticated]);
+  }, [signedInUserId]);
 
   const syncNow = useCallback(async (): Promise<void> => {
     if (!state.currentEvent) return;

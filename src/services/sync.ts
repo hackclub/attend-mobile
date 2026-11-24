@@ -350,7 +350,7 @@ class SyncService {
     });
     this.cacheWriteQueue = clearOperation.catch(() => undefined);
     await clearOperation;
-    offlineScans.forget();
+    await offlineScans.clear();
     await this.notifyListeners();
   }
 }

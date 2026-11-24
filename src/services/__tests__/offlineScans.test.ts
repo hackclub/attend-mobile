@@ -26,7 +26,7 @@ import { OfflineScanQueue, type QueuedScan } from '../offlineScans';
 const createScan = api.createScan as jest.MockedFunction<typeof api.createScan>;
 const createNfcScan = api.createNfcScan as jest.MockedFunction<typeof api.createNfcScan>;
 
-function scan(id: string, scannedAt: string, overrides: Partial<QueuedScan> = {}): Omit<QueuedScan, 'failures'> {
+function scan(id: string, scannedAt: string, overrides: Partial<QueuedScan> = {}): Omit<QueuedScan, 'failures' | 'userId'> {
   return {
     clientScanId: id,
     eventId: 'event-1',
@@ -50,6 +50,7 @@ describe('OfflineScanQueue', () => {
     await AsyncStorage.clear();
     jest.clearAllMocks();
     queue = new OfflineScanQueue();
+    queue.setUser('staff-1');
   });
 
   it('keeps scans across a restart, once each', async () => {
@@ -57,6 +58,7 @@ describe('OfflineScanQueue', () => {
     await queue.enqueue(scan('a', '2026-11-24T10:00:00Z'));
 
     const restarted = new OfflineScanQueue();
+    restarted.setUser('staff-1');
     expect((await restarted.all()).map(s => s.clientScanId)).toEqual(['a']);
     expect(await restarted.pendingCount()).toBe(1);
   });
@@ -150,15 +152,66 @@ describe('OfflineScanQueue', () => {
     expect(createScan).toHaveBeenCalledTimes(1);
   });
 
-  it('tells listeners when the queue changes, and forgets it after sign-out', async () => {
+  it('tells listeners when the queue changes, and empties it on sign-out', async () => {
     const changes = jest.fn();
     queue.subscribe(changes);
 
     await queue.enqueue(scan('a', '2026-11-24T10:00:00Z'));
     expect(changes).toHaveBeenCalled();
 
-    await AsyncStorage.clear();
-    queue.forget();
+    await queue.clear();
     expect(await queue.pendingCount()).toBe(0);
+    expect(await asyncStorage.get(STORAGE_KEYS.PENDING_SCANS)).toBeNull();
+  });
+
+  // A session can lapse and someone else sign in without signing out first.
+  it("only sends and counts the signed-in person's scans", async () => {
+    await queue.enqueue(scan('mine', '2026-11-24T10:00:00Z'));
+    queue.setUser('staff-2');
+    await queue.enqueue(scan('theirs', '2026-11-24T10:01:00Z'));
+    createScan.mockImplementation(async (_event, _id, options) => accepted(options.clientScanId!));
+
+    expect(await queue.pendingCount()).toBe(1);
+    await queue.flush();
+
+    expect(createScan).toHaveBeenCalledTimes(1);
+    expect(createScan).toHaveBeenCalledWith('event-1', 'T.TICKETTHEIRS', expect.anything());
+    queue.setUser('staff-1');
+    expect((await queue.all()).map(s => s.clientScanId)).toEqual(['mine']);
+
+    queue.setUser(null);
+    await expect(queue.enqueue(scan('nobody', '2026-11-24T10:02:00Z'))).rejects.toThrow();
+    await queue.flush();
+    expect(createScan).toHaveBeenCalledTimes(1);
+  });
+
+  it("doesn't write a flush's results back over a sign-out that happened mid-request", async () => {
+    await queue.enqueue(scan('a', '2026-11-24T10:00:00Z'));
+    await queue.enqueue(scan('b', '2026-11-24T10:01:00Z'));
+    let release: (value: CreateScanResponse) => void = () => {};
+    createScan.mockReturnValueOnce(new Promise(resolve => { release = resolve; }));
+    const sent = jest.fn();
+    queue.onSent(sent);
+
+    const flushing = queue.flush();
+    await new Promise(resolve => setImmediate(resolve));
+    await queue.clear();
+    release(accepted('a'));
+    await flushing;
+
+    expect(createScan).toHaveBeenCalledTimes(1);
+    expect(sent).not.toHaveBeenCalled();
+    expect(await queue.all()).toEqual([]);
+    expect(await asyncStorage.get(STORAGE_KEYS.PENDING_SCANS)).toBeNull();
+  });
+
+  it('finds a scan of the same person waiting at the same scan point', async () => {
+    await queue.enqueue(scan('a', '2026-11-24T10:00:00Z', { registrationId: 'reg-1' }));
+
+    const at = { eventId: 'event-1', scanContextId: 'context-1' };
+    expect(await queue.findWaiting({ ...at, identifier: 'T.TICKETA' })).toMatchObject({ clientScanId: 'a' });
+    expect(await queue.findWaiting({ ...at, identifier: 'typed-id', registrationId: 'reg-1' })).toMatchObject({ clientScanId: 'a' });
+    expect(await queue.findWaiting({ ...at, identifier: 'other', registrationId: 'reg-2' })).toBeUndefined();
+    expect(await queue.findWaiting({ eventId: 'event-1', scanContextId: 'context-2', identifier: 'T.TICKETA' })).toBeUndefined();
   });
 });

@@ -237,11 +237,23 @@ const SAVED: Record<'valid' | 'cancelled' | 'unverified', { outcome: ScannerOutc
   },
 };
 
-// A scan kept on the device because Attend couldn't be reached.
+// A scan kept on the device because Attend couldn't be reached. `earlierAt`
+// is when the device last saw this person at this scan point, if it has: the
+// same ticket twice, or a copy of it. A cancelled ticket says so first.
 export function savedResult(
   verdict: 'valid' | 'cancelled' | 'unverified',
-  input: BaseResultInput
+  input: BaseResultInput,
+  earlierAt?: string
 ): ScannerResult {
+  if (earlierAt && verdict !== 'cancelled') {
+    return {
+      ...input,
+      outcome: 'already_scanned',
+      firstScannedAt: earlierAt,
+      message: 'Already scanned here. No connection, so this one is saved on this device and will be sent automatically.',
+      retryable: false,
+    };
+  }
   return { ...input, ...SAVED[verdict], retryable: false };
 }
 
