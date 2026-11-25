@@ -23,7 +23,7 @@ jest.mock('../api', () => ({
 
 import { api } from '../api';
 import { syncService } from '../sync';
-import { scanQueue } from '../scanQueue';
+import { offlineScans } from '../offlineScans';
 import { hashNfcBadgeToken, PARTICIPANT_CACHE_VERSION } from '../participantCache';
 import { ParticipantIndex } from '../participantIndex';
 
@@ -460,7 +460,7 @@ describe('NFC badge token hashing', () => {
 
 describe('syncService.syncAll', () => {
   it('flushes queued scans for every event, not just the current one', async () => {
-    const flush = jest.spyOn(scanQueue, 'flush').mockResolvedValue([]);
+    const flush = jest.spyOn(offlineScans, 'flush').mockResolvedValue();
     mockGetParticipants.mockResolvedValue({ participants: [], synced_at: 'now' });
     mockGetScans.mockResolvedValue({ scans: [], synced_at: 'now', has_more: false } as ScansSyncPage);
     (api.getEvents as jest.Mock).mockResolvedValue([]);
@@ -475,8 +475,8 @@ describe('syncService.syncAll', () => {
 
   it('reports how many scans are left after a time-limited flush', async () => {
     jest.useFakeTimers();
-    const flush = jest.spyOn(scanQueue, 'flush').mockReturnValue(new Promise(() => {}));
-    const count = jest.spyOn(scanQueue, 'getPendingCount').mockResolvedValue(3);
+    const flush = jest.spyOn(offlineScans, 'flush').mockReturnValue(new Promise(() => {}));
+    const count = jest.spyOn(offlineScans, 'pendingCount').mockResolvedValue(3);
 
     const result = syncService.flushQueuedScans(1_000);
     await jest.advanceTimersByTimeAsync(1_000);

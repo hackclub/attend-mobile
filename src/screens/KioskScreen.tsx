@@ -116,8 +116,10 @@ export function KioskScreen() {
     const label = {
       scanned: 'Scanned',
       already_scanned: 'Already scanned',
-      queued: 'Saved offline',
       not_scanned: 'Not scanned',
+      saved: 'Valid, saved offline',
+      saved_unchecked: 'Saved offline',
+      saved_cancelled: 'Cancelled ticket',
     }[lastScan.outcome];
     const name = lastScan.participant?.display_name || lastScan.participant?.full_name;
     AccessibilityInfo.announceForAccessibility([label, name, lastScan.message]

@@ -148,6 +148,7 @@
       ],
       "./plugins/withAndroidBrandTheme",
       "./plugins/withScannerOrientationFix",
+      "./plugins/withOptionalHardwareFeatures",
       "./plugins/withKotlinJvmTargetFix",
       "./plugins/withAppShortcuts",
       "./plugins/withKeepRuntimeResources",

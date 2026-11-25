@@ -190,12 +190,9 @@ export const STORAGE_KEYS = {
   SCAN_SYNC_CURSOR: (eventId: string) => `scan_sync_cursor_${eventId}`,
   PARTICIPANT_SYNC_CURSOR: (eventId: string) => `participant_sync_cursor_${eventId}`,
   SCAN_CONTEXTS: (eventId: string) => `scan_contexts_${eventId}`,
+  CHECKIN_CODES: (eventId: string) => `checkin_codes_${eventId}`,
   POWER_MODE_ENABLED: 'scanner_power_mode_enabled',
   PENDING_SCANS: 'pending_scans',
-  // Offline scan queue: scans not yet confirmed by the server, oldest first,
-  // and scans the server permanently rejected, kept for the user to see.
-  SCAN_QUEUE: (eventId: string) => `scan_queue_${eventId}`,
-  SCAN_QUEUE_FAILED: (eventId: string) => `scan_queue_failed_${eventId}`,
   PARTICIPANT_CACHE_VERSION: 'participant_cache_version',
   LAST_SYNC: 'last_sync',
   EVENTS: 'cached_events',

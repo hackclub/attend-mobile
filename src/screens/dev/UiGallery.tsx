@@ -540,7 +540,9 @@ function KioskWelcomePreview({ onClose }: { onClose: () => void }) {
       <View style={{ position: 'absolute', left: 24, right: 24, bottom: 48, gap: 8 }}>
         <Button title="Scanned" onPress={() => show('scanned')} />
         <Button title="Already scanned" onPress={() => show('already_scanned')} />
-        <Button title="Saved offline" onPress={() => show('queued')} />
+        <Button title="Valid, saved offline" onPress={() => show('saved')} />
+        <Button title="Saved offline" onPress={() => show('saved_unchecked')} />
+        <Button title="Cancelled ticket" onPress={() => show('saved_cancelled')} />
         <Button title="Not scanned" onPress={() => show('not_scanned', 'This QR code isn’t for this event.')} />
         <Button title="Close" variant="link" onPress={onClose} />
       </View>

@@ -25,11 +25,18 @@ const OUTCOME: Record<ScannerOutcome, { label: string; status: StatusType }> = {
   confirming: { label: 'Confirming', status: 'in-progress' },
   scanned: { label: 'Scanned', status: 'success' },
   already_scanned: { label: 'Already scanned', status: 'warning' },
-  // Saved to the offline queue: deliberately not success-coloured, since
-  // nothing has been confirmed. The detail line comes from result.message.
-  queued: { label: 'Saved offline', status: 'pending' },
   not_scanned: { label: 'Not scanned', status: 'error' },
+  // Saved on the device to send later (services/offlineScans), by what the
+  // device could tell about the code. Only a ticket whose signature checked
+  // out offline is success-coloured.
+  saved: { label: 'Valid, saved offline', status: 'success' },
+  saved_unchecked: { label: 'Saved offline', status: 'warning' },
+  saved_cancelled: { label: 'Cancelled ticket', status: 'error' },
 };
+
+function isSaved(outcome: ScannerOutcome): boolean {
+  return outcome === 'saved' || outcome === 'saved_unchecked' || outcome === 'saved_cancelled';
+}
 
 function outcomeColor(status: StatusType, tokens: ThemeTokens): string {
   switch (status) {
@@ -167,7 +174,7 @@ export function ScannerResultCard({
               style={[type.body, styles.flex, { color: tokens.text }]}
               accessibilityLiveRegion={isFinal ? 'assertive' : 'polite'}
             >
-              {result.outcome === 'queued'
+              {isSaved(result.outcome)
                 ? `${config.label}. ${result.message}`
                 : result.message || config.label}
             </Text>

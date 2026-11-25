@@ -4,7 +4,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { authService, type SessionValidation } from '../services/auth';
 import { createSessionRecheck, type SessionRecheck } from '../services/sessionRecheck';
 import { syncService, SyncStatus } from '../services/sync';
-import { scanQueue } from '../services/scanQueue';
+import { offlineScans } from '../services/offlineScans';
 import { notificationService } from '../services/notifications';
 import { liveActivityService } from '../services/liveActivity';
 import { mergeParticipant, type ParticipantUpdate } from '../services/participantIndex';
@@ -320,21 +320,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // Scopes the scan queue to this user (discarding anyone else's queued
-  // scans) before the app shows them as signed in.
+  // Scopes the offline scan queue to this user (discarding anyone else's
+  // waiting scans) before the app shows them as signed in.
   // `preload` (a restored session's cached event and roster) is dispatched in
   // the same tick as SET_AUTH, so the first signed-in render already has them.
   const beginSession = useCallback(async (
     user: User,
-    { restored, token: knownToken, preload }: {
+    { token: knownToken, preload }: {
       restored: boolean;
       token?: string;
       preload?: Promise<AppAction[]>;
     }
   ) => {
+    offlineScans.setUser(user.id);
     const [, preloadActions] = await Promise.all([
-      scanQueue.setUser(user.id, { adoptUntagged: restored }).catch(error => {
-        console.warn('[Session] Failed to scope the scan queue:', error);
+      offlineScans.discardOthers(user.id).catch(error => {
+        console.warn('[Session] Failed to scope the offline scans:', error);
       }),
       preload ?? Promise.resolve([]),
     ]);
@@ -416,14 +417,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     restoreAuth();
     return () => appStateSub?.remove();
   }, [applySessionValidation, beginSession]);
-
-  // Sends queued scans by itself while signed in: at start, on reconnect, on
-  // returning to the foreground, and on a backoff timer while any remain.
-  const signedInUserId = state.auth.user?.id ?? null;
-  useEffect(() => {
-    if (!signedInUserId) return;
-    return scanQueue.start(RNAppState);
-  }, [signedInUserId]);
 
   // Keeps isOnline current, so "Sync now" comes back after reconnecting.
   useEffect(() => {
@@ -508,7 +501,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return await syncService.flushQueuedScans(SIGN_OUT_FLUSH_TIMEOUT_MS);
     } catch (error) {
       console.warn('[Logout] Flush before sign-out failed:', error);
-      return scanQueue.getPendingCount().catch(() => 0);
+      return offlineScans.pendingCount().catch(() => 0);
     }
   }, []);
 
@@ -587,6 +580,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
     return persisted;
   }, [state.participants]);
+
+  const confirmParticipantRef = useRef(confirmParticipant);
+  useEffect(() => {
+    confirmParticipantRef.current = confirmParticipant;
+  }, [confirmParticipant]);
+
+  // Scans saved while offline go out as soon as there's a way to send them:
+  // on sign-in, when the connection comes back, and when the app is opened.
+  // Only the signed-in person's go; each one Attend accepts updates the
+  // roster like a live scan would.
+  const signedInUserId = state.auth.isAuthenticated ? state.auth.user?.id ?? null : null;
+  useEffect(() => {
+    offlineScans.setUser(signedInUserId);
+    if (!signedInUserId) return;
+
+    void offlineScans.flush();
+    const unsubscribeNet = NetInfo.addEventListener(network => {
+      if (network.isConnected) void offlineScans.flush();
+    });
+    const appStateSub = RNAppState.addEventListener('change', next => {
+      if (next === 'active') void offlineScans.flush();
+    });
+    const unsubscribeSent = offlineScans.onSent((scan, response) => {
+      void confirmParticipantRef.current(scan.eventId, response.participant).catch(error => {
+        console.warn('[Scanner] Failed to persist a scan sent from the queue:', error);
+      });
+    });
+
+    return () => {
+      unsubscribeNet();
+      appStateSub.remove();
+      unsubscribeSent();
+    };
+  }, [signedInUserId]);
 
   const syncNow = useCallback(async (): Promise<void> => {
     const eventId = state.currentEvent?.id ?? null;

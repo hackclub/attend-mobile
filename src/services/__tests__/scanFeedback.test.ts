@@ -7,8 +7,10 @@ describe('feedbackForOutcome', () => {
     expect(feedbackForOutcome('not_scanned')).toEqual({ sound: 'not-scanned', haptic: 'error' });
   });
 
-  it('never plays the success feedback for a scan saved offline', () => {
-    expect(feedbackForOutcome('queued')).toEqual({ sound: 'already-scanned', haptic: 'warning' });
+  it('plays the success feedback offline only for a ticket checked on the device', () => {
+    expect(feedbackForOutcome('saved')).toEqual({ sound: 'scanned', haptic: 'success' });
+    expect(feedbackForOutcome('saved_unchecked')).toEqual({ sound: 'already-scanned', haptic: 'warning' });
+    expect(feedbackForOutcome('saved_cancelled')).toEqual({ sound: 'not-scanned', haptic: 'error' });
   });
 
   it('does not play final feedback while confirmation is pending', () => {

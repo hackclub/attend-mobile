@@ -3,13 +3,13 @@ import {
   SameCodeGate,
   cachedPriorScan,
   failedResult,
-  isRetryableScanError,
+  invalidTicketResult,
   kioskContextChoice,
-  queuedResult,
-  nfcScanTarget,
   parseQRCode,
   responseOutcome,
   resultFromResponse,
+  retryableFailure,
+  savedResult,
   scannableContexts,
 } from '../scannerCore';
 
@@ -50,6 +50,30 @@ describe('parseQRCode', () => {
 
   it('rejects unrelated qr data', () => {
     expect(parseQRCode('https://example.com')).toBeNull();
+  });
+
+  // Signed by Attend's CheckinCode with a throwaway test key; the ids are made up.
+  const SIGNED = 'T.AED2VKVKVK53WTGMRXO653XO53XO5Z3XVB66Q34V2V72SPD3JRKHN4OXBNR25I7BTJUMJXLV5SVSFKINXVAFGF3TRFORE5QNYCF2XWIF6OCUGZV3LXX3WPJ5DBNJZOPQ3ZCA';
+
+  it.each([
+    `ATTEND://CHECKIN/${SIGNED}`,
+    `  attend://checkin/${SIGNED.toLowerCase()}\n`,
+  ])('sends a signed ticket whole, and reads its registration for the cache: %s', raw => {
+    expect(parseQRCode(raw)).toMatchObject({
+      type: 'participant',
+      id: SIGNED,
+      registrationId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+      ticket: { keyId: '7', registrationId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' },
+    });
+  });
+
+  it.each([
+    'ATTEND://CHECKIN/T.',
+    `ATTEND://CHECKIN/T.${'A'.repeat(20)}`,
+    `ATTEND://CHECKIN/T.${'B'.repeat(132)}`,
+    `ATTEND://CHECKIN/${SIGNED}!`,
+  ])('rejects something that only looks like a signed ticket: %s', raw => {
+    expect(parseQRCode(raw)).toBeNull();
   });
 });
 
@@ -136,6 +160,21 @@ describe('authoritative result mapping', () => {
     expect(result.retryable).toBe(true);
     expect(result.message).toBe('Could not reach Attend. Try again.');
   });
+
+  // Expo's fetch (the global one since SDK 58) throws a plain Error subclass
+  // with this prefix rather than a TypeError.
+  it("treats Expo's fetch errors as a network failure, not a message to show", () => {
+    class FetchError extends Error {}
+    const result = failedResult(new FetchError('fetch failed: The Internet connection appears to be offline.'), {
+      attemptId: 'attempt-2',
+      rawData: 'raw-code',
+      source: 'qr',
+    });
+
+    expect(result.retryable).toBe(true);
+    expect(result.message).toBe('Could not reach Attend. Try again.');
+    expect(failedResult(new Error('Unrecognised QR code'), { attemptId: 'a', rawData: '', source: 'qr' }).retryable).toBe(false);
+  });
 });
 
 describe('scannableContexts', () => {
@@ -206,37 +245,32 @@ describe('scannableContexts', () => {
   });
 });
 
-describe('queued offline outcome', () => {
-  const base = {
-    attemptId: 'attempt-1',
-    rawData: 'raw',
-    source: 'qr' as const,
-    participant: participant(),
-    scanContext: context,
-  };
+describe('offline results', () => {
+  const input = { attemptId: 'attempt-3', rawData: 'raw-code', source: 'qr' as const, participant: participant(), scanContext: context };
 
-  it('is a distinct, non-retryable outcome that does not claim a check-in', () => {
-    const result = queuedResult({ ...base, alreadyScannedLocally: false, firstScannedAt: 'x' });
-
-    expect(result.outcome).toBe('queued');
-    expect(result.retryable).toBe(false);
-    expect(result.message).toBe('Will sync when back online');
-    expect(result.alreadyScannedLocally).toBe(false);
-    expect(result.firstScannedAt).toBeUndefined();
+  it('says what the device could tell about a scan it saved', () => {
+    expect(savedResult('valid', input)).toMatchObject({ outcome: 'saved', retryable: false, participant: participant() });
+    expect(savedResult('unverified', input).outcome).toBe('saved_unchecked');
+    expect(savedResult('unverified', input).message).toMatch(/check their ticket another way/i);
+    expect(savedResult('cancelled', input).outcome).toBe('saved_cancelled');
+    expect(savedResult('cancelled', input).message).toMatch(/withdrawn or rejected/);
   });
 
-  it('says when this device already has a scan of the person in the context', () => {
-    const result = queuedResult({
-      ...base,
-      alreadyScannedLocally: true,
-      firstScannedAt: '2026-08-24T09:00:00Z',
-    });
-
-    expect(result.outcome).toBe('queued');
-    expect(result.message).toBe('Already scanned here on this device. Will sync when back online');
-    expect(result.firstScannedAt).toBe('2026-08-24T09:00:00Z');
+  it('says when the device has already seen this person here, unless the ticket is cancelled', () => {
+    const repeat = savedResult('valid', input, '2026-11-24T10:00:00Z');
+    expect(repeat).toMatchObject({ outcome: 'already_scanned', firstScannedAt: '2026-11-24T10:00:00Z', retryable: false });
+    expect(repeat.message).toMatch(/already scanned here/i);
+    expect(savedResult('unverified', input, '2026-11-24T10:00:00Z').outcome).toBe('already_scanned');
+    expect(savedResult('cancelled', input, '2026-11-24T10:00:00Z').outcome).toBe('saved_cancelled');
   });
 
+  it('turns away a ticket whose signature fails, with nothing to retry', () => {
+    expect(invalidTicketResult(input)).toMatchObject({ outcome: 'not_scanned', retryable: false });
+    expect(invalidTicketResult(input).message).toMatch(/wasn't issued by Attend for this event/);
+  });
+});
+
+describe('cachedPriorScan', () => {
   it('finds a prior scan in the cached roster for the same context only', () => {
     const scanned = participant({
       scans_by_context: [{
@@ -256,31 +290,16 @@ describe('queued offline outcome', () => {
     expect(cachedPriorScan(participant({ checked_in_at: '2026-08-24T08:00:00Z' }), undefined))
       .toEqual({ firstScannedAt: '2026-08-24T08:00:00Z' });
   });
-
-  it('queues only failures that may succeed later', () => {
-    expect(isRetryableScanError(new TypeError('Network request failed'))).toBe(true);
-    expect(isRetryableScanError(Object.assign(new Error('timeout'), { status: 0 }))).toBe(true);
-    expect(isRetryableScanError(Object.assign(new Error('busy'), { status: 503 }))).toBe(true);
-    expect(isRetryableScanError(Object.assign(new Error('missing'), { status: 404 }))).toBe(false);
-    expect(isRetryableScanError(new Error('Unrecognised QR code'))).toBe(false);
-  });
 });
 
-describe('nfcScanTarget', () => {
-  it('sends only the Attend external record to the badge endpoint', () => {
-    expect(nfcScanTarget('tok-123', true)).toEqual({ kind: 'badge', identifier: 'tok-123' });
-  });
-
-  it('accepts an Attend link from a URI or text record', () => {
-    expect(nfcScanTarget('attend://checkin/0a1b2c3d-0000-4000-8000-000000000001', false)).toEqual({
-      kind: 'participant',
-      identifier: '0a1b2c3d-0000-4000-8000-000000000001',
-    });
-  });
-
-  it('rejects any other NDEF content instead of treating it as a badge token', () => {
-    expect(nfcScanTarget('https://example.com/menu', false)).toBeNull();
-    expect(nfcScanTarget('hello world', false)).toBeNull();
+describe('retryableFailure', () => {
+  it('saves only failures that may succeed later', () => {
+    expect(retryableFailure(new TypeError('Network request failed'))).toBe(true);
+    expect(retryableFailure(new Error('fetch failed: The Internet connection appears to be offline.'))).toBe(true);
+    expect(retryableFailure(Object.assign(new Error('timeout'), { status: 0 }))).toBe(true);
+    expect(retryableFailure(Object.assign(new Error('busy'), { status: 503 }))).toBe(true);
+    expect(retryableFailure(Object.assign(new Error('missing'), { status: 404 }))).toBe(false);
+    expect(retryableFailure(new Error('Unrecognised QR code'))).toBe(false);
   });
 });
 

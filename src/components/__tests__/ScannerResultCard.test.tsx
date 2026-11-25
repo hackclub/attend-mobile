@@ -118,25 +118,25 @@ describe('ScannerResultCard', () => {
     expect(JSON.stringify(tree.toJSON())).toContain(label);
   });
 
-  it('renders a queued scan as saved offline, never as scanned', async () => {
-    const tree = await renderCard(result('queued', {
-      message: 'Will sync when back online',
+  it('renders an unchecked offline scan as saved offline, never as scanned', async () => {
+    const tree = await renderCard(result('saved_unchecked', {
+      message: 'Saved and will be sent automatically.',
     }));
     const json = JSON.stringify(tree.toJSON());
 
     expect(json).toContain('Saved offline');
-    expect(json).toContain('Will sync when back online');
+    expect(json).toContain('Saved and will be sent automatically.');
     expect(json).not.toContain('"Scanned"');
     expect(json).not.toContain('#33D6A6');
   });
 
-  it('labels a queued scan of an unidentified attendee in the compact card', async () => {
-    const tree = await renderCard(result('queued', {
+  it('labels an offline scan of an unidentified attendee in the compact card', async () => {
+    const tree = await renderCard(result('saved_unchecked', {
       participant: undefined,
-      message: 'Will sync when back online',
+      message: 'Saved and will be sent automatically.',
     }));
 
-    expect(JSON.stringify(tree.toJSON())).toContain('Saved offline. Will sync when back online');
+    expect(JSON.stringify(tree.toJSON())).toContain('Saved offline. Saved and will be sent automatically.');
   });
 
   it('drops the details action when the role cannot open participant records', async () => {
@@ -250,7 +250,7 @@ describe('ScannerResultCard', () => {
     fresh.root.findByProps({ accessibilityLabel: "Undo Alex Rivera's scan" }).props.onPress();
     expect(onUndo).toHaveBeenCalledTimes(1);
 
-    for (const outcome of ['already_scanned', 'queued', 'confirming', 'not_scanned'] as const) {
+    for (const outcome of ['already_scanned', 'saved', 'saved_unchecked', 'saved_cancelled', 'confirming', 'not_scanned'] as const) {
       const tree = await renderCard(result(outcome, { attemptId: outcome }), { onUndo });
       expect(() => tree.root.findByProps({ accessibilityLabel: "Undo Alex Rivera's scan" })).toThrow();
     }

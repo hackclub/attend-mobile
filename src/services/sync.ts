@@ -2,9 +2,9 @@ import NetInfo from '@react-native-community/netinfo';
 import { asyncStorage, STORAGE_KEYS } from './storage';
 import { api } from './api';
 import { forbiddenParticipants } from './eventAccess';
+import { offlineScans } from './offlineScans';
 import { mergeParticipant, mergeParticipants, type ParticipantUpdate } from './participantIndex';
 import { PARTICIPANT_CACHE_VERSION, slimParticipant, slimParticipants } from './participantCache';
-import { scanQueue } from './scanQueue';
 import type { Event, Participant, RemoteScan, ScanContext } from '../types';
 
 // Upper bound on pages per sync pass; at 500 scans/page this covers 50k
@@ -28,19 +28,6 @@ class SyncService {
   // Each event's slim roster, as last read from or written to storage, so
   // reads after the first skip storage and JSON parsing.
   private rosters = new Map<string, Participant[]>();
-
-  constructor() {
-    // Queued scans feed pendingScans, and a scan confirmed by a later flush
-    // updates the cached roster just like a live one.
-    scanQueue.subscribe(event => {
-      if (event.type === 'changed') {
-        void this.notifyListeners().catch(() => undefined);
-      } else if (event.type === 'confirmed') {
-        void this.cacheConfirmedParticipant(event.eventId, event.response.participant)
-          .catch(error => console.warn('[Sync] Failed to cache flushed scan participant:', error));
-      }
-    });
-  }
 
   /**
    * Re-slims rosters written by builds that cached every participant field.
@@ -67,6 +54,13 @@ class SyncService {
       console.warn('[Sync] Participant cache migration failed:', error);
     });
     return this.participantCacheMigration;
+  }
+
+  constructor() {
+    // The waiting-scans count is part of the status every screen shows.
+    offlineScans.subscribe(() => {
+      void this.notifyListeners().catch(() => undefined);
+    });
   }
 
   getCacheGeneration(): number {
@@ -104,7 +98,7 @@ class SyncService {
     const [netInfo, lastSyncAt, pendingScans] = await Promise.all([
       NetInfo.fetch(),
       asyncStorage.get<string>(STORAGE_KEYS.LAST_SYNC),
-      scanQueue.getPendingCount(),
+      offlineScans.pendingCount(),
     ]);
 
     return {
@@ -366,7 +360,7 @@ class SyncService {
    * with how many are still waiting.
    */
   async flushQueuedScans(timeoutMs?: number): Promise<number> {
-    const flush = scanQueue.flush();
+    const flush = offlineScans.flush();
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       if (timeoutMs === undefined) {
@@ -382,7 +376,7 @@ class SyncService {
     } finally {
       if (timer) clearTimeout(timer);
     }
-    return scanQueue.getPendingCount();
+    return offlineScans.pendingCount();
   }
 
   /**
@@ -473,12 +467,10 @@ class SyncService {
    */
   async clear({ keepQueuedScans = false }: { keepQueuedScans?: boolean } = {}): Promise<void> {
     this.cacheGeneration += 1;
-    if (keepQueuedScans) {
-      await scanQueue.setUser(null);
-    } else {
-      await scanQueue.clear().catch(error => console.warn('[Sync] Scan queue clear failed:', error));
-      await scanQueue.setUser(null);
+    if (!keepQueuedScans) {
+      await offlineScans.clear().catch(error => console.warn('[Sync] Offline scans clear failed:', error));
     }
+    offlineScans.setUser(null);
     this.rosters.clear();
     forbiddenParticipants.reset();
     await Promise.allSettled(this.participantCacheQueues.values());
@@ -492,7 +484,7 @@ class SyncService {
           key.startsWith('scan_sync_cursor_') ||
           key.startsWith('participant_sync_cursor_') ||
           key.startsWith('scan_contexts_') ||
-          key === STORAGE_KEYS.PENDING_SCANS ||
+          key.startsWith('checkin_codes_') ||
           key === STORAGE_KEYS.LAST_SYNC ||
           key === STORAGE_KEYS.EVENTS ||
           key === STORAGE_KEYS.CURRENT_EVENT

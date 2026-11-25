@@ -5,7 +5,10 @@ module.exports = {
   roots: ['<rootDir>/src'],
   transform: {
     '^.+\\.tsx?$': ['ts-jest', { tsconfig: { jsx: 'react-jsx' } }],
+    // @noble ships ESM only; Babel turns it into something Jest can load.
+    '^.+\\.js$': 'babel-jest',
   },
+  transformIgnorePatterns: ['/node_modules/(?!@noble/)'],
   globals: {
     __DEV__: true,
   },

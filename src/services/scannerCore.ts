@@ -7,10 +7,17 @@ import type {
   ScanSource,
 } from '../types';
 import { mergeParticipant } from './participantIndex';
+import { decodeSignedTicket } from './signedTicket';
 
-// 'queued': Attend could not be reached, so the scan was saved to the offline
-// queue. It is not a confirmed check-in and must never be shown as one.
-export type ScannerOutcome = 'confirming' | ScanOutcome | 'queued' | 'not_scanned';
+// The saved_* outcomes are scans kept on the device to send later (see
+// services/offlineScans), split by what the device could tell about the code.
+export type ScannerOutcome =
+  | 'confirming'
+  | ScanOutcome
+  | 'not_scanned'
+  | 'saved'
+  | 'saved_unchecked'
+  | 'saved_cancelled';
 
 export interface ScannerResult {
   attemptId: string;
@@ -22,13 +29,22 @@ export interface ScannerResult {
   firstScannedAt?: string;
   message?: string;
   retryable: boolean;
-  // Only for 'queued': this device already has a scan of the person in this
-  // context (cached roster or offline queue). The server still decides.
-  alreadyScannedLocally?: boolean;
 }
+
+// A signed ticket from Attend: `ATTEND://CHECKIN/T.<base32>` (see
+// services/signedTicket). The whole token goes to the server as the id, which
+// checks the signature too.
+const SIGNED_TICKET = /^attend:\/\/checkin\/(T\.[A-Z2-7]+)$/i;
 
 export function parseQRCode(data: string): QRCodeData | null {
   const trimmed = data.trim();
+  const signedMatch = trimmed.match(SIGNED_TICKET);
+  if (signedMatch) {
+    const token = signedMatch[1].toUpperCase();
+    const ticket = decodeSignedTicket(token);
+    return ticket ? { type: 'participant', id: token, registrationId: ticket.registrationId, ticket } : null;
+  }
+
   const checkinUrlMatch = trimmed.match(/^attend:\/\/checkin\/([0-9a-f-]+)$/i);
   if (checkinUrlMatch) {
     return { type: 'participant', id: checkinUrlMatch[1] };
@@ -44,20 +60,6 @@ export function parseQRCode(data: string): QRCodeData | null {
   }
 
   return null;
-}
-
-/**
- * Where an NFC read goes. Only the Attend external record (`isBadge`) is a
- * badge token for the badge endpoint; URI/text content must be an Attend
- * code, and anything else is null ("Not an Attend badge", no server call).
- */
-export function nfcScanTarget(
-  payload: string,
-  isBadge: boolean
-): { kind: 'badge'; identifier: string } | { kind: 'participant'; identifier: string } | null {
-  if (isBadge) return { kind: 'badge', identifier: payload };
-  const parsed = parseQRCode(payload);
-  return parsed ? { kind: 'participant', identifier: parsed.id } : null;
 }
 
 export function responseOutcome(
@@ -204,13 +206,18 @@ export function resultFromResponse(input: {
   };
 }
 
-/**
- * Whether a failed scan request may succeed if sent again later: a network
- * error, a timeout (status 0), rate limiting or a server error. These are the
- * failures that send a scan to the offline queue.
- */
-export function isRetryableScanError(error: unknown): boolean {
+// A request that never got an answer. React Native's fetch throws a TypeError;
+// Expo's (the global fetch since SDK 58) throws a FetchError instead, whose
+// message ("fetch failed: The Internet connection appears to be offline.")
+// is no use to staff. FetchError doesn't set a name and minification renames
+// the class, so its message prefix is the one reliable sign.
+export function isNetworkFailure(error: unknown): boolean {
   if (error instanceof TypeError) return true;
+  return error instanceof Error && error.message.startsWith('fetch failed');
+}
+
+export function retryableFailure(error: unknown): boolean {
+  if (isNetworkFailure(error)) return true;
   if (!error || typeof error !== 'object' || !('status' in error)) return false;
 
   const status = Number(error.status);
@@ -218,7 +225,7 @@ export function isRetryableScanError(error: unknown): boolean {
 }
 
 export function failedResult(error: unknown, input: BaseResultInput): ScannerResult {
-  const retryable = isRetryableScanError(error);
+  const retryable = retryableFailure(error);
   const message = retryable
     ? 'Could not reach Attend. Try again.'
     : error instanceof Error
@@ -251,26 +258,52 @@ export function cachedPriorScan(
   return entry ? { firstScannedAt: entry.first_scanned_at } : null;
 }
 
-export function queuedResult(input: BaseResultInput & {
-  alreadyScannedLocally: boolean;
-  firstScannedAt?: string;
-}): ScannerResult {
-  return {
-    attemptId: input.attemptId,
-    rawData: input.rawData,
-    source: input.source,
-    participant: input.participant,
-    scanContext: input.scanContext,
-    outcome: 'queued',
-    message: input.alreadyScannedLocally
-      ? 'Already scanned here on this device. Will sync when back online'
-      : 'Will sync when back online',
-    alreadyScannedLocally: input.alreadyScannedLocally,
-    firstScannedAt: input.alreadyScannedLocally ? input.firstScannedAt : undefined,
-    retryable: false,
-  };
-}
-
 export function createAttemptId(now = Date.now()): string {
   return `${now.toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+const SAVED: Record<'valid' | 'cancelled' | 'unverified', { outcome: ScannerOutcome; message: string }> = {
+  valid: {
+    outcome: 'saved',
+    message: 'No connection. Saved on this device and will be sent automatically.',
+  },
+  unverified: {
+    outcome: 'saved_unchecked',
+    message: "No connection, and this code can't be checked offline. Check their ticket another way. Saved and will be sent automatically.",
+  },
+  cancelled: {
+    outcome: 'saved_cancelled',
+    message: 'This registration was withdrawn or rejected. Check with the event team before letting them in. Saved and will be sent automatically.',
+  },
+};
+
+// A scan kept on the device because Attend couldn't be reached. `earlierAt`
+// is when the device last saw this person at this scan point, if it has: the
+// same ticket twice, or a copy of it. A cancelled ticket says so first.
+export function savedResult(
+  verdict: 'valid' | 'cancelled' | 'unverified',
+  input: BaseResultInput,
+  earlierAt?: string
+): ScannerResult {
+  if (earlierAt && verdict !== 'cancelled') {
+    return {
+      ...input,
+      outcome: 'already_scanned',
+      firstScannedAt: earlierAt,
+      message: 'Already scanned here. No connection, so this one is saved on this device and will be sent automatically.',
+      retryable: false,
+    };
+  }
+  return { ...input, ...SAVED[verdict], retryable: false };
+}
+
+// A signed ticket whose signature fails for this event: forged, edited, or
+// another event's. Never sent.
+export function invalidTicketResult(input: BaseResultInput): ScannerResult {
+  return {
+    ...input,
+    outcome: 'not_scanned',
+    message: "This ticket wasn't issued by Attend for this event. It may be fake, or for a different event.",
+    retryable: false,
+  };
 }

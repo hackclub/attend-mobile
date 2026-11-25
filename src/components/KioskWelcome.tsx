@@ -48,13 +48,29 @@ function lookFor(result: ScannerResult, tokens: ThemeTokens): Look {
         detail: result.message || "You're already checked in.",
         color: tokens.warning,
       };
-    case 'queued':
+    case 'saved':
+      return {
+        icon: 'check',
+        label: 'Valid, saved offline',
+        title: hello('Welcome'),
+        detail: "Saved on this device; it'll sync once it's back online.",
+        color: tokens.success,
+      };
+    case 'saved_unchecked':
       return {
         icon: 'check',
         label: 'Saved offline',
         title: hello('Welcome'),
-        detail: "Saved on this device; it'll sync once it's back online.",
-        color: tokens.inactive,
+        detail: "Saved on this device, but your ticket couldn't be checked offline. Please see a staff member.",
+        color: tokens.warning,
+      };
+    case 'saved_cancelled':
+      return {
+        icon: 'x',
+        label: 'Cancelled ticket',
+        title: 'Couldn’t check in',
+        detail: 'This registration was withdrawn or rejected. Please see a staff member.',
+        color: tokens.error,
       };
     case 'not_scanned':
     default:
