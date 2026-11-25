@@ -400,11 +400,20 @@ function RootNavigator() {
   ));
 
   return (
-    <Stack.Navigator id={ROOT_NAVIGATOR} screenOptions={{ headerShown: false }}>
+    <Stack.Navigator
+      id={ROOT_NAVIGATOR}
+      // A fresh navigator for each session, so the first screen below is
+      // chosen as it begins (a navigator reads it only when it mounts).
+      key={isAuthenticated ? 'signed-in' : 'signed-out'}
+      screenOptions={{ headerShown: false }}
+      // A launch reopens the event an organizer last had open (restored
+      // with the session, before it shows as signed in); signing in, or
+      // nothing to reopen, lands on the switcher.
+      initialRouteName={isOrganizer && state.currentEvent ? 'Main' : 'EventSwitcher'}
+    >
       {state.auth.isAuthenticated ? (
         <>
-          {/* First, so signing in and every launch open the switcher, not the
-              last event. Picking an event resets the root to its home. */}
+          {/* The home switcher. Picking an event resets the root to its home. */}
           <Stack.Screen name="EventSwitcher" component={EventSwitcherScreen} options={HOME_OPTIONS} />
           {isOrganizer && <Stack.Screen name="Main" component={MainTabs} options={HOME_OPTIONS} />}
           <Stack.Screen name="ParticipantMain" component={PassStackNavigator} options={HOME_OPTIONS} />
