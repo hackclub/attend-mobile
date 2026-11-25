@@ -376,6 +376,7 @@ export function EventBanner({
     </BannerFace>
   );
 
+  const switchable = canSwitch && !!key;
   const banner = (
     <Animated.View
       ref={setRef}
@@ -383,20 +384,22 @@ export function EventBanner({
       style={[styles.hero, style, covered]}
       onLayout={(e) => setLaidOutHeight(e.nativeEvent.layout.height)}
     >
-      {canSwitch && key ? (
-        <Pressable
-          onPress={() => void switcherOverlay.open(key, true)}
-          android_ripple={ripple(withAlpha(overlayTokens.on, 0.18), { foreground: true })}
-          style={({ pressed }) => pressedStyle(pressed, 0.8)}
-          accessibilityRole="button"
-          accessibilityLabel="Switch event"
-          accessibilityValue={{ text: label }}
-        >
-          {face}
-        </Pressable>
-      ) : (
-        <View accessible accessibilityLabel={label}>{face}</View>
-      )}
+      {/* Always the one Pressable, disabled until there's something to
+          switch to: swapping it for a View (or back) as the event list
+          loaded remounted the face, and its photo flashed as it decoded
+          again. */}
+      <Pressable
+        disabled={!switchable}
+        onPress={key ? () => void switcherOverlay.open(key, true) : undefined}
+        android_ripple={switchable ? ripple(withAlpha(overlayTokens.on, 0.18), { foreground: true }) : undefined}
+        style={({ pressed }) => pressedStyle(pressed && switchable, 0.8)}
+        accessible
+        accessibilityRole={switchable ? 'button' : undefined}
+        accessibilityLabel={switchable ? 'Switch event' : label}
+        accessibilityValue={switchable ? { text: label } : undefined}
+      >
+        {face}
+      </Pressable>
       {onBack ? (
         <OverlayIconButton
           icon="back"
