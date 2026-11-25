@@ -2,9 +2,11 @@ import type { CreateScanResponse, Participant, ScanContext } from '../../types';
 import {
   SameCodeGate,
   failedResult,
+  invalidTicketResult,
   parseQRCode,
   responseOutcome,
   resultFromResponse,
+  savedResult,
   scannableContexts,
 } from '../scannerCore';
 
@@ -54,10 +56,11 @@ describe('parseQRCode', () => {
     `ATTEND://CHECKIN/${SIGNED}`,
     `  attend://checkin/${SIGNED.toLowerCase()}\n`,
   ])('sends a signed ticket whole, and reads its registration for the cache: %s', raw => {
-    expect(parseQRCode(raw)).toEqual({
+    expect(parseQRCode(raw)).toMatchObject({
       type: 'participant',
       id: SIGNED,
       registrationId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+      ticket: { keyId: '7', registrationId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' },
     });
   });
 
@@ -144,6 +147,21 @@ describe('authoritative result mapping', () => {
     expect(result.retryable).toBe(true);
     expect(result.message).toBe('Could not reach Attend. Try again.');
   });
+
+  // Expo's fetch (the global one since SDK 58) throws a plain Error subclass
+  // with this prefix rather than a TypeError.
+  it("treats Expo's fetch errors as a network failure, not a message to show", () => {
+    class FetchError extends Error {}
+    const result = failedResult(new FetchError('fetch failed: The Internet connection appears to be offline.'), {
+      attemptId: 'attempt-2',
+      rawData: 'raw-code',
+      source: 'qr',
+    });
+
+    expect(result.retryable).toBe(true);
+    expect(result.message).toBe('Could not reach Attend. Try again.');
+    expect(failedResult(new Error('Unrecognised QR code'), { attemptId: 'a', rawData: '', source: 'qr' }).retryable).toBe(false);
+  });
 });
 
 describe('scannableContexts', () => {
@@ -211,5 +229,30 @@ describe('scannableContexts', () => {
 
     expect(scannableContexts([tomorrow, yesterday]).map(c => c.id))
       .toEqual(['yesterday', 'tomorrow']);
+  });
+});
+
+describe('offline results', () => {
+  const input = { attemptId: 'attempt-3', rawData: 'raw-code', source: 'qr' as const, participant: participant(), scanContext: context };
+
+  it('says what the device could tell about a scan it saved', () => {
+    expect(savedResult('valid', input)).toMatchObject({ outcome: 'saved', retryable: false, participant: participant() });
+    expect(savedResult('unverified', input).outcome).toBe('saved_unchecked');
+    expect(savedResult('unverified', input).message).toMatch(/check their ticket another way/i);
+    expect(savedResult('cancelled', input).outcome).toBe('saved_cancelled');
+    expect(savedResult('cancelled', input).message).toMatch(/withdrawn or rejected/);
+  });
+
+  it('says when the device has already seen this person here, unless the ticket is cancelled', () => {
+    const repeat = savedResult('valid', input, '2026-11-24T10:00:00Z');
+    expect(repeat).toMatchObject({ outcome: 'already_scanned', firstScannedAt: '2026-11-24T10:00:00Z', retryable: false });
+    expect(repeat.message).toMatch(/already scanned here/i);
+    expect(savedResult('unverified', input, '2026-11-24T10:00:00Z').outcome).toBe('already_scanned');
+    expect(savedResult('cancelled', input, '2026-11-24T10:00:00Z').outcome).toBe('saved_cancelled');
+  });
+
+  it('turns away a ticket whose signature fails, with nothing to retry', () => {
+    expect(invalidTicketResult(input)).toMatchObject({ outcome: 'not_scanned', retryable: false });
+    expect(invalidTicketResult(input).message).toMatch(/wasn't issued by Attend for this event/);
   });
 });

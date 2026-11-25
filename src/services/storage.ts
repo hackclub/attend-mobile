@@ -176,6 +176,7 @@ export const STORAGE_KEYS = {
   SCAN_SYNC_CURSOR: (eventId: string) => `scan_sync_cursor_${eventId}`,
   PARTICIPANT_SYNC_CURSOR: (eventId: string) => `participant_sync_cursor_${eventId}`,
   SCAN_CONTEXTS: (eventId: string) => `scan_contexts_${eventId}`,
+  CHECKIN_CODES: (eventId: string) => `checkin_codes_${eventId}`,
   POWER_MODE_ENABLED: 'scanner_power_mode_enabled',
   PENDING_SCANS: 'pending_scans',
   LAST_SYNC: 'last_sync',

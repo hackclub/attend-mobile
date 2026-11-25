@@ -2,6 +2,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { asyncStorage, STORAGE_KEYS } from './storage';
 import { api } from './api';
 import { forbiddenParticipants } from './eventAccess';
+import { offlineScans } from './offlineScans';
 import { mergeParticipant, mergeParticipants, type ParticipantUpdate } from './participantIndex';
 import type { Event, Participant, RemoteScan, ScanContext } from '../types';
 
@@ -22,6 +23,13 @@ class SyncService {
   private participantCacheQueues = new Map<string, Promise<unknown>>();
   private cacheGeneration = 0;
   private cacheWriteQueue: Promise<void> = Promise.resolve();
+
+  constructor() {
+    // The waiting-scans count is part of the status every screen shows.
+    offlineScans.subscribe(() => {
+      void this.notifyListeners();
+    });
+  }
 
   getCacheGeneration(): number {
     return this.cacheGeneration;
@@ -61,7 +69,7 @@ class SyncService {
     return {
       isOnline: netInfo.isConnected ?? false,
       isSyncing: this.isSyncing,
-      pendingScans: 0,
+      pendingScans: await offlineScans.pendingCount(),
       lastSyncAt,
     };
   }
@@ -256,6 +264,8 @@ class SyncService {
     await this.notifyListeners();
 
     try {
+      // Before pulling scans down, so the ones made offline come back with them.
+      await offlineScans.flush();
       const [events] = await Promise.all([
         api.getEvents(),
         this.refreshParticipants(eventId, generation),
@@ -328,6 +338,7 @@ class SyncService {
           key.startsWith('scan_sync_cursor_') ||
           key.startsWith('participant_sync_cursor_') ||
           key.startsWith('scan_contexts_') ||
+          key.startsWith('checkin_codes_') ||
           key === STORAGE_KEYS.PENDING_SCANS ||
           key === STORAGE_KEYS.LAST_SYNC ||
           key === STORAGE_KEYS.EVENTS ||
@@ -339,6 +350,7 @@ class SyncService {
     });
     this.cacheWriteQueue = clearOperation.catch(() => undefined);
     await clearOperation;
+    await offlineScans.clear();
     await this.notifyListeners();
   }
 }
