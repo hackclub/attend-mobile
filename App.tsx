@@ -182,13 +182,9 @@ function useAndroidTabBarProps() {
     tabBarInactiveTintColor: tokens.muted,
     // Translucent, so it reads on either surface.
     activeIndicatorColor: withAlpha(tokens.brand, 0.12),
-    // No fade-through between tabs. The library runs it as a platform
-    // Transition, which moves the outgoing tab into a ViewOverlay while it
-    // fades; React kept updating that tree meanwhile, and a view whose
-    // drawing order Android had cached (sticky list headers set zIndex)
-    // crashed the app with "getChildDrawingOrder() returned invalid index".
-    // Opening Travel straight after launch did it every time.
-    disablePageAnimations: true,
+    // The fade-through between tabs is our own (patches/react-native-bottom-tabs):
+    // the library's platform Transition parked the outgoing tab in a
+    // ViewOverlay, where React's updates crashed the draw.
   };
 }
 
