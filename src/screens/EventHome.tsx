@@ -37,7 +37,7 @@ import { useSwitcherEvents } from '../hooks/useSwitcherEvents';
 import { useTabBarInset, useTopTabBarInset } from '../hooks/useTabBarInset';
 import { useResponsiveLayout } from '../hooks/useResponsiveLayout';
 import { useRemote, type Remote } from '../hooks/useRemote';
-import { api } from '../services/api';
+import { eventHomePanels } from '../services/eventHomeData';
 import { eventDays } from '../services/eventDates';
 import { eventRoleLabel } from '../services/eventRoles';
 import { computeEventStats, formatPercent } from '../services/eventStats';
@@ -156,18 +156,23 @@ function Overview({
   const attention = useMemo(() => needsAttention(participants), [participants]);
   const feed = useMemo(() => recentScans(participants), [participants]);
 
-  const loadTravel = useMemo(
-    () => (access.showTravel ? () => api.getTravelCalendar(event.id) : null),
-    [access.showTravel, event.id]
+  // Each shows its last answer at once (or joins the load a switch started)
+  // and refreshes behind it: see services/eventHomeData.
+  const panels = useMemo(
+    () => eventHomePanels(event.id, { travel: access.showTravel, incidents: access.canViewIncidents }),
+    [access.canViewIncidents, access.showTravel, event.id]
   );
-  const loadIncidents = useMemo(
-    () => (access.canViewIncidents ? () => api.getIncidents(event.id) : null),
-    [access.canViewIncidents, event.id]
+  const [travel, reloadTravel] = useRemote(
+    panels.travel?.load ?? null,
+    `${event.id}:${access.showTravel}`,
+    panels.travel?.cacheKey
   );
-  const loadMessages = useMemo(() => () => api.getMessages(event.id), [event.id]);
-  const [travel, reloadTravel] = useRemote(loadTravel, `${event.id}:${access.showTravel}`);
-  const [incidents, reloadIncidents] = useRemote(loadIncidents, `${event.id}:${access.canViewIncidents}`);
-  const [messages, reloadMessages] = useRemote(loadMessages, event.id);
+  const [incidents, reloadIncidents] = useRemote(
+    panels.incidents?.load ?? null,
+    `${event.id}:${access.canViewIncidents}`,
+    panels.incidents?.cacheKey
+  );
+  const [messages, reloadMessages] = useRemote(panels.messages.load, event.id, panels.messages.cacheKey);
 
   // The panels load when the tab gains focus (the first time included) and
   // again on every return, since counts go stale while staff work elsewhere.

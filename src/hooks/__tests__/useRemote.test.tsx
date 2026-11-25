@@ -17,6 +17,7 @@ jest.mock('../../services/api', () => {
 });
 
 import { ApiError } from '../../services/api';
+import { remoteCache } from '../../services/remoteCache';
 import { useRemote, type Remote } from '../useRemote';
 
 type Deferred = { resolve: (v: string) => void; reject: (e: unknown) => void };
@@ -86,4 +87,62 @@ it('maps a 403 to forbidden and other failures to error', async () => {
   await act(async () => { void out.reload!(); });
   await act(async () => { pending.a[1].reject(new Error('offline')); });
   expect(out.value).toEqual({ state: 'error' });
+});
+
+describe('with a cache key', () => {
+  const cache = remoteCache;
+  beforeEach(() => cache.clear());
+
+  function probe(load: () => Promise<string>, eventId = 'a') {
+    const out: { value?: Remote<string>; reload?: () => Promise<void> } = {};
+    function Probe({ id }: { id: string }) {
+      const [value, reload] = useRemote(load, id, `panel:${id}`);
+      out.value = value;
+      out.reload = reload;
+      return null;
+    }
+    act(() => {
+      renderer.create(<Probe id={eventId} />);
+    });
+    return out;
+  }
+
+  it('shows the last answer at once and refreshes behind it', async () => {
+    await cache.load('panel:a', async () => 'old');
+    let resolve: (v: string) => void = () => {};
+    const out = probe(() => new Promise<string>((r) => { resolve = r; }));
+    expect(out.value).toEqual({ state: 'ready', data: 'old' });
+
+    await act(async () => { void out.reload!(); });
+    expect(out.value).toEqual({ state: 'ready', data: 'old' });
+    await act(async () => { resolve('new'); });
+    expect(out.value).toEqual({ state: 'ready', data: 'new' });
+    expect(cache.get('panel:a')).toBe('new');
+  });
+
+  it('joins a load already running instead of starting another', async () => {
+    let resolve: (v: string) => void = () => {};
+    const early = jest.fn(() => new Promise<string>((r) => { resolve = r; }));
+    void cache.load('panel:a', early);
+    const late = jest.fn(async () => 'late');
+    const out = probe(late);
+
+    await act(async () => { void out.reload!(); });
+    await act(async () => { resolve('early'); });
+    expect(early).toHaveBeenCalledTimes(1);
+    expect(late).not.toHaveBeenCalled();
+    expect(out.value).toEqual({ state: 'ready', data: 'early' });
+  });
+
+  it('keeps the last answer when a refresh fails, but not when it is refused', async () => {
+    await cache.load('panel:a', async () => 'old');
+    const failing = probe(() => Promise.reject(new TypeError('Network request failed')));
+    await act(async () => { await failing.reload!(); });
+    expect(failing.value).toEqual({ state: 'ready', data: 'old' });
+
+    const refused = probe(() => Promise.reject(new (ApiError as any)(403)));
+    await act(async () => { await refused.reload!(); });
+    expect(refused.value).toEqual({ state: 'forbidden' });
+    expect(cache.get('panel:a')).toBeUndefined();
+  });
 });

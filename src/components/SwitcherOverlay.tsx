@@ -49,6 +49,7 @@ import {
   type SwitcherBanner,
 } from '../navigation/switcherOverlay';
 import { bannerHeight, eventBannerText } from '../services/eventBanner';
+import { prefetchEventHome } from '../services/eventHomeData';
 import { eventRoleLabel } from '../services/eventRoles';
 import { SWITCHER_SEARCH_THRESHOLD, filterSwitcherEvents, switcherEventCount } from '../services/eventSwitcher';
 import { haptics } from '../services/haptics';
@@ -451,6 +452,8 @@ function SwitcherOverlay({
       }
       if (busy.current) return;
       busy.current = true;
+      // The new Overview's data starts loading now, while the card grows.
+      if (row.kind === 'event') prefetchEventHome(row.event);
       // From the home switcher, from here it's an ordinary switch: the home
       // screen going away no longer dismisses it.
       if (home) switcherOverlay.leaveHome();

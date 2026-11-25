@@ -160,6 +160,14 @@ class SyncService {
    * The event's cached roster. Read from storage once, then kept in memory.
    * Treat the array as read-only: it's shared until the next change.
    */
+  /**
+   * The event's roster if it's already in memory (read or written this
+   * session), without waiting on storage; else undefined.
+   */
+  peekCachedParticipants(eventId: string): Participant[] | undefined {
+    return this.rosters.get(eventId);
+  }
+
   async getCachedParticipants(eventId: string): Promise<Participant[]> {
     const remembered = this.rosters.get(eventId);
     if (remembered) return remembered;

@@ -508,6 +508,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const selectEvent = useCallback(async (event: Event): Promise<void> => {
     const generation = ++eventSelectionGenerationRef.current;
     dispatch({ type: 'SET_CURRENT_EVENT', payload: event });
+    // A roster already in memory (a switch reads it as it starts) goes in
+    // the same render, so the new screen's first frame has its numbers.
+    const warm = syncService.peekCachedParticipants(event.id);
+    if (warm) dispatch({ type: 'SET_PARTICIPANTS', payload: warm });
     // Persisting the choice can queue behind other cache writes, so the
     // cached people don't wait for it.
     void syncService.setCurrentEvent(event).catch(() => {});

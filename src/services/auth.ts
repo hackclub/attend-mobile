@@ -7,6 +7,7 @@ import { notificationService } from './notifications';
 import { syncService } from './sync';
 import { clearHeadshotCache } from './headshotCache';
 import { liveActivityService } from './liveActivity';
+import { remoteCache } from './remoteCache';
 import type { User } from '../types';
 
 // Sign-out waits at most this long for the server before clearing locally.
@@ -33,6 +34,8 @@ export async function clearLocalSessionData(
   { keepQueuedScans = false }: { keepQueuedScans?: boolean } = {}
 ): Promise<void> {
   biometricService.clearSession();
+  // Incidents and messages held for the Overview, in memory only.
+  remoteCache.clear();
   const results = await Promise.allSettled([
     syncService.clear({ keepQueuedScans }),
     clearHeadshotCache(),
