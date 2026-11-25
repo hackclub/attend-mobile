@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { asyncStorage, STORAGE_KEYS } from '../storage';
-import type { Event, Participant, RemoteScan, ScanContext, ScansSyncPage } from '../../types';
+import type { Event, Participant, RemoteScan, ScanContext, ScansSyncPage, Ticket } from '../../types';
 
 jest.mock('@react-native-community/netinfo', () => ({
   fetch: jest.fn().mockResolvedValue({ isConnected: true }),
@@ -70,6 +70,20 @@ beforeEach(async () => {
   await AsyncStorage.clear();
   mockGetScans.mockReset();
   mockGetParticipants.mockReset();
+});
+
+describe('syncService ticket cache', () => {
+  it("keeps the user's tickets, only for them, until sign-out", async () => {
+    await syncService.clear();
+    const tickets = [{ id: 't1' }] as unknown as Ticket[];
+    await syncService.cacheTickets('user-1', tickets);
+
+    expect(await syncService.getCachedTickets('user-1')).toEqual(tickets);
+    expect(await syncService.getCachedTickets('user-2')).toEqual([]);
+
+    await syncService.clear({ keepQueuedScans: true });
+    expect(await syncService.getCachedTickets('user-1')).toEqual([]);
+  });
 });
 
 describe('syncService.setCurrentEvent', () => {

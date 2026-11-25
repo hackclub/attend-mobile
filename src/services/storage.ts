@@ -196,5 +196,8 @@ export const STORAGE_KEYS = {
   PARTICIPANT_CACHE_VERSION: 'participant_cache_version',
   LAST_SYNC: 'last_sync',
   EVENTS: 'cached_events',
+  // The signed-in user's tickets, tagged with their id, for the switcher
+  // and passes before (or without) a connection.
+  TICKETS: 'cached_tickets',
   CURRENT_EVENT: 'current_event',
 } as const;

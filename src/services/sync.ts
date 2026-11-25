@@ -5,7 +5,7 @@ import { forbiddenParticipants } from './eventAccess';
 import { offlineScans } from './offlineScans';
 import { mergeParticipant, mergeParticipants, type ParticipantUpdate } from './participantIndex';
 import { PARTICIPANT_CACHE_VERSION, slimParticipant, slimParticipants } from './participantCache';
-import type { Event, Participant, RemoteScan, ScanContext } from '../types';
+import type { Event, Participant, RemoteScan, ScanContext, Ticket } from '../types';
 
 // Upper bound on pages per sync pass; at 500 scans/page this covers 50k
 // scans while still terminating if the server misbehaves.
@@ -126,6 +126,22 @@ class SyncService {
     await this.enqueueCacheWrite(generation, () =>
       asyncStorage.set(STORAGE_KEYS.EVENTS, events)
     );
+  }
+
+  async cacheTickets(
+    userId: string,
+    tickets: Ticket[],
+    generation = this.cacheGeneration
+  ): Promise<void> {
+    await this.enqueueCacheWrite(generation, () =>
+      asyncStorage.set(STORAGE_KEYS.TICKETS, { userId, tickets })
+    );
+  }
+
+  /** The user's saved tickets; none if they were saved for someone else. */
+  async getCachedTickets(userId: string): Promise<Ticket[]> {
+    const cached = await asyncStorage.get<{ userId: string; tickets: Ticket[] }>(STORAGE_KEYS.TICKETS);
+    return cached?.userId === userId && Array.isArray(cached.tickets) ? cached.tickets : [];
   }
 
   async getCachedEvents(): Promise<Event[]> {
@@ -495,6 +511,7 @@ class SyncService {
           key.startsWith('checkin_codes_') ||
           key === STORAGE_KEYS.LAST_SYNC ||
           key === STORAGE_KEYS.EVENTS ||
+          key === STORAGE_KEYS.TICKETS ||
           key === STORAGE_KEYS.CURRENT_EVENT
         ) {
           await asyncStorage.remove(key);

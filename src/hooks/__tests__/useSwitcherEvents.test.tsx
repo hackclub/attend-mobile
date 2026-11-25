@@ -20,6 +20,7 @@ jest.mock('../../services/sync', () => ({
   syncService: {
     getCacheGeneration: () => mockCacheGeneration,
     cacheEvents: jest.fn().mockResolvedValue(undefined),
+    cacheTickets: jest.fn().mockResolvedValue(undefined),
   },
 }));
 jest.mock('../../services/eventSwitcher', () => ({

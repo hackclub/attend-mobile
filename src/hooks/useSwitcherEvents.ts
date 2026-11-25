@@ -55,9 +55,10 @@ function loadShared(
         await syncService.cacheEvents(fresh, cacheGeneration);
       }),
       userId
-        ? api.getMyTickets().then((fresh) => {
+        ? api.getMyTickets().then(async (fresh) => {
             if (generation !== switcherCache.generation) return;
             switcherCache.lastTickets = { userId, tickets: fresh };
+            await syncService.cacheTickets(userId, fresh, cacheGeneration);
           })
         : Promise.resolve(),
     ]);

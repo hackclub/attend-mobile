@@ -12,7 +12,7 @@ import { forbiddenParticipants } from '../services/eventAccess';
 import { scheduleHeadshotPrefetch } from '../services/headshotCache';
 import { activeParticipants } from '../services/participantStatus';
 import { biometricService } from '../services/biometric';
-import { resetSwitcherEventsCache } from '../hooks/switcherEventsCache';
+import { resetSwitcherEventsCache, restoreSwitcherTickets } from '../hooks/switcherEventsCache';
 import { PrivacyCover } from '../components/PrivacyCover';
 import type { User, Event, Participant, AuthState, SyncState } from '../types';
 
@@ -374,10 +374,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // cached event and roster are read alongside and land with SET_AUTH,
           // so home never flashes "Choose an event" or a spinner.
           const cached = loadCachedSelection();
+          // The saved tickets too, so the switcher lists them from the start.
+          const userId = result.user.id;
+          const tickets = syncService.getCachedTickets(userId)
+            .then(saved => restoreSwitcherTickets(userId, saved))
+            .catch(() => {});
           await beginSession(result.user, {
             restored: true,
             token: result.token,
-            preload: cached.then(restoredSelectionActions),
+            preload: Promise.all([cached.then(restoredSelectionActions), tickets]).then(([actions]) => actions),
           });
 
           const { event: cachedEvent } = await cached;

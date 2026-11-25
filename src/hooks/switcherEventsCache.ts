@@ -7,8 +7,9 @@ import type { Ticket } from '../types';
 export type SwitcherLoadKey = string | null;
 
 export const switcherCache: {
-  // Tickets aren't part of the offline cache; this keeps the last list for
-  // the session so the switcher opens on it while a fresh one loads.
+  // The last tickets, so the switcher opens on them while a fresh list
+  // loads: from this session's last load, or from disk as it's restored
+  // (restoreSwitcherTickets).
   lastTickets: { userId: string; tickets: Ticket[] } | null;
   lastLoad: { key: SwitcherLoadKey; at: number; failed: boolean } | null;
   inflight: { key: SwitcherLoadKey; promise: Promise<boolean> } | null;
@@ -21,6 +22,15 @@ export const switcherCache: {
   inflight: null,
   generation: 0,
 };
+
+/**
+ * A restored session's saved tickets, so the switcher (and the passes) have
+ * them from the first render. A load this session already made wins.
+ */
+export function restoreSwitcherTickets(userId: string, tickets: Ticket[]): void {
+  if (switcherCache.lastTickets?.userId === userId) return;
+  switcherCache.lastTickets = { userId, tickets };
+}
 
 /**
  * Forgets the shared load and the last tickets. Called on sign-out (and an
