@@ -408,8 +408,11 @@ function RootNavigator() {
       screenOptions={{ headerShown: false }}
       // A launch reopens the event an organizer last had open (restored
       // with the session, before it shows as signed in); signing in, or
-      // nothing to reopen, lands on the switcher.
-      initialRouteName={isOrganizer && state.currentEvent ? 'Main' : 'EventSwitcher'}
+      // nothing to reopen, lands on the switcher. Signed out, the stack's
+      // only screen is the sign-in, and naming one it lacks would throw.
+      initialRouteName={
+        !isAuthenticated ? undefined : isOrganizer && state.currentEvent ? 'Main' : 'EventSwitcher'
+      }
     >
       {state.auth.isAuthenticated ? (
         <>
