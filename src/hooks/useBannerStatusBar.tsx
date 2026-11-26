@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { StyleSheet, useWindowDimensions } from 'react-native';
 import Animated, {
   Extrapolation,
@@ -9,12 +9,12 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
-import { setStatusBarStyle } from 'expo-status-bar';
 import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { switcherOverlay } from '../navigation/switcherOverlay';
 import { useIsUnderSheet } from '../navigation/useIsUnderSheet';
 import { bannerHeight } from '../services/eventBanner';
+import { statusBarStyleEntry } from '../services/statusBarStyle';
 import { easedFade, linearGradient, useTheme, withAlpha } from '../theme';
 
 export interface BannerStatusBar {
@@ -68,23 +68,33 @@ export function useBannerStatusBar(pageColor: string): BannerStatusBar {
   // A drawer over the screen leaves the banner showing above it, under the
   // status bar: its style stays. Anything else that covers it sets its own.
   const { checkUnderSheet } = useIsUnderSheet();
+  // This screen's style, while it shows: off the stack, the app's default.
+  const [statusBar] = useState(statusBarStyleEntry);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      statusBar.clear();
+    };
+  }, [statusBar]);
   useFocusEffect(
     useCallback(() => {
-      if (!switcherOverlay.get().open) setStatusBarStyle(scrolled ? barStyle : 'light');
-      // Reset as it goes, then put back a frame on if all that covered it was
-      // a drawer (as the screen blurs, the drawer isn't in the root state
-      // yet). Resetting late instead could undo the next screen's own style.
+      if (!switcherOverlay.get().open) statusBar.set(scrolled ? barStyle : 'light');
+      // Cleared as it goes, then put back a frame on if all that covered it
+      // was a drawer (as the screen blurs, the drawer isn't in the root state
+      // yet). Clearing late instead could cover the next screen's own style.
       return () => {
-        setStatusBarStyle(barStyle);
+        statusBar.clear();
         requestAnimationFrame(() => {
-          if (checkUnderSheet()) setStatusBarStyle(scrolled ? barStyle : 'light');
+          if (mounted.current && checkUnderSheet()) statusBar.set(scrolled ? barStyle : 'light');
         });
       };
-    }, [barStyle, checkUnderSheet, scrolled]),
+    }, [barStyle, checkUnderSheet, scrolled, statusBar]),
   );
   useEffect(() => {
-    if (isFocused && !overlayOpen) setStatusBarStyle(scrolled ? barStyle : 'light');
-  }, [barStyle, isFocused, overlayOpen, scrolled]);
+    if (isFocused && !overlayOpen) statusBar.set(scrolled ? barStyle : 'light');
+  }, [barStyle, isFocused, overlayOpen, scrolled, statusBar]);
 
   const scrimStyle = useAnimatedStyle(() => ({ opacity: amount(scrollOffset.value) }));
   const scrim = (

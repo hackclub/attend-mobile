@@ -14,7 +14,6 @@ import Animated, {
 import { scheduleOnRN } from 'react-native-worklets';
 import { GestureDetector, useCompetingGestures, usePanGesture } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { setStatusBarStyle } from 'expo-status-bar';
 import { AccountButton } from './AccountSheet';
 import { BannerBlend, BannerChevron, BannerFace } from './EventBanner';
 import { Button, EmptyState, ErrorView, Icon, PressableSurface, TextField } from './ui';
@@ -50,6 +49,7 @@ import {
 } from '../navigation/switcherOverlay';
 import { bannerHeight, eventBannerText } from '../services/eventBanner';
 import { prefetchEventHome } from '../services/eventHomeData';
+import { statusBarStyleEntry } from '../services/statusBarStyle';
 import { eventRoleLabel } from '../services/eventRoles';
 import { SWITCHER_SEARCH_THRESHOLD, filterSwitcherEvents, switcherEventCount } from '../services/eventSwitcher';
 import { haptics } from '../services/haptics';
@@ -340,6 +340,10 @@ function SwitcherOverlay({
   }, [heroReady]);
   // The card a switch is growing out of, hidden under the hero meanwhile.
   const [pickedKey, setPickedKey] = useState<string | null>(null);
+  // The status bar's style while it's up, over the page's own.
+  const [statusBar] = useState(statusBarStyleEntry);
+  const setStatusBar = useCallback((style: 'light' | 'dark') => statusBar.set(style), [statusBar]);
+  useEffect(() => () => statusBar.clear(), [statusBar]);
   const busy = useRef(false);
 
   useEffect(() => {
@@ -350,6 +354,7 @@ function SwitcherOverlay({
   // list scrolled back to centre the current card.
   useEffect(() => {
     if (open) return;
+    statusBar.clear();
     busy.current = false;
     setPickedKey(null);
     landingFrom.set(null);
@@ -368,7 +373,7 @@ function SwitcherOverlay({
     listRef.current?.scrollToOffset({ offset: targetOffset, animated: false });
   }, [
     backdropHold, cardWidth, currentCardHeight, currentIndex, heroOn, heroReady, landingCard, landingFrom, open,
-    pageMounted, reduceMotion, scrollY, source, targetOffset, width,
+    pageMounted, reduceMotion, scrollY, source, statusBar, targetOffset, width,
   ]);
 
   // Safety net: fully open but not marked open (it then takes no touches,
@@ -407,14 +412,14 @@ function SwitcherOverlay({
       // A switch landing: light once the card has grown most of the way into
       // the new screen's banner, at the top of either home.
       if (landingCard.value) {
-        scheduleOnRN(setStatusBarStyle, covered ? barStyle : 'light');
+        scheduleOnRN(setStatusBar, covered ? barStyle : 'light');
         return;
       }
       const banner = switcherSourceRect.value;
       const bannerUnder = banner.y + banner.height > statusBarHeight + 1;
-      scheduleOnRN(setStatusBarStyle, covered || !bannerUnder ? barStyle : 'light');
+      scheduleOnRN(setStatusBar, covered || !bannerUnder ? barStyle : 'light');
     },
-    [barStyle, landingCard, statusBarHeight]
+    [barStyle, landingCard, setStatusBar, statusBarHeight]
   );
 
   const isCurrentOnScreen = useCallback(() => {
@@ -538,7 +543,7 @@ function SwitcherOverlay({
         else source.switchTo(passHomeState(row.ticket));
         // The new screen sets the banner's status bar as it focuses; it's
         // still under the overlay, which keeps the banner's light style.
-        if (reduceMotion) requestAnimationFrame(() => setStatusBarStyle(barStyle));
+        if (reduceMotion) requestAnimationFrame(() => setStatusBar(barStyle));
         const target = await switcherOverlay.waitForBanner(key, LANDING_WAIT_MS);
         const targetRect = target ? await target.measure() : null;
         if (targetRect && !reduceMotion) {
@@ -624,8 +629,8 @@ function SwitcherOverlay({
     },
     [
       backdropHold, barStyle, cardWidth, close, height, hero, heroOn, heroReady, home, landingCard, landingFrom, metrics,
-      offsets, pageMounted, progress, overpull, reduceMotion, scrollY, selectEvent, source, stretch, tokens, viewportTop,
-      width,
+      offsets, pageMounted, progress, overpull, reduceMotion, scrollY, selectEvent, setStatusBar, source, stretch, tokens,
+      viewportTop, width,
     ]
   );
 
