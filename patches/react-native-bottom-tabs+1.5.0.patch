@@ -1,5 +1,5 @@
 diff --git a/node_modules/react-native-bottom-tabs/android/src/main/java/com/rcttabview/RCTTabView.kt b/node_modules/react-native-bottom-tabs/android/src/main/java/com/rcttabview/RCTTabView.kt
-index 66de5d2..61e06a1 100644
+index 66de5d2..9407fe1 100644
 --- a/node_modules/react-native-bottom-tabs/android/src/main/java/com/rcttabview/RCTTabView.kt
 +++ b/node_modules/react-native-bottom-tabs/android/src/main/java/com/rcttabview/RCTTabView.kt
 @@ -8,7 +8,6 @@ import android.graphics.PorterDuff
@@ -83,7 +83,20 @@ index 66de5d2..61e06a1 100644
      }
    }
  
-@@ -192,16 +207,55 @@ class ReactBottomNavigationView(context: Context) : LinearLayout(context) {
+@@ -155,7 +170,11 @@ class ReactBottomNavigationView(context: Context) : LinearLayout(context) {
+ 
+   fun setSelectedItem(value: String) {
+     selectedItem = value
+-    setSelectedIndex(items.indexOfFirst { it.key == value })
++    // A tab that isn't among the items yet (the two props can land in either
++    // order, e.g. as the tab screens are replaced) hides none of them: it's
++    // shown once updateItems brings it. Selecting index -1 hid them all.
++    val index = items.indexOfFirst { it.key == value }
++    if (index >= 0) setSelectedIndex(index)
+     // Per-tab active tint color depends on the selected item.
+     updateTintColors()
+   }
+@@ -192,16 +211,55 @@ class ReactBottomNavigationView(context: Context) : LinearLayout(context) {
  
    private fun setSelectedIndex(itemId: Int) {
      bottomNavigation.selectedItemId = itemId
@@ -142,3 +155,45 @@ index 66de5d2..61e06a1 100644
        }
      }
  
+@@ -291,6 +349,9 @@ class ReactBottomNavigationView(context: Context) : LinearLayout(context) {
+         }
+       }
+     }
++    // The selected tab may only now be among the items (see setSelectedItem).
++    val selectedIndex = items.indexOfFirst { it.key == selectedItem }
++    if (selectedIndex >= 0) setSelectedIndex(selectedIndex)
+     // Update tint colors and text appearance after updating all items.
+     post {
+       updateTextAppearance()
+diff --git a/node_modules/react-native-bottom-tabs/android/src/main/java/com/rcttabview/RCTTabViewManager.kt b/node_modules/react-native-bottom-tabs/android/src/main/java/com/rcttabview/RCTTabViewManager.kt
+index 3d0c872..a12371b 100644
+--- a/node_modules/react-native-bottom-tabs/android/src/main/java/com/rcttabview/RCTTabViewManager.kt
++++ b/node_modules/react-native-bottom-tabs/android/src/main/java/com/rcttabview/RCTTabViewManager.kt
+@@ -72,12 +72,25 @@ class RCTTabViewManager(context: ReactApplicationContext) :
+     return parent.layoutHolder.childCount ?: 0
+   }
+ 
++  // Each React child sits in a container of its own (see addView). Fabric
++  // checks a child by its React tag before removing it, so hand back the
++  // child, not the container: otherwise the check fails, the removal is
++  // skipped, and the old tabs' containers pile up after a tab screen is
++  // replaced. One of those, GONE but still holding its full-screen bounds,
++  // then takes every touch meant for the new tab.
+   override fun getChildAt(parent: ReactBottomNavigationView, index: Int): View? {
+-    return parent.layoutHolder.getChildAt(index)
++    return (parent.layoutHolder.getChildAt(index) as? ViewGroup)?.getChildAt(0)
+   }
+ 
+   override fun removeView(parent: ReactBottomNavigationView, view: View) {
+-    parent.layoutHolder.removeView(view)
++    val holder = parent.layoutHolder
++    for (index in 0 until holder.childCount) {
++      val container = holder.getChildAt(index) as? ViewGroup ?: continue
++      if (container === view || container.getChildAt(0) === view) {
++        holder.removeViewAt(index)
++        return
++      }
++    }
+   }
+ 
+   override fun removeAllViews(parent: ReactBottomNavigationView) {
