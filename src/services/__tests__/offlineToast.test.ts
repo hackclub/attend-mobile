@@ -23,10 +23,10 @@ describe('toastIfOffline', () => {
     expect(toast.get()).toMatchObject({ message: OFFLINE_REFRESH_MESSAGE, bottomOffset: 80 });
   });
 
-  it('counts a connection without internet as offline', async () => {
+  it('stays quiet on a network the OS hasn’t validated, which can still reach Attend', async () => {
     fetchMock.mockResolvedValue({ isConnected: true, isInternetReachable: false });
-    await expect(toastIfOffline()).resolves.toBe(true);
-    expect(toast.get()?.message).toBe(OFFLINE_REFRESH_MESSAGE);
+    await expect(toastIfOffline()).resolves.toBe(false);
+    expect(toast.get()).toBeNull();
   });
 
   it('stays quiet online, or while reachability is still unknown', async () => {
