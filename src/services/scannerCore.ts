@@ -1,3 +1,4 @@
+import { isActiveParticipant } from './participantStatus';
 import type {
   CreateScanResponse,
   Participant,
@@ -11,9 +12,12 @@ import { decodeSignedTicket } from './signedTicket';
 
 // The saved_* outcomes are scans kept on the device to send later (see
 // services/offlineScans), split by what the device could tell about the code.
+// `cancelled` is a scan Attend recorded for a registration that was withdrawn
+// or rejected: the server takes it, but the person shouldn't be let in.
 export type ScannerOutcome =
   | 'confirming'
   | ScanOutcome
+  | 'cancelled'
   | 'not_scanned'
   | 'saved'
   | 'saved_unchecked'
@@ -194,6 +198,23 @@ export function resultFromResponse(input: {
     input.response.participant
   );
 
+  // Attend records a scan of a withdrawn or rejected registration like any
+  // other. Offline the same ticket is turned away (savedResult's cancelled
+  // verdict), so online it says so too rather than showing a welcome.
+  if (participant && !isActiveParticipant(participant)) {
+    return {
+      attemptId: input.attemptId,
+      rawData: input.rawData,
+      source: input.source,
+      outcome: 'cancelled',
+      participant,
+      scanContext: input.response.scan_context ?? input.scanContext,
+      firstScannedAt: input.response.first_scanned_at,
+      message: CANCELLED_MESSAGE,
+      retryable: false,
+    };
+  }
+
   return {
     attemptId: input.attemptId,
     rawData: input.rawData,
@@ -262,6 +283,8 @@ export function createAttemptId(now = Date.now()): string {
   return `${now.toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
+const CANCELLED_MESSAGE = 'This registration was withdrawn or rejected. Check with the event team before letting them in.';
+
 const SAVED: Record<'valid' | 'cancelled' | 'unverified', { outcome: ScannerOutcome; message: string }> = {
   valid: {
     outcome: 'saved',
@@ -273,7 +296,7 @@ const SAVED: Record<'valid' | 'cancelled' | 'unverified', { outcome: ScannerOutc
   },
   cancelled: {
     outcome: 'saved_cancelled',
-    message: 'This registration was withdrawn or rejected. Check with the event team before letting them in. Saved and will be sent automatically.',
+    message: `${CANCELLED_MESSAGE} Saved and will be sent automatically.`,
   },
 };
 

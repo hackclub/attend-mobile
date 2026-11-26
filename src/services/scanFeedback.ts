@@ -33,6 +33,7 @@ export function feedbackForOutcome(outcome: ScannerOutcome): ScanFeedback | null
         sound: 'already-scanned',
         haptic: 'warning',
       };
+    case 'cancelled':
     case 'saved_cancelled':
     case 'not_scanned':
       return {

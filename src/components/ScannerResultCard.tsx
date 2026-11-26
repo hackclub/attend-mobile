@@ -25,6 +25,8 @@ const OUTCOME: Record<ScannerOutcome, { label: string; status: StatusType }> = {
   confirming: { label: 'Confirming', status: 'in-progress' },
   scanned: { label: 'Scanned', status: 'success' },
   already_scanned: { label: 'Already scanned', status: 'warning' },
+  // Recorded, but the registration was withdrawn or rejected.
+  cancelled: { label: 'Registration withdrawn', status: 'error' },
   not_scanned: { label: 'Not scanned', status: 'error' },
   // Saved on the device to send later (services/offlineScans), by what the
   // device could tell about the code. Only a ticket whose signature checked

@@ -147,6 +147,33 @@ describe('authoritative result mapping', () => {
     expect(result.firstScannedAt).toBe('2026-08-24T09:41:00Z');
   });
 
+  // Attend records these like any scan; offline the same ticket is turned
+  // away, so online must not show a welcome either.
+  it.each(['withdrawn', 'rejected'])('flags a scan of a %s registration', (status) => {
+    const result = resultFromResponse({
+      attemptId: 'attempt-1',
+      rawData: 'raw-code',
+      source: 'qr',
+      response: {
+        success: true,
+        outcome: 'scanned',
+        first_scan_in_context: true,
+        first_scanned_at: '2026-08-24T09:41:00Z',
+        scan: {
+          id: 'scan-1',
+          participant_event_id: 'registration-1',
+          scanned_at: '2026-08-24T09:41:00Z',
+          created_at: '2026-08-24T09:41:00Z',
+        },
+        participant: participant({ status }),
+      } satisfies CreateScanResponse,
+      scanContext: context,
+    });
+
+    expect(result.outcome).toBe('cancelled');
+    expect(result.message).toMatch(/withdrawn or rejected/);
+  });
+
   it('maps a network failure to a retryable not-scanned result', () => {
     const result = failedResult(new TypeError('Network request failed'), {
       attemptId: 'attempt-1',

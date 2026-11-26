@@ -64,6 +64,7 @@ function lookFor(result: ScannerResult, tokens: ThemeTokens): Look {
         detail: "Saved on this device, but your ticket couldn't be checked offline. Please see a staff member.",
         color: tokens.warning,
       };
+    case 'cancelled':
     case 'saved_cancelled':
       return {
         icon: 'x',

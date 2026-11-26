@@ -116,6 +116,7 @@ export function KioskScreen() {
     const label = {
       scanned: 'Scanned',
       already_scanned: 'Already scanned',
+      cancelled: 'Registration withdrawn',
       not_scanned: 'Not scanned',
       saved: 'Valid, saved offline',
       saved_unchecked: 'Saved offline',
