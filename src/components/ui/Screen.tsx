@@ -1,4 +1,4 @@
-import React, { type ReactNode } from 'react';
+import React, { useRef, type ReactNode } from 'react';
 import {
   Platform,
   ScrollView,
@@ -13,6 +13,7 @@ import { useNavigation, useNavigationState } from '@react-navigation/native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { useTheme } from '../../theme';
 import { useScreenInsets } from '../../hooks/useScreenInsets';
+import { useScrollToTopOnTabPress, type ScrollableToTop } from '../../hooks/useScrollToTopOnTabPress';
 import { backLabelFor, previousRoute } from '../../navigation/backLabels';
 import { Button } from './Button';
 import { Icon } from './Icon';
@@ -192,6 +193,8 @@ export function Screen({
   const screenInsets = useScreenInsets();
   const insets = modal && Platform.OS === 'ios' ? { ...screenInsets, top: spacing.md } : screenInsets;
   const background = { backgroundColor: shaded ? tokens.shaded : tokens.bg };
+  const scrollRef = useRef<ScrollableToTop>(null);
+  useScrollToTopOnTabPress(scrollRef);
 
   if (!scroll) {
     return (
@@ -211,6 +214,7 @@ export function Screen({
   return (
     <View style={[styles.screen, background, { paddingTop: insets.top }]}>
       <Scroller
+        ref={scrollRef as React.Ref<never>}
         bottomOffset={keyboardAware ? spacing.xxl : undefined}
         style={styles.screen}
         contentInsetAdjustmentBehavior="never"

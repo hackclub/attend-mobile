@@ -14,6 +14,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { GestureDetector } from 'react-native-gesture-handler';
 import { EventBanner, useSwitcherPull } from './EventBanner';
 import { bannerHeight } from '../services/eventBanner';
+import { useScrollToTopOnTabPress, type ScrollableToTop } from '../hooks/useScrollToTopOnTabPress';
 
 type EventBannerProps = Omit<ComponentProps<typeof EventBanner>, 'pull' | 'style'>;
 
@@ -51,6 +52,8 @@ export function BannerScrollView({
 }) {
   const { width } = useWindowDimensions();
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
+  // Tapping the current tab scrolls the page back up under its banner.
+  useScrollToTopOnTabPress(scrollRef as unknown as React.RefObject<ScrollableToTop | null>);
   const scrollY = useSharedValue(0);
   const maxScroll = useSharedValue(0);
   const fling = useSharedValue(0);

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -52,6 +52,7 @@ import {
 import { PARTICIPANT_STATE_LABELS } from '../services/participantStatus';
 import type { AppStackParamList, Participant, ScanContext } from '../types';
 import { useTabBarInset } from '../hooks/useTabBarInset';
+import { useScrollToTopOnTabPress, type ScrollableToTop } from '../hooks/useScrollToTopOnTabPress';
 
 type NavigationProp = NativeStackNavigationProp<AppStackParamList>;
 
@@ -70,6 +71,9 @@ export function SearchScreen() {
   // Zero once the native bar is laid out as a side rail — see useTabBarInset.
   const tabBarInset = useTabBarInset();
   const navigation = useNavigation<NavigationProp>();
+  // Tapping the People tab again scrolls the roster back to its top.
+  const listRef = useRef<ScrollableToTop>(null);
+  useScrollToTopOnTabPress(listRef);
   const openSheet = useOpenSheet();
   const { useSplitView } = useResponsiveLayout();
   const { canViewParticipantRecords, roleLabel } = useEventAccess();
@@ -449,6 +453,7 @@ export function SearchScreen() {
       )}
 
       <FlashList
+        ref={listRef as React.Ref<never>}
         data={items}
         renderItem={renderItem}
         extraData={selectedId}

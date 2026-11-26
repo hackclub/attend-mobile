@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTabBarInset } from '../hooks/useTabBarInset';
+import { useScrollToTopOnTabPress, type ScrollableToTop } from '../hooks/useScrollToTopOnTabPress';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ApiError, api } from '../services/api';
@@ -255,6 +256,9 @@ export function TravelCalendarScreen() {
   const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<NavigationProp>();
   const { state } = useApp();
+  // Tapping the Travel tab again scrolls the calendar back to its top.
+  const listRef = useRef<ScrollableToTop>(null);
+  useScrollToTopOnTabPress(listRef);
   const { canViewParticipantRecords } = useEventAccess();
   const tabBarHeight = useTabBarInset();
   const [data, setData] = useState<TravelCalendarData | null>(null);
@@ -439,6 +443,7 @@ export function TravelCalendarScreen() {
         </View>
       ) : (
         <SectionList
+          ref={listRef as React.Ref<never>}
           sections={sections}
           keyExtractor={(item) => item.key}
           stickySectionHeadersEnabled
