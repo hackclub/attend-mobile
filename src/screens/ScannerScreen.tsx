@@ -320,8 +320,9 @@ export function ScannerScreen() {
 
   return (
     <View style={styles.container} onTouchStart={recordScannerActivity}>
-      {/* The camera stage is always dark, whatever the system appearance. */}
-      {isFocused ? <StatusBar style="light" /> : null}
+      {/* The camera stage is always dark, whatever the system appearance,
+          including under a sheet (an iOS form sheet blurs this screen). */}
+      {cameraMounted ? <StatusBar style="light" /> : null}
       {cameraMounted ? (
         <CameraView
           style={StyleSheet.absoluteFill}

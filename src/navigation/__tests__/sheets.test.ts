@@ -1,4 +1,12 @@
-import { composeSheetHeight, isRouteUnderSheets, isSheetRoute, SHEET_ROUTES, sheetDetents } from '../sheets';
+import {
+  composeSheetHeight,
+  isRouteUnderSheets,
+  isSheetOnTop,
+  isSheetRoute,
+  rootKeyUnderSheets,
+  SHEET_ROUTES,
+  sheetDetents,
+} from '../sheets';
 
 const main = (tab: string, stackTop: string) => ({
   key: 'main',
@@ -20,6 +28,25 @@ describe('isSheetRoute', () => {
     expect(isSheetRoute('ScanContextSheet')).toBe(true);
     expect(isSheetRoute('AccountSheet')).toBe(true);
     expect(isSheetRoute('Kiosk')).toBe(false);
+  });
+});
+
+describe('isSheetOnTop', () => {
+  it('is true only while a form sheet tops the root stack', () => {
+    expect(isSheetOnTop(undefined)).toBe(false);
+    expect(isSheetOnTop({ index: 0, routes: [main('Scanner', 'scan')] })).toBe(false);
+    expect(isSheetOnTop({ index: 1, routes: [main('Scanner', 'scan'), { key: 's', name: 'ScanContextSheet' }] })).toBe(true);
+    expect(isSheetOnTop({ index: 1, routes: [main('Scanner', 'scan'), { key: 'k', name: 'Kiosk' }] })).toBe(false);
+  });
+});
+
+describe('rootKeyUnderSheets', () => {
+  it('is the top root route, or the one under the sheets', () => {
+    expect(rootKeyUnderSheets(undefined)).toBeUndefined();
+    expect(rootKeyUnderSheets({ index: 0, routes: [main('Scanner', 'scan')] })).toBe('main');
+    const sheets = { index: 2, routes: [main('Scanner', 'scan'), { key: 's1', name: 'ScannerSearchSheet' }, { key: 's2', name: 'OptionsSheet' }] };
+    expect(rootKeyUnderSheets(sheets)).toBe('main');
+    expect(rootKeyUnderSheets({ index: 1, routes: [main('Scanner', 'scan'), { key: 'k', name: 'Kiosk' }] })).toBe('k');
   });
 });
 

@@ -29,6 +29,21 @@ interface StateLike {
   routes: readonly { key?: string; name: string; state?: StateLike }[];
 }
 
+/** Whether a form sheet is the top of the root stack. */
+export function isSheetOnTop(rootState: StateLike | undefined): boolean {
+  if (!rootState?.routes.length) return false;
+  const index = rootState.index ?? rootState.routes.length - 1;
+  return isSheetRoute(rootState.routes[index]?.name ?? '');
+}
+
+/** The key of the root route shown under any form sheets at the top (the top route with none). */
+export function rootKeyUnderSheets(rootState: StateLike | undefined): string | undefined {
+  if (!rootState?.routes.length) return undefined;
+  let index = rootState.index ?? rootState.routes.length - 1;
+  while (index >= 0 && isSheetRoute(rootState.routes[index].name)) index -= 1;
+  return rootState.routes[index]?.key;
+}
+
 /**
  * Whether the route `routeKey` is what's shown under the form sheets at the
  * top of the root stack, i.e. it's on screen with only sheets over it. False
@@ -36,9 +51,8 @@ interface StateLike {
  * else, such as a full-screen modal or another tab, covers it.
  */
 export function isRouteUnderSheets(rootState: StateLike | undefined, routeKey: string, routeName?: string): boolean {
-  if (!rootState?.routes.length) return false;
+  if (!rootState || !isSheetOnTop(rootState)) return false;
   let index = rootState.index ?? rootState.routes.length - 1;
-  if (!isSheetRoute(rootState.routes[index]?.name ?? '')) return false;
   while (index >= 0 && isSheetRoute(rootState.routes[index].name)) index -= 1;
   let route = rootState.routes[index];
   while (route) {
