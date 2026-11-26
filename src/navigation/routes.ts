@@ -1,3 +1,4 @@
+import type { ThemeTokens } from '../theme';
 import type { OverviewStackParamList, Ticket } from '../types';
 
 /** The root stack's navigator id, for `navigation.getParent(ROOT_NAVIGATOR)`. */
@@ -41,6 +42,15 @@ export function eventHomeState<S extends keyof OverviewStackParamList>(
       },
     ],
   };
+}
+
+/**
+ * Each home's page colour, which its banner fades into (in dark mode): the
+ * Overview's page, or the pass's shaded one. A switch's landing card fades
+ * into the same, so it matches the banner it hands over to.
+ */
+export function homePageColor(home: 'event' | 'pass', tokens: ThemeTokens): string {
+  return home === 'event' ? tokens.bg : tokens.shaded;
 }
 
 /**

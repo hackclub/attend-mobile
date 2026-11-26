@@ -58,7 +58,7 @@ import { travelClock, travelWeekday } from '../services/travelTimes';
 import type { Event, MainTabParamList, AppStackParamList, TravelCalendarEntry } from '../types';
 import { SwitchEventList } from '../components/EventSwitcher';
 import { resetRoot } from '../navigation/rootNavigation';
-import type { PartialState } from '../navigation/routes';
+import { homePageColor, type PartialState } from '../navigation/routes';
 import { bannerKey } from '../navigation/switcherOverlay';
 
 type Navigation = NavigationProp<AppStackParamList & MainTabParamList>;
@@ -395,7 +395,7 @@ function Overview({
   const banner = eventBannerText(event, eventRoleLabel(event.role));
 
   return (
-    <View style={[styles.screen, { backgroundColor: tokens.bg }]}>
+    <View style={[styles.screen, { backgroundColor: homePageColor('event', tokens) }]}>
       <BannerScrollView
         banner={{
           event: event,
@@ -403,7 +403,7 @@ function Overview({
           eyebrowIcon: banner.eyebrowIcon,
           meta: banner.meta,
           topInset: insets.top + topTabInset,
-          blendInto: tokens.bg,
+          blendInto: homePageColor('event', tokens),
           switcher: bannerSwitcher,
           accessory: <AccountButton onBanner />,
         }}

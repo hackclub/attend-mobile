@@ -20,7 +20,7 @@ import { TicketPass } from '../components/TicketPass';
 import { WalletButtons } from '../components/WalletButtons';
 import { resetRoot } from '../navigation/rootNavigation';
 import { canGoBackPastSheets } from '../navigation/sheets';
-import type { PartialState } from '../navigation/routes';
+import { homePageColor, type PartialState } from '../navigation/routes';
 import { bannerKey } from '../navigation/switcherOverlay';
 import {
   startTicketActivity,
@@ -210,7 +210,7 @@ function PassView({ initial, inTabs = false }: { initial: Ticket; inTabs?: boole
   };
 
   return (
-    <View style={[styles.screen, { backgroundColor: tokens.shaded }]}>
+    <View style={[styles.screen, { backgroundColor: homePageColor('pass', tokens) }]}>
       <BannerScrollView
         banner={{
           event: event,
@@ -218,7 +218,7 @@ function PassView({ initial, inTabs = false }: { initial: Ticket; inTabs?: boole
           eyebrowIcon: banner.eyebrowIcon,
           meta: banner.meta,
           topInset: insets.top,
-          blendInto: tokens.shaded,
+          blendInto: homePageColor('pass', tokens),
           onBack: canGoBack ? () => navigation.goBack() : undefined,
           switcher: bannerSwitcher,
           accessory: canGoBack ? undefined : <AccountButton onBanner />,
