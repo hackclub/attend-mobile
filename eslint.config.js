@@ -25,4 +25,53 @@ module.exports = defineConfig([
       'import/namespace': 'off',
     },
   },
+  // Design-system hygiene: colours come from the theme (tokens, overlayTokens
+  // and the other fixed sets in src/theme), icons from ui/Icon. Files that
+  // carry colours as data (wallet badge artwork, pass and status palettes)
+  // and tests are exempt.
+  {
+    files: ['src/**/*.{ts,tsx}', 'App.tsx'],
+    ignores: [
+      'src/theme/**',
+      'src/assets/walletBadges.ts',
+      'src/services/eventPassColors.ts',
+      'src/services/statusDisplay.ts',
+      '**/__tests__/**',
+      '**/*.test.{ts,tsx}',
+    ],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: 'Literal[value=/^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/]',
+          message: 'Use a theme token (useTheme().tokens, overlayTokens) instead of a hex colour.',
+        },
+        {
+          selector: 'Literal[value=/^rgba?\\(/]',
+          message: 'Use a theme token, or withAlpha() on one, instead of an rgb()/rgba() colour.',
+        },
+        {
+          selector: 'TemplateElement[value.raw=/rgba?\\(|#[0-9a-fA-F]{3,8}\\b/]',
+          message: 'Use a theme token, or withAlpha() on one, instead of building a colour string.',
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}', 'App.tsx'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [{ name: '@expo/vector-icons', message: 'Use ui/Icon (Heroicons v1) instead.' }],
+          patterns: [
+            {
+              group: ['**/theme/colors'],
+              message: 'The legacy colours API is gone; use useTheme().tokens or overlayTokens.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ]);

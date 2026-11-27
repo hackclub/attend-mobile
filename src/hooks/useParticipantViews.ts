@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { asyncStorage } from '../services/storage';
 import {
-  PRESET_VIEWS,
+  EMPTY_BASIC,
   viewSignature,
   newRuleId,
+  type BasicFilters,
   type FilterRule,
   type Conjunction,
+  type QuickFilter,
   type SortRule,
   type SavedView,
 } from '../services/participantFilters';
@@ -17,12 +19,21 @@ interface PersistedState {
   rules: FilterRule[];
   conjunction: Conjunction;
   sort: SortRule | null;
+  /** Both absent in state saved before the chip row. */
+  quick?: QuickFilter;
+  basic?: BasicFilters;
+}
+
+function cloneBasic(basic: BasicFilters | undefined): BasicFilters {
+  return basic ? { ...basic, states: [...basic.states] } : EMPTY_BASIC;
 }
 
 export function useParticipantViews(eventId: string | undefined) {
   const [rules, setRulesState] = useState<FilterRule[]>([]);
   const [conjunction, setConjunctionState] = useState<Conjunction>('and');
   const [sort, setSortState] = useState<SortRule | null>(null);
+  const [quick, setQuickState] = useState<QuickFilter>('all');
+  const [basic, setBasicState] = useState<BasicFilters>(EMPTY_BASIC);
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
   // Which event's persisted state has finished loading (state, so the persist effect re-runs)
   const [hydratedFor, setHydratedFor] = useState<string | null>(null);
@@ -41,6 +52,14 @@ export function useParticipantViews(eventId: string | undefined) {
     dirty.current = true;
     setSortState(next);
   }, []);
+  const setQuick = useCallback((next: QuickFilter) => {
+    dirty.current = true;
+    setQuickState(next);
+  }, []);
+  const setBasic = useCallback((next: BasicFilters) => {
+    dirty.current = true;
+    setBasicState(next);
+  }, []);
 
   // Load saved views + last working state when the event changes
   useEffect(() => {
@@ -52,6 +71,8 @@ export function useParticipantViews(eventId: string | undefined) {
       setRulesState([]);
       setConjunctionState('and');
       setSortState(null);
+      setQuickState('all');
+      setBasicState(EMPTY_BASIC);
       setSavedViews([]);
       if (!eventId) return;
 
@@ -67,6 +88,8 @@ export function useParticipantViews(eventId: string | undefined) {
           setRulesState(state?.rules ?? []);
           setConjunctionState(state?.conjunction ?? 'and');
           setSortState(state?.sort ?? null);
+          setQuickState(state?.quick ?? 'all');
+          setBasicState(cloneBasic(state?.basic));
         }
       } catch (error) {
         console.error('Failed to load participant views:', error);
@@ -86,23 +109,24 @@ export function useParticipantViews(eventId: string | undefined) {
   useEffect(() => {
     if (!eventId || hydratedFor !== eventId) return;
     asyncStorage
-      .set(STATE_KEY(eventId), { rules, conjunction, sort } satisfies PersistedState)
+      .set(STATE_KEY(eventId), { rules, conjunction, sort, quick, basic } satisfies PersistedState)
       .catch(error => console.error('Failed to persist filter state:', error));
-  }, [eventId, hydratedFor, rules, conjunction, sort]);
+  }, [eventId, hydratedFor, rules, conjunction, sort, quick, basic]);
 
-  const allViews = useMemo(() => [...PRESET_VIEWS, ...savedViews], [savedViews]);
-
+  // The saved view the sheet's filters and sort match exactly, if any. The
+  // quick chip isn't part of a view: it narrows whatever the view shows.
   const activeViewId = useMemo(() => {
-    const sig = viewSignature(rules, conjunction, sort);
-    return allViews.find(v => viewSignature(v.rules, v.conjunction, v.sort) === sig)?.id ?? null;
-  }, [allViews, rules, conjunction, sort]);
+    const sig = viewSignature(rules, conjunction, sort, basic);
+    return savedViews.find(v => viewSignature(v.rules, v.conjunction, v.sort, v.basic) === sig)?.id ?? null;
+  }, [savedViews, rules, conjunction, sort, basic]);
 
   const applyView = useCallback((view: SavedView) => {
-    // Clone rules so edits to the working set never mutate the saved view
+    // Clone so edits to the working set never mutate the saved view
     setRules(view.rules.map(r => ({ ...r, id: newRuleId() })));
     setConjunction(view.conjunction);
     setSort(view.sort ? { ...view.sort } : null);
-  }, []);
+    setBasic(cloneBasic(view.basic));
+  }, [setRules, setConjunction, setSort, setBasic]);
 
   const saveView = useCallback(
     (name: string) => {
@@ -113,6 +137,7 @@ export function useParticipantViews(eventId: string | undefined) {
         rules: rules.map(r => ({ ...r })),
         conjunction,
         sort: sort ? { ...sort } : null,
+        basic: cloneBasic(basic),
       };
       setSavedViews(prev => {
         const next = [...prev, view];
@@ -120,7 +145,7 @@ export function useParticipantViews(eventId: string | undefined) {
         return next;
       });
     },
-    [eventId, rules, conjunction, sort],
+    [eventId, rules, conjunction, sort, basic],
   );
 
   const deleteView = useCallback(
@@ -139,7 +164,8 @@ export function useParticipantViews(eventId: string | undefined) {
     setRules([]);
     setConjunction('and');
     setSort(null);
-  }, []);
+    setBasic(EMPTY_BASIC);
+  }, [setRules, setConjunction, setSort, setBasic]);
 
   return {
     rules,
@@ -148,8 +174,11 @@ export function useParticipantViews(eventId: string | undefined) {
     setConjunction,
     sort,
     setSort,
+    quick,
+    setQuick,
+    basic,
+    setBasic,
     savedViews,
-    allViews,
     activeViewId,
     applyView,
     saveView,

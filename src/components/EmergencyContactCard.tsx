@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
+import { StyleSheet, Text, View } from 'react-native';
+import { useTheme } from '../theme';
+import { Badge, KeyValue } from './ui';
 import type { EmergencyContact } from '../types';
 
 interface EmergencyContactCardProps {
@@ -10,125 +10,40 @@ interface EmergencyContactCardProps {
   onEmail: (email: string) => void;
 }
 
+/** One emergency contact inside a Container: name, relationship and tappable phone / email. */
 export function EmergencyContactCard({ contact, onCall, onEmail }: EmergencyContactCardProps) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
+  const { tokens, type } = useTheme();
+  const link = (value: string, onPress: () => void, hint: string) => (
+    <Text
+      style={[type.body, { color: tokens.accent }]}
+      selectable
+      onPress={onPress}
+      accessibilityRole="link"
+      accessibilityHint={hint}
+    >
+      {value}
+    </Text>
+  );
 
   return (
-    <View style={styles.container}>
+    <View>
       <View style={styles.header}>
-        <Text style={styles.name}>{contact.name}</Text>
-        {contact.is_primary && (
-          <View style={styles.primaryBadge}>
-            <Text style={styles.primaryText}>Primary</Text>
-          </View>
-        )}
+        <Text style={[type.h3, styles.name, { color: tokens.textH }]}>{contact.name}</Text>
+        {contact.is_primary && <Badge label="Primary" color="blue" />}
       </View>
-
-      <Text style={styles.relationship}>{contact.relationship}</Text>
-
-      <View style={styles.actions}>
-        <View style={styles.callButton}>
-          <Ionicons name="call" size={16} color={colors.white} />
-          <Text
-            style={styles.callButtonText}
-            selectable
-            onPress={() => onCall(contact.phone)}
-            accessibilityRole="link"
-            accessibilityHint="Shows calling options"
-          >
-            {contact.phone}
-          </Text>
-        </View>
-
-        {contact.email && (
-          <View style={styles.emailButton}>
-            <Ionicons name="mail" size={16} color={colors.white} />
-            <Text
-              style={styles.emailButtonText}
-              selectable
-              onPress={() => onEmail(contact.email!)}
-              accessibilityRole="link"
-              accessibilityHint="Opens the default email app"
-            >
-              {contact.email}
-            </Text>
-          </View>
-        )}
-      </View>
+      {contact.relationship ? (
+        <Text style={[type.body, styles.relationship, { color: tokens.text2 }]}>{contact.relationship}</Text>
+      ) : null}
+      <KeyValue label="Phone" value={link(contact.phone, () => onCall(contact.phone), 'Shows calling options')} />
+      {contact.email && (
+        <KeyValue label="Email" value={link(contact.email, () => onEmail(contact.email!), 'Opens the default email app')} />
+      )}
     </View>
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  container: {
-    backgroundColor: colors.gray[50],
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.gray[200],
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  name: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text.primary,
-    flex: 1,
-  },
-  primaryBadge: {
-    backgroundColor: colors.blue,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  primaryText: {
-    color: colors.white,
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  relationship: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    marginBottom: 12,
-  },
-  actions: {
-    gap: 8,
-  },
-  callButton: {
-    flexDirection: 'row',
-    backgroundColor: colors.green,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6,
-  },
-  callButtonText: {
-    color: colors.white,
-    fontSize: 14,
-    fontWeight: '600',
-    flexShrink: 1,
-  },
-  emailButton: {
-    flexDirection: 'row',
-    backgroundColor: colors.blue,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6,
-  },
-  emailButtonText: {
-    color: colors.white,
-    fontSize: 14,
-    fontWeight: '600',
-    flexShrink: 1,
-  },
+const styles = StyleSheet.create({
+  header: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, paddingVertical: 4 },
+  name: { flexShrink: 1 },
+  relationship: { marginBottom: 2 },
 });

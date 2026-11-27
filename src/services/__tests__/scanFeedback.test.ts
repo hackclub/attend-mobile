@@ -1,28 +1,16 @@
-jest.mock('expo-haptics', () => ({
-  NotificationFeedbackType: {
-    Success: 'success',
-    Warning: 'warning',
-    Error: 'error',
-  },
-}));
-
-import * as Haptics from 'expo-haptics';
 import { feedbackForOutcome } from '../scanFeedback';
 
 describe('feedbackForOutcome', () => {
   it('maps each final outcome to a distinct sound and haptic', () => {
-    expect(feedbackForOutcome('scanned')).toEqual({
-      sound: 'scanned',
-      haptic: Haptics.NotificationFeedbackType.Success,
-    });
-    expect(feedbackForOutcome('already_scanned')).toEqual({
-      sound: 'already-scanned',
-      haptic: Haptics.NotificationFeedbackType.Warning,
-    });
-    expect(feedbackForOutcome('not_scanned')).toEqual({
-      sound: 'not-scanned',
-      haptic: Haptics.NotificationFeedbackType.Error,
-    });
+    expect(feedbackForOutcome('scanned')).toEqual({ sound: 'scanned', haptic: 'success' });
+    expect(feedbackForOutcome('already_scanned')).toEqual({ sound: 'already-scanned', haptic: 'warning' });
+    expect(feedbackForOutcome('not_scanned')).toEqual({ sound: 'not-scanned', haptic: 'error' });
+  });
+
+  it('plays the success feedback offline only for a ticket checked on the device', () => {
+    expect(feedbackForOutcome('saved')).toEqual({ sound: 'scanned', haptic: 'success' });
+    expect(feedbackForOutcome('saved_unchecked')).toEqual({ sound: 'already-scanned', haptic: 'warning' });
+    expect(feedbackForOutcome('saved_cancelled')).toEqual({ sound: 'not-scanned', haptic: 'error' });
   });
 
   it('does not play final feedback while confirmation is pending', () => {

@@ -6,17 +6,15 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
 import * as Sentry from '@sentry/react-native';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
+import { haptics } from '../services/haptics';
 import { nfcService } from '../services/nfc';
 import { isExpired, matchDateOfBirth, matchName } from '../services/idCheck/match';
 import { validateManualAccess, type MrzAccessFields } from '../services/idCheck/mrz';
@@ -40,10 +38,12 @@ import {
   type Decision,
   type VerdictInput,
 } from '../services/idCheck/verdict';
-import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
-import type { RootStackParamList } from '../types';
+import { radii, useTheme, type ThemeTokens } from '../theme';
+import { Button, Container, Flashbar, Icon, KeyValue, RETRY_LABEL, TextField, type IconName } from '../components/ui';
+import { BiometricGate } from '../components/BiometricGate';
+import type { AppStackParamList } from '../types';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'IdCheck'>;
+type Props = NativeStackScreenProps<AppStackParamList, 'IdCheck'>;
 
 // Every document detail lives in this component's state and nowhere else: not
 // AsyncStorage, SecureStore, the sync queue, a file, or the console. It is all
@@ -62,10 +62,27 @@ const EMPTY_MANUAL: MrzAccessFields = { documentNumber: '', dateOfBirth: '', dat
 
 const DOCUMENT_LABELS: Record<string, string> = { P: 'Passport', I: 'ID card', A: 'ID card', C: 'ID card' };
 
-export function IdCheckScreen({ route, navigation }: Props) {
+// The ID check shows the participant's legal name, date of birth and
+// photo, so it sits behind the same biometric gate as participant details.
+// It's opened from an unlocked detail view, so normally the gate passes
+// straight through; it locks again if the app is backgrounded meanwhile.
+export function IdCheckScreen(props: Props) {
+  const { tokens } = useTheme();
+  return (
+    <View style={[styles.flex, { backgroundColor: tokens.shaded }]}>
+      <BiometricGate
+        reason="Authenticate to check this participant's ID"
+        onCancel={() => props.navigation.goBack()}
+      >
+        <IdCheckFlow {...props} />
+      </BiometricGate>
+    </View>
+  );
+}
+
+function IdCheckFlow({ route, navigation }: Props) {
   const { participant, eventId } = route.params;
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
+  const { tokens, type, spacing } = useTheme();
   const { state } = useApp();
   const isGlobalAdmin = !!state.auth.user?.global_admin;
 
@@ -165,7 +182,9 @@ export function IdCheckScreen({ route, navigation }: Props) {
         dobMatch: matchDateOfBirth(result.dateOfBirth, attendDob),
         expired: isExpired(result.dateOfExpiry),
       };
-      setStep({ kind: 'result', result, input, outcome: verdict(input) });
+      const outcome = verdict(input);
+      haptics.notify(outcome === 'green' ? 'success' : outcome === 'amber' ? 'warning' : 'error');
+      setStep({ kind: 'result', result, input, outcome });
     } catch (error) {
       if (stepRef.current.kind !== 'reading') return; // reset while reading
       if (error instanceof MrtdError && error.isCancelled) {
@@ -211,117 +230,128 @@ export function IdCheckScreen({ route, navigation }: Props) {
 
   if (!isGlobalAdmin) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.centered}>
-          <Text style={styles.body}>ID checks are available to global admins only.</Text>
-          <SecondaryButton label="Close" onPress={close} styles={styles} />
+      <SafeAreaView style={styles.flex}>
+        <View style={[styles.centered, { padding: spacing.xxl, gap: spacing.lg }]}>
+          <Text style={[type.body, { color: tokens.text2 }]}>ID checks are available to global admins only.</Text>
+          <Button title="Close" onPress={close} fullWidth />
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <View style={styles.topBar}>
-        <Text style={styles.topTitle}>Verify ID</Text>
-        <TouchableOpacity onPress={close} accessibilityRole="button" accessibilityLabel="Close">
-          <Text style={styles.topClose}>Close</Text>
-        </TouchableOpacity>
+    <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
+      {/* A full-screen modal, so Cancel is the way out (and Android's back). */}
+      <View style={{ paddingHorizontal: spacing.lg, gap: spacing.xs }}>
+        <Button title="Cancel" variant="link" onPress={close} style={styles.cancel} />
+        <Text style={[type.h1, { color: tokens.textH }]} accessibilityRole="header">
+          Verify ID
+        </Text>
       </View>
 
       <Sentry.Mask style={styles.flex}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={[styles.content, { padding: spacing.lg, gap: spacing.lg }]}
+          keyboardShouldPersistTaps="handled"
+        >
           <ParticipantHeader
             name={[legalFirstName, legalLastName].filter(Boolean).join(' ') || participant.full_name}
             headshotUrl={participant.headshot_url}
-            styles={styles}
           />
 
           {!readerSupported ? (
-            <Notice tone="error" text="This device can't read document chips. ID checks need an iPhone with NFC." styles={styles} />
+            <Flashbar type="error" message="This device can't read document chips. ID checks need an iPhone with NFC." />
           ) : null}
           {readerSupported && !trustAnchors ? (
-            <Notice
-              tone="warning"
-              text="This build has no trust list, so no document can be fully verified. Results will be amber at best."
-              styles={styles}
+            <Flashbar
+              type="warning"
+              message="This build has no trust list, so no document can be fully verified. Results will be amber at best."
             />
           ) : null}
           {!legalFirstName || !legalLastName ? (
-            <Notice tone="warning" text="The Attend record has no legal name, so the name can't be matched." styles={styles} />
+            <Flashbar type="warning" message="The Attend record has no legal name, so the name can't be matched." />
           ) : null}
 
           {step.kind === 'access' && readerSupported ? (
-            <View style={styles.section}>
-              <Text style={styles.stepTitle}>1. Scan the document</Text>
-              <Text style={styles.body}>
-                Scan the lines of {'<<<'} characters at the bottom of the photo page, or on the back of an ID card.
-                This unlocks the chip. Only chipped passports and ID cards (with the chip symbol) can be checked.
-              </Text>
-              {step.error ? <Notice tone="error" text={step.error} styles={styles} /> : null}
-              {cameraSupported ? (
-                <PrimaryButton icon="scan-outline" label="Scan document" onPress={handleScan} styles={styles} colors={colors} />
-              ) : null}
-              <SecondaryButton label="Enter details by hand" onPress={() => setStep({ kind: 'manual' })} styles={styles} />
-            </View>
+            <Container title="1. Scan the document">
+              <View style={styles.section}>
+                <Text style={[type.body, { color: tokens.text2 }]}>
+                  Scan the lines of {'<<<'} characters at the bottom of the photo page, or on the back of an ID card.
+                  This unlocks the chip. Only chipped passports and ID cards (with the chip symbol) can be checked.
+                </Text>
+                {step.error ? <Flashbar type="error" message={step.error} /> : null}
+                {cameraSupported ? (
+                  <Button title="Scan document" variant="primary" icon="camera" fullWidth onPress={handleScan} />
+                ) : null}
+                <Button title="Enter details by hand" fullWidth onPress={() => setStep({ kind: 'manual' })} />
+              </View>
+            </Container>
           ) : null}
 
           {step.kind === 'manual' ? (
-            <View style={styles.section}>
-              <Text style={styles.stepTitle}>1. Enter the document details</Text>
-              <Text style={styles.body}>Copy them from the document. Dates are YYMMDD, for example 080314.</Text>
-              <LabelledInput
-                label="Document number"
-                value={manual.documentNumber}
-                onChangeText={(documentNumber) => setManual((m) => ({ ...m, documentNumber }))}
-                autoCapitalize="characters"
-                styles={styles}
-                colors={colors}
-              />
-              <LabelledInput
-                label="Date of birth (YYMMDD)"
-                value={manual.dateOfBirth}
-                onChangeText={(dateOfBirth) => setManual((m) => ({ ...m, dateOfBirth }))}
-                keyboardType="number-pad"
-                maxLength={6}
-                styles={styles}
-                colors={colors}
-              />
-              <LabelledInput
-                label="Expiry date (YYMMDD)"
-                value={manual.dateOfExpiry}
-                onChangeText={(dateOfExpiry) => setManual((m) => ({ ...m, dateOfExpiry }))}
-                keyboardType="number-pad"
-                maxLength={6}
-                styles={styles}
-                colors={colors}
-              />
-              {step.error ? <Notice tone="error" text={step.error} styles={styles} /> : null}
-              <PrimaryButton icon="arrow-forward" label="Continue" onPress={handleManualContinue} styles={styles} colors={colors} />
-              <SecondaryButton label="Back" onPress={() => setStep({ kind: 'access' })} styles={styles} />
-            </View>
+            <Container title="1. Enter the document details">
+              <View style={styles.section}>
+                <Text style={[type.body, { color: tokens.text2 }]}>
+                  Copy them from the document. Dates are YYMMDD, for example 080314.
+                </Text>
+                <PrivateField
+                  label="Document number"
+                  value={manual.documentNumber}
+                  onChangeText={(documentNumber) => setManual((m) => ({ ...m, documentNumber }))}
+                  autoCapitalize="characters"
+                />
+                <PrivateField
+                  label="Date of birth (YYMMDD)"
+                  value={manual.dateOfBirth}
+                  onChangeText={(dateOfBirth) => setManual((m) => ({ ...m, dateOfBirth }))}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                />
+                <PrivateField
+                  label="Expiry date (YYMMDD)"
+                  value={manual.dateOfExpiry}
+                  onChangeText={(dateOfExpiry) => setManual((m) => ({ ...m, dateOfExpiry }))}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                />
+                {step.error ? <Flashbar type="error" message={step.error} /> : null}
+                <Button
+                  title="Continue"
+                  variant="primary"
+                  icon="chevron-right"
+                  iconPosition="end"
+                  fullWidth
+                  onPress={handleManualContinue}
+                />
+                <Button title="Back" fullWidth onPress={() => setStep({ kind: 'access' })} />
+              </View>
+            </Container>
           ) : null}
 
           {step.kind === 'ready' || step.kind === 'reading' ? (
-            <View style={styles.section}>
-              <Text style={styles.stepTitle}>2. Read the chip</Text>
-              <Text style={styles.body}>
-                Place the top of the iPhone flat on the document: on the photo page or cover of a passport, or the
-                middle of an ID card. Hold still until the read finishes.
-              </Text>
-              {step.kind === 'ready' && step.error ? <Notice tone="error" text={step.error} styles={styles} /> : null}
-              {step.kind === 'reading' ? (
-                <View style={styles.reading}>
-                  <ActivityIndicator color={colors.text.accent} />
-                  <Text style={styles.body}>Reading...</Text>
-                </View>
-              ) : (
-                <>
-                  <PrimaryButton icon="radio-outline" label="Read chip" onPress={() => handleRead(step.access)} styles={styles} colors={colors} />
-                  <SecondaryButton label="Scan a different document" onPress={reset} styles={styles} />
-                </>
-              )}
-            </View>
+            <Container title="2. Read the chip">
+              <View style={styles.section}>
+                <Text style={[type.body, { color: tokens.text2 }]}>
+                  Place the top of the iPhone flat on the document: on the photo page or cover of a passport, or the
+                  middle of an ID card. Hold still until the read finishes.
+                </Text>
+                {step.kind === 'ready' && step.error ? <Flashbar type="error" message={step.error} /> : null}
+                {step.kind === 'reading' ? (
+                  <Busy label="Reading..." />
+                ) : (
+                  <>
+                    <Button
+                      title="Read chip"
+                      variant="primary"
+                      icon="nfc"
+                      fullWidth
+                      onPress={() => handleRead(step.access)}
+                    />
+                    <Button title="Scan a different document" fullWidth onPress={reset} />
+                  </>
+                )}
+              </View>
+            </Container>
           ) : null}
 
           {step.kind === 'result' || step.kind === 'recording' || step.kind === 'recordFailed' ? (
@@ -332,16 +362,19 @@ export function IdCheckScreen({ route, navigation }: Props) {
                 if (step.kind === 'result' || step.kind === 'recordFailed') handleDecision(step, decision);
               }}
               onRestart={reset}
-              styles={styles}
-              colors={colors}
             />
           ) : null}
 
           {step.kind === 'recorded' ? (
             <View style={styles.section}>
-              <OutcomeBanner outcome={step.outcome} title={step.decision === 'confirmed' ? 'Identity confirmed' : 'Identity rejected'} styles={styles} colors={colors} />
-              <Text style={styles.body}>The outcome was added to the participant&apos;s notes. No document data was stored.</Text>
-              <PrimaryButton icon="checkmark" label="Done" onPress={close} styles={styles} colors={colors} />
+              <OutcomeBanner
+                outcome={step.outcome}
+                title={step.decision === 'confirmed' ? 'Identity confirmed' : 'Identity rejected'}
+              />
+              <Text style={[type.body, { color: tokens.text2 }]}>
+                The outcome was added to the participant&apos;s notes. No document data was stored.
+              </Text>
+              <Button title="Done" variant="primary" icon="check" fullWidth onPress={close} />
             </View>
           ) : null}
         </ScrollView>
@@ -355,16 +388,13 @@ function ResultView({
   headshotUrl,
   onDecision,
   onRestart,
-  styles,
-  colors,
 }: {
   step: Extract<Step, { kind: 'result' | 'recording' | 'recordFailed' }>;
   headshotUrl?: string | null;
   onDecision: (decision: Decision) => void;
   onRestart: () => void;
-  styles: Styles;
-  colors: ThemeColors;
 }) {
+  const { tokens, type } = useTheme();
   const { result, input, outcome } = step;
   const reasons = verdictReasons(input);
   const busy = step.kind === 'recording';
@@ -372,382 +402,173 @@ function ResultView({
 
   return (
     <View style={styles.section}>
-      <OutcomeBanner outcome={outcome} title={title} styles={styles} colors={colors} />
-      {reasons.length > 0 ? (
-        <View style={styles.reasons}>
-          {reasons.map((reason) => (
-            <Text key={reason} style={styles.reason}>{'•'} {reason}</Text>
-          ))}
+      <OutcomeBanner outcome={outcome} title={title} reasons={reasons} />
+
+      <Container title="3. Compare the photos">
+        <View style={styles.section}>
+          <Text style={[type.body, { color: tokens.text2 }]}>
+            Compare the chip photo with the Attend photo and with the person in front of you. You decide; nothing is
+            matched automatically.
+          </Text>
+          <View style={styles.photos}>
+            <Photo label="Chip" uri={result.photoJpegBase64 ? `data:image/jpeg;base64,${result.photoJpegBase64}` : null} />
+            <Photo label="Attend" uri={headshotUrl ?? null} />
+          </View>
         </View>
-      ) : null}
+      </Container>
 
-      <Text style={styles.stepTitle}>3. Compare the photos</Text>
-      <Text style={styles.body}>
-        Compare the chip photo with the Attend photo and with the person in front of you. You decide; nothing is
-        matched automatically.
-      </Text>
-      <View style={styles.photos}>
-        <Photo label="Chip" uri={result.photoJpegBase64 ? `data:image/jpeg;base64,${result.photoJpegBase64}` : null} styles={styles} />
-        <Photo label="Attend" uri={headshotUrl ?? null} styles={styles} />
-      </View>
+      <Container>
+        <KeyValue
+          layout="stacked"
+          label="Document"
+          value={`${result.issuingState} ${DOCUMENT_LABELS[result.documentType] ?? 'document'}`}
+        />
+        <KeyValue layout="stacked" label="Name on chip" value={`${result.givenNames} ${result.surname}`.trim()} />
+        <KeyValue
+          layout="stacked"
+          label="Chip"
+          value={`${result.checks.accessProtocol}, active auth ${result.checks.activeAuth}, chip auth ${result.checks.chipAuth}`}
+        />
+      </Container>
 
-      <View style={styles.details}>
-        <Detail label="Document" value={`${result.issuingState} ${DOCUMENT_LABELS[result.documentType] ?? 'document'}`} styles={styles} />
-        <Detail label="Name on chip" value={`${result.givenNames} ${result.surname}`.trim()} styles={styles} />
-        <Detail label="Chip" value={`${result.checks.accessProtocol}, active auth ${result.checks.activeAuth}, chip auth ${result.checks.chipAuth}`} styles={styles} />
-      </View>
-
-      {step.kind === 'recordFailed' ? <Notice tone="error" text="Check not recorded. Try again." styles={styles} /> : null}
+      {step.kind === 'recordFailed' ? <Flashbar type="error" message="Check not recorded. Try again." /> : null}
 
       {busy ? (
-        <View style={styles.reading}>
-          <ActivityIndicator color={colors.text.accent} />
-          <Text style={styles.body}>Recording...</Text>
-        </View>
+        <Busy label="Recording..." />
       ) : step.kind === 'recordFailed' ? (
-        <PrimaryButton icon="refresh" label="Retry" onPress={() => onDecision(step.decision)} styles={styles} colors={colors} />
+        <Button title={RETRY_LABEL} variant="primary" icon="refresh" fullWidth onPress={() => onDecision(step.decision)} />
       ) : (
         <>
           {/* A red result can only be recorded as a rejection. */}
           {outcome !== 'red' ? (
-            <PrimaryButton icon="checkmark-circle-outline" label="Confirm identity" onPress={() => onDecision('confirmed')} styles={styles} colors={colors} />
+            <Button
+              title="Confirm identity"
+              variant="primary"
+              icon="check-circle"
+              fullWidth
+              onPress={() => onDecision('confirmed')}
+            />
           ) : null}
-          <SecondaryButton label="Reject" destructive onPress={() => onDecision('rejected')} styles={styles} />
-          <SecondaryButton label="Start again" onPress={onRestart} styles={styles} />
+          <Button title="Reject" icon="x-circle" fullWidth onPress={() => onDecision('rejected')} />
+          <Button title="Start again" variant="link" fullWidth onPress={onRestart} />
         </>
       )}
     </View>
   );
 }
 
-function ParticipantHeader({ name, headshotUrl, styles }: { name: string; headshotUrl?: string | null; styles: Styles }) {
+function ParticipantHeader({ name, headshotUrl }: { name: string; headshotUrl?: string | null }) {
+  const { tokens, type } = useTheme();
   return (
-    <View style={styles.participant}>
-      {headshotUrl ? <Image source={{ uri: headshotUrl }} style={styles.participantPhoto} /> : null}
-      <View style={styles.flex}>
-        <Text style={styles.participantLabel}>Checking</Text>
-        <Text style={styles.participantName}>{name}</Text>
+    <Container>
+      <View style={styles.participant}>
+        {/* React Native's Image (memory cache only), as for the photos below. */}
+        {headshotUrl ? (
+          <Image source={{ uri: headshotUrl }} style={[styles.participantPhoto, { backgroundColor: tokens.div2 }]} />
+        ) : null}
+        <View style={styles.flex}>
+          <Text style={[type.label, { color: tokens.text2 }]}>Checking</Text>
+          <Text style={[type.h2, { color: tokens.textH }]}>{name}</Text>
+        </View>
       </View>
-    </View>
+    </Container>
   );
 }
 
 // React Native's Image, not expo-image: expo-image caches to disk, and the chip
 // photo must stay in memory.
-function Photo({ label, uri, styles }: { label: string; uri: string | null; styles: Styles }) {
+function Photo({ label, uri }: { label: string; uri: string | null }) {
+  const { tokens, type, radii } = useTheme();
+  const frame = [styles.photo, { borderRadius: radii.item, backgroundColor: tokens.div2 }];
   return (
     <View style={styles.photoColumn}>
       {uri ? (
-        <Image source={{ uri }} style={styles.photo} resizeMode="cover" />
+        <Image source={{ uri }} style={frame} resizeMode="cover" />
       ) : (
-        <View style={[styles.photo, styles.photoMissing]}>
-          <Text style={styles.reason}>No photo</Text>
+        <View style={[frame, styles.photoMissing]}>
+          <Text style={[type.body, { color: tokens.muted }]}>No photo</Text>
         </View>
       )}
-      <Text style={styles.photoLabel}>{label}</Text>
+      <Text style={[type.label, { color: tokens.text2 }]}>{label}</Text>
     </View>
   );
 }
 
-function OutcomeBanner({ outcome, title, styles, colors }: { outcome: CheckResult; title: string; styles: Styles; colors: ThemeColors }) {
-  const fill = { green: colors.green, amber: colors.orange, red: colors.red }[outcome];
-  const icon = { green: 'shield-checkmark', amber: 'alert-circle', red: 'close-circle' }[outcome] as keyof typeof Ionicons.glyphMap;
+function outcomeColors(outcome: CheckResult, t: ThemeTokens): { bg: string; fg: string; icon: IconName } {
+  switch (outcome) {
+    case 'green':
+      return { bg: t.badgeGreen, fg: t.onStatusFill, icon: 'check-circle' };
+    case 'amber':
+      return { bg: t.warningFill, fg: t.onWarningFill, icon: 'exclamation' };
+    case 'red':
+      return { bg: t.badgeRed, fg: t.onStatusFill, icon: 'x-circle' };
+  }
+}
+
+function OutcomeBanner({ outcome, title, reasons }: { outcome: CheckResult; title: string; reasons?: string[] }) {
+  const { tokens, type, radii } = useTheme();
+  const { bg, fg, icon } = outcomeColors(outcome, tokens);
   return (
-    <View style={[styles.banner, { backgroundColor: fill }]}>
-      <Ionicons name={icon} size={24} color={colors.gray[900]} />
-      <Text style={styles.bannerText}>{title}</Text>
+    <View
+      style={[styles.banner, { backgroundColor: bg, borderRadius: radii.flash }]}
+      accessibilityRole="alert"
+      accessibilityLiveRegion="assertive"
+    >
+      <View style={styles.bannerHead}>
+        <Icon name={icon} size={24} color={fg} />
+        <Text style={[type.h2, styles.flex, { color: fg }]}>{title}</Text>
+      </View>
+      {reasons && reasons.length > 0 ? (
+        <View style={styles.reasons}>
+          {reasons.map((reason) => (
+            <Text key={reason} style={[type.body, { color: fg }]}>
+              {'•'} {reason}
+            </Text>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
 
-function Notice({ tone, text, styles }: { tone: 'error' | 'warning'; text: string; styles: Styles }) {
+function Busy({ label }: { label: string }) {
+  const { tokens, type } = useTheme();
   return (
-    <View style={[styles.notice, tone === 'error' ? styles.noticeError : styles.noticeWarning]}>
-      <Text style={styles.noticeText}>{text}</Text>
+    <View style={styles.busy} accessibilityLiveRegion="polite">
+      <ActivityIndicator color={tokens.accent} />
+      <Text style={[type.body, { color: tokens.text2 }]}>{label}</Text>
     </View>
   );
 }
 
-function Detail({ label, value, styles }: { label: string; value: string; styles: Styles }) {
+// Document details must never be offered to autofill or a keyboard's
+// suggestions, so every hint that could store them is off.
+function PrivateField(props: React.ComponentProps<typeof TextField> & { label: string }) {
   return (
-    <View style={styles.detailRow}>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={styles.detailValue}>{value}</Text>
-    </View>
+    <TextField
+      {...props}
+      autoCorrect={false}
+      autoComplete="off"
+      importantForAutofill="no"
+      textContentType="none"
+    />
   );
 }
 
-function LabelledInput({
-  label,
-  styles,
-  colors,
-  ...props
-}: React.ComponentProps<typeof TextInput> & { label: string; styles: Styles; colors: ThemeColors }) {
-  return (
-    <View style={styles.inputGroup}>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <TextInput
-        {...props}
-        style={styles.input}
-        placeholderTextColor={colors.text.muted}
-        autoCorrect={false}
-        autoComplete="off"
-        importantForAutofill="no"
-        textContentType="none"
-      />
-    </View>
-  );
-}
-
-function PrimaryButton({
-  icon,
-  label,
-  onPress,
-  styles,
-  colors,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  onPress: () => void;
-  styles: Styles;
-  colors: ThemeColors;
-}) {
-  return (
-    <TouchableOpacity style={styles.primaryButton} onPress={onPress} accessibilityRole="button">
-      <Ionicons name={icon} size={20} color={colors.white} />
-      <Text style={styles.primaryButtonText}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-function SecondaryButton({
-  label,
-  onPress,
-  destructive,
-  styles,
-}: {
-  label: string;
-  onPress: () => void;
-  destructive?: boolean;
-  styles: Styles;
-}) {
-  return (
-    <TouchableOpacity style={styles.secondaryButton} onPress={onPress} accessibilityRole="button">
-      <Text style={[styles.secondaryButtonText, destructive && styles.destructiveText]}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-type Styles = ReturnType<typeof makeStyles>;
-
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  flex: {
-    flex: 1,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 24,
-    gap: 16,
-  },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  topTitle: {
-    fontSize: 21,
-    fontWeight: '800',
-    letterSpacing: -0.35,
-    color: colors.text.primary,
-  },
-  topClose: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text.accent,
-  },
-  content: {
-    padding: 16,
-    paddingBottom: 48,
-    gap: 16,
-  },
-  participant: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    borderRadius: 16,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.gray[200],
-  },
-  participantPhoto: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.gray[200],
-  },
-  participantLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.text.secondary,
-  },
-  participantName: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text.primary,
-  },
-  section: {
-    gap: 12,
-  },
-  stepTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: colors.text.primary,
-  },
-  body: {
-    fontSize: 15,
-    lineHeight: 21,
-    color: colors.text.secondary,
-  },
-  reading: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 12,
-  },
-  notice: {
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  noticeError: {
-    borderColor: colors.status.error,
-    backgroundColor: colors.red + '1A',
-  },
-  noticeWarning: {
-    borderColor: colors.status.warning,
-    backgroundColor: colors.orange + '1A',
-  },
-  noticeText: {
-    fontSize: 14,
-    lineHeight: 19,
-    color: colors.text.primary,
-  },
-  banner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    padding: 16,
-    borderRadius: 15,
-  },
-  bannerText: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.gray[900],
-  },
-  reasons: {
-    gap: 4,
-  },
-  reason: {
-    fontSize: 14,
-    lineHeight: 19,
-    color: colors.text.secondary,
-  },
-  photos: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  photoColumn: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 6,
-  },
-  photo: {
-    width: '100%',
-    aspectRatio: 0.78,
-    borderRadius: 12,
-    backgroundColor: colors.gray[200],
-  },
-  photoMissing: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photoLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.text.secondary,
-  },
-  details: {
-    padding: 14,
-    gap: 8,
-    borderRadius: 16,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.gray[200],
-  },
-  detailRow: {
-    gap: 2,
-  },
-  detailLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.text.secondary,
-  },
-  detailValue: {
-    fontSize: 15,
-    color: colors.text.primary,
-  },
-  inputGroup: {
-    gap: 6,
-  },
-  input: {
-    minHeight: 48,
-    paddingHorizontal: 14,
-    borderRadius: 13,
-    fontSize: 16,
-    color: colors.text.primary,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.gray[300],
-  },
-  primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    minHeight: 48,
-    paddingHorizontal: 22,
-    borderRadius: 12,
-    backgroundColor: colors.red,
-  },
-  primaryButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.white,
-  },
-  secondaryButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
-    paddingHorizontal: 22,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.gray[300],
-  },
-  secondaryButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text.primary,
-  },
-  destructiveText: {
-    color: colors.text.accent,
-  },
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  centered: { flex: 1, justifyContent: 'center' },
+  cancel: { marginLeft: -12, marginTop: 4 },
+  content: { paddingBottom: 48 },
+  participant: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  participantPhoto: { width: 48, height: 48, borderRadius: radii.pill },
+  section: { gap: 12 },
+  busy: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 12 },
+  banner: { padding: 16, gap: 8 },
+  bannerHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  reasons: { gap: 4 },
+  photos: { flexDirection: 'row', gap: 12 },
+  photoColumn: { flex: 1, alignItems: 'center', gap: 6 },
+  photo: { width: '100%', aspectRatio: 0.78 },
+  photoMissing: { alignItems: 'center', justifyContent: 'center' },
 });

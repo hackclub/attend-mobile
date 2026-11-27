@@ -48,3 +48,7 @@ credentials/
 # Signing keys - never commit
 *.jks
 *.keystore
+
+# Gradle output from local native module builds
+modules/**/android/build/
+modules/**/android/.gradle/

@@ -1,0 +1,199 @@
+diff --git a/node_modules/react-native-bottom-tabs/android/src/main/java/com/rcttabview/RCTTabView.kt b/node_modules/react-native-bottom-tabs/android/src/main/java/com/rcttabview/RCTTabView.kt
+index 66de5d2..9407fe1 100644
+--- a/node_modules/react-native-bottom-tabs/android/src/main/java/com/rcttabview/RCTTabView.kt
++++ b/node_modules/react-native-bottom-tabs/android/src/main/java/com/rcttabview/RCTTabView.kt
+@@ -8,7 +8,6 @@ import android.graphics.PorterDuff
+ import android.graphics.drawable.ColorDrawable
+ import android.graphics.drawable.Drawable
+ import android.os.Build
+-import android.transition.TransitionManager
+ import android.util.Log
+ import android.util.Size
+ import android.util.TypedValue
+@@ -17,6 +16,7 @@ import android.view.HapticFeedbackConstants
+ import android.view.MenuItem
+ import android.view.View
+ import android.view.ViewGroup
++import android.view.animation.PathInterpolator
+ import android.widget.FrameLayout
+ import android.widget.LinearLayout
+ import android.widget.TextView
+@@ -40,7 +40,6 @@ import com.google.android.material.bottomnavigation.BottomNavigationView
+ import com.google.android.material.navigation.NavigationBarView.LABEL_VISIBILITY_AUTO
+ import com.google.android.material.navigation.NavigationBarView.LABEL_VISIBILITY_LABELED
+ import com.google.android.material.navigation.NavigationBarView.LABEL_VISIBILITY_UNLABELED
+-import com.google.android.material.transition.platform.MaterialFadeThrough
+ 
+ class ExtendedBottomNavigationView(context: Context) : BottomNavigationView(context) {
+   override fun getMaxItemCount(): Int {
+@@ -48,6 +47,12 @@ class ExtendedBottomNavigationView(context: Context) : BottomNavigationView(cont
+   }
+ }
+ 
++// Material's fade-through timings: the old tab fades out, then the new one
++// fades in from slightly smaller.
++private const val FADE_OUT_MS = 90L
++private const val FADE_IN_MS = 210L
++private const val FADE_THROUGH_SCALE = 0.92f
++
+ class ReactBottomNavigationView(context: Context) : LinearLayout(context) {
+   private var bottomNavigation = ExtendedBottomNavigationView(context)
+   val layoutHolder = FrameLayout(context)
+@@ -100,22 +105,32 @@ class ReactBottomNavigationView(context: Context) : LinearLayout(context) {
+     uiModeConfiguration = resources.configuration.uiMode
+ 
+     post {
+-      addOnLayoutChangeListener { _, left, top, right, bottom,
++      addOnLayoutChangeListener { _, _, _, _, _,
+                                   _, _, _, _ ->
+-        val newWidth = right - left
+-        val newHeight = bottom - top
+-
+         // Notify about tab bar height.
+         onTabBarMeasuredListener?.invoke(Utils.convertPixelsToDp(context, bottomNavigation.height).toInt())
++      }
++      // The screens are the layout holder's size, which also changes when only
++      // the tab bar does (its bottom inset padding drops once the keyboard has
++      // gone) while this view's own size stays the same. Comparing this view's
++      // size missed that and left the screens short until a tab switch.
++      layoutHolder.addOnLayoutChangeListener { _, left, top, right, bottom,
++                                               _, _, _, _ ->
++        reportLayoutHolderSize(right - left, bottom - top)
++      }
++      // It may have settled before this listener was added.
++      reportLayoutHolderSize(layoutHolder.width, layoutHolder.height)
++    }
++  }
+ 
+-        if (newWidth != lastReportedSize?.width || newHeight != lastReportedSize?.height) {
+-          val dpWidth = Utils.convertPixelsToDp(context, layoutHolder.width)
+-          val dpHeight = Utils.convertPixelsToDp(context, layoutHolder.height)
++  private fun reportLayoutHolderSize(newWidth: Int, newHeight: Int) {
++    if (newWidth == 0 || newHeight == 0) return
++    if (newWidth != lastReportedSize?.width || newHeight != lastReportedSize?.height) {
++      val dpWidth = Utils.convertPixelsToDp(context, newWidth)
++      val dpHeight = Utils.convertPixelsToDp(context, newHeight)
+ 
+-          onNativeLayoutListener?.invoke(dpWidth, dpHeight)
+-          lastReportedSize = Size(newWidth, newHeight)
+-        }
+-      }
++      onNativeLayoutListener?.invoke(dpWidth, dpHeight)
++      lastReportedSize = Size(newWidth, newHeight)
+     }
+   }
+ 
+@@ -155,7 +170,11 @@ class ReactBottomNavigationView(context: Context) : LinearLayout(context) {
+ 
+   fun setSelectedItem(value: String) {
+     selectedItem = value
+-    setSelectedIndex(items.indexOfFirst { it.key == value })
++    // A tab that isn't among the items yet (the two props can land in either
++    // order, e.g. as the tab screens are replaced) hides none of them: it's
++    // shown once updateItems brings it. Selecting index -1 hid them all.
++    val index = items.indexOfFirst { it.key == value }
++    if (index >= 0) setSelectedIndex(index)
+     // Per-tab active tint color depends on the selected item.
+     updateTintColors()
+   }
+@@ -192,16 +211,55 @@ class ReactBottomNavigationView(context: Context) : LinearLayout(context) {
+ 
+   private fun setSelectedIndex(itemId: Int) {
+     bottomNavigation.selectedItemId = itemId
+-    if (!disablePageAnimations) {
+-      val fadeThrough = MaterialFadeThrough()
+-      TransitionManager.beginDelayedTransition(layoutHolder, fadeThrough)
++    // A fade-through between the two tabs' containers, run on the views
++    // themselves. Not a platform Transition: that parks the outgoing tab in a
++    // ViewOverlay while it fades, React keeps updating it there, and a view
++    // with a cached drawing order (zIndex children) then crashes the draw
++    // with "getChildDrawingOrder() returned invalid index". Only a real
++    // change of tab animates; a re-render passing the same tab does nothing.
++    val outgoing = (0 until layoutHolder.childCount).firstOrNull { index ->
++      index != itemId && layoutHolder.getChildAt(index).let { it.visibility == VISIBLE && it.isEnabled }
+     }
++    val animate = !disablePageAnimations && outgoing != null && isAttachedToWindow
+ 
+     layoutHolder.forEachIndexed { index, view ->
++      view.animate().cancel()
+       if (itemId == index) {
++        val wasShown = view.visibility == VISIBLE && view.isEnabled
+         toggleViewVisibility(view, true)
++        if (animate && !wasShown) {
++          view.alpha = 0f
++          view.scaleX = FADE_THROUGH_SCALE
++          view.scaleY = FADE_THROUGH_SCALE
++          view.animate()
++            .alpha(1f)
++            .scaleX(1f)
++            .scaleY(1f)
++            .setStartDelay(FADE_OUT_MS)
++            .setDuration(FADE_IN_MS)
++            .setInterpolator(PathInterpolator(0f, 0f, 0.2f, 1f))
++            .start()
++        } else {
++          view.alpha = 1f
++          view.scaleX = 1f
++          view.scaleY = 1f
++        }
++      } else if (animate && index == outgoing) {
++        // Stays laid out in its own parent while it fades, taking no touches.
++        view.isEnabled = false
++        view.animate()
++          .alpha(0f)
++          .setStartDelay(0)
++          .setDuration(FADE_OUT_MS)
++          .setInterpolator(PathInterpolator(0.4f, 0f, 1f, 1f))
++          .withEndAction {
++            view.visibility = GONE
++            view.alpha = 1f
++          }
++          .start()
+       } else {
+         toggleViewVisibility(view, false)
++        view.alpha = 1f
+       }
+     }
+ 
+@@ -291,6 +349,9 @@ class ReactBottomNavigationView(context: Context) : LinearLayout(context) {
+         }
+       }
+     }
++    // The selected tab may only now be among the items (see setSelectedItem).
++    val selectedIndex = items.indexOfFirst { it.key == selectedItem }
++    if (selectedIndex >= 0) setSelectedIndex(selectedIndex)
+     // Update tint colors and text appearance after updating all items.
+     post {
+       updateTextAppearance()
+diff --git a/node_modules/react-native-bottom-tabs/android/src/main/java/com/rcttabview/RCTTabViewManager.kt b/node_modules/react-native-bottom-tabs/android/src/main/java/com/rcttabview/RCTTabViewManager.kt
+index 3d0c872..a12371b 100644
+--- a/node_modules/react-native-bottom-tabs/android/src/main/java/com/rcttabview/RCTTabViewManager.kt
++++ b/node_modules/react-native-bottom-tabs/android/src/main/java/com/rcttabview/RCTTabViewManager.kt
+@@ -72,12 +72,25 @@ class RCTTabViewManager(context: ReactApplicationContext) :
+     return parent.layoutHolder.childCount ?: 0
+   }
+ 
++  // Each React child sits in a container of its own (see addView). Fabric
++  // checks a child by its React tag before removing it, so hand back the
++  // child, not the container: otherwise the check fails, the removal is
++  // skipped, and the old tabs' containers pile up after a tab screen is
++  // replaced. One of those, GONE but still holding its full-screen bounds,
++  // then takes every touch meant for the new tab.
+   override fun getChildAt(parent: ReactBottomNavigationView, index: Int): View? {
+-    return parent.layoutHolder.getChildAt(index)
++    return (parent.layoutHolder.getChildAt(index) as? ViewGroup)?.getChildAt(0)
+   }
+ 
+   override fun removeView(parent: ReactBottomNavigationView, view: View) {
+-    parent.layoutHolder.removeView(view)
++    val holder = parent.layoutHolder
++    for (index in 0 until holder.childCount) {
++      val container = holder.getChildAt(index) as? ViewGroup ?: continue
++      if (container === view || container.getChildAt(0) === view) {
++        holder.removeViewAt(index)
++        return
++      }
++    }
+   }
+ 
+   override fun removeAllViews(parent: ReactBottomNavigationView) {

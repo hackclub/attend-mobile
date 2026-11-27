@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
 import { canViewParticipantRecords } from '../services/eventAccess';
 import { activeParticipants as filterActive } from '../services/participantStatus';
+import { searchRoster } from '../services/participantFilters';
 import type { Participant } from '../types';
 
 export function useParticipants() {
@@ -47,14 +48,17 @@ export function useParticipants() {
     }
   }, [refreshParticipants]);
 
+  // Searches the roster on the phone first: instant, offline, and in the
+  // list's own order. Attend is asked only when nobody here matches (the
+  // roster may still be syncing, or the person was added since).
   const search = useCallback(async (query: string) => {
     setSearchQuery(query);
     const normalizedQuery = query.trim();
     const generation = ++searchGenerationRef.current;
     searchAbortRef.current?.abort();
+    searchAbortRef.current = null;
 
-    if (normalizedQuery.length < 2) {
-      searchAbortRef.current = null;
+    if (normalizedQuery.length === 0) {
       setSearchResults(null);
       setIsSearching(false);
       return;
@@ -65,14 +69,21 @@ export function useParticipants() {
     // A role without participant records has nothing to search: no request,
     // and no local fallback either, because the roster is empty by design.
     if (!canViewParticipantRecords(currentEvent)) {
-      searchAbortRef.current = null;
       setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    const localResults = searchRoster(participants, normalizedQuery);
+    if (localResults.length > 0 || normalizedQuery.length < 2) {
+      setSearchResults(localResults);
       setIsSearching(false);
       return;
     }
 
     const controller = new AbortController();
     searchAbortRef.current = controller;
+    setSearchResults([]);
     setIsSearching(true);
     try {
       const results = await api.searchParticipants(
@@ -83,19 +94,7 @@ export function useParticipants() {
       if (controller.signal.aborted || searchGenerationRef.current !== generation) return;
       setSearchResults(results);
     } catch {
-      if (controller.signal.aborted || searchGenerationRef.current !== generation) return;
-      const lowerQuery = normalizedQuery.toLowerCase();
-      const localResults = participants.filter(p => {
-        const fullName = p.full_name.toLowerCase();
-        const preferredName = p.display_name.toLowerCase();
-        const email = p.email.toLowerCase();
-        return (
-          fullName.includes(lowerQuery) ||
-          preferredName.includes(lowerQuery) ||
-          email.includes(lowerQuery)
-        );
-      });
-      setSearchResults(localResults);
+      // Offline or failed: the local miss stands.
     } finally {
       if (searchGenerationRef.current === generation) {
         searchAbortRef.current = null;

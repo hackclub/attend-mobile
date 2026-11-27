@@ -55,11 +55,13 @@ public class ActivityControllerModule: Module {
             }
         }
         
-        AsyncFunction("updateLiveActivity") { (checkedInCount: Int, totalCount: Int) -> Bool in
+        AsyncFunction("updateLiveActivity") { (eventId: String, checkedInCount: Int, totalCount: Int) -> Bool in
             guard #available(iOS 16.2, *) else { return false }
             
+            // Only the activity for this event: counts for another event are
+            // ignored rather than shown under the wrong event's name.
             let activities = Activity<AttendActivityAttributes>.activities
-            guard let activity = activities.first else {
+            guard let activity = activities.first(where: { $0.attributes.eventId == eventId }) else {
                 return false
             }
             

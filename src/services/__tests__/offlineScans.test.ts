@@ -185,6 +185,18 @@ describe('OfflineScanQueue', () => {
     expect(createScan).toHaveBeenCalledTimes(1);
   });
 
+  it("drops someone else's waiting scans when a different person signs in", async () => {
+    await queue.enqueue(scan('mine', '2026-11-24T10:00:00Z'));
+    queue.setUser('staff-2');
+    await queue.enqueue(scan('theirs', '2026-11-24T10:01:00Z'));
+
+    await queue.discardOthers('staff-2');
+
+    expect((await queue.all()).map(s => s.clientScanId)).toEqual(['theirs']);
+    queue.setUser('staff-1');
+    expect(await queue.all()).toEqual([]);
+  });
+
   it("doesn't write a flush's results back over a sign-out that happened mid-request", async () => {
     await queue.enqueue(scan('a', '2026-11-24T10:00:00Z'));
     await queue.enqueue(scan('b', '2026-11-24T10:01:00Z'));

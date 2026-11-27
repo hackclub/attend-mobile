@@ -1,23 +1,21 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-  Alert,
-  ImageBackground,
-} from 'react-native';
+import { Alert, ImageBackground, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { useAuth } from '../hooks/useAuth';
 import { HackClubFlag } from '../components/HackClubFlag';
-import { colors } from '../theme/colors';
+import { overlayTokens, typography, useTheme, withAlpha } from '../theme';
+import { Button } from '../components/ui';
 
-const HERO = require('../../assets/login-hero.jpg');
+const HERO = require('../../assets/login-hero.webp');
 
-// Number of bands used to fake a bottom-up dark gradient over the hero photo.
-const GRADIENT_STOPS = 18;
+// Stops for the bottom-up dark fade over the hero photo: opacity eases in as
+// t^1.4, up to 0.9 at the bottom edge.
+const GRADIENT_STOPS = Array.from({ length: 11 }, (_, i) => i / 10).map((t) => ({
+  offset: t,
+  opacity: t ** 1.4 * 0.9,
+}));
 
 // Dev-only sign-in shortcuts, matched to the backend's seeded users by email
 // (emails are stable across dev databases; UUIDs are not).
@@ -25,6 +23,7 @@ const DEV_PARTICIPANT_EMAIL = 'participant-demo@hackclub.com';
 const DEV_ORGANIZER_EMAIL = 'admin@hackclub.com';
 
 export function LoginScreen() {
+  const { tokens, type, spacing } = useTheme();
   const { login, devLogin } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const handleDevLogin = async (email: string) => {
@@ -42,7 +41,7 @@ export function LoginScreen() {
     try {
       const success = await login();
       if (!success) {
-        Alert.alert('Login Failed', 'Unable to authenticate. Please try again.');
+        Alert.alert('Login failed', 'Unable to authenticate. Please try again.');
       }
     } catch (error) {
       Alert.alert('Error', 'An unexpected error occurred. Please try again.');
@@ -54,141 +53,84 @@ export function LoginScreen() {
   return (
     <ImageBackground source={HERO} style={styles.bg} resizeMode="cover">
       <StatusBar style="light" />
-      {/* Scrims: a light overall darken, plus a smooth bottom-up fade (faked
-          with stacked opacity bands since we don't bundle a gradient lib). */}
+      {/* Scrims: a light overall darken, plus a smooth bottom-up fade. One
+          SVG gradient rather than stacked bands: bands land on fractional
+          heights, and iOS draws a dark hairline where each pair meets. */}
       <View style={styles.scrim} />
-      <View style={styles.gradient} pointerEvents="none">
-        {Array.from({ length: GRADIENT_STOPS }).map((_, i) => (
-          <View
-            key={i}
-            style={{
-              flex: 1,
-              backgroundColor: `rgba(8,10,18,${((i / (GRADIENT_STOPS - 1)) ** 1.4 * 0.9).toFixed(3)})`,
-            }}
-          />
-        ))}
-      </View>
+      <Svg style={styles.gradient} pointerEvents="none">
+        <Defs>
+          <LinearGradient id="loginFade" x1="0" y1="0" x2="0" y2="1">
+            {GRADIENT_STOPS.map(({ offset, opacity }) => (
+              <Stop key={offset} offset={offset} stopColor={overlayTokens.ink} stopOpacity={opacity} />
+            ))}
+          </LinearGradient>
+        </Defs>
+        <Rect width="100%" height="100%" fill="url(#loginFade)" />
+      </Svg>
 
       <SafeAreaView style={styles.safe}>
-        <View style={styles.top}>
+        <View style={[styles.top, { paddingHorizontal: spacing.xxl }]}>
           <HackClubFlag width={132} />
         </View>
 
-        <View style={styles.content}>
-          <Text style={styles.eyebrow}>HACK CLUB</Text>
-          <Text style={styles.title}>Sign in to Attend</Text>
-          <Text style={styles.subtitle}>
-            Your tickets, passes, and event check-in — all in one place.
+        <View style={{ paddingHorizontal: spacing.xxl, paddingBottom: spacing.xxl }}>
+          <Text style={[type.label, styles.eyebrow]}>HACK CLUB</Text>
+          <Text style={[styles.title, { color: tokens.brand }]} accessibilityRole="header">
+            Sign in to Attend
           </Text>
+          <Text style={styles.subtitle}>Your tickets, passes, and event check-in — all in one place.</Text>
 
-          <TouchableOpacity
-            style={[styles.button, isLoading && styles.buttonDisabled]}
+          <Button
+            title="Sign in with Hack Club"
+            variant="primary"
+            fullWidth
+            loading={isLoading}
             onPress={handleLogin}
-            disabled={isLoading}
-            activeOpacity={0.85}
-          >
-            {isLoading ? (
-              <ActivityIndicator color={colors.red} />
-            ) : (
-              <Text style={styles.buttonText}>Sign in with Hack Club</Text>
-            )}
-          </TouchableOpacity>
+          />
 
           {__DEV__ && (
-            <View style={styles.devRow}>
-              <TouchableOpacity
-                style={[styles.devButton, styles.devButtonHalf]}
+            <View style={[styles.devRow, { marginTop: spacing.md, gap: spacing.md }]}>
+              <Button
+                title="Dev: participant"
                 onPress={() => handleDevLogin(DEV_PARTICIPANT_EMAIL)}
                 disabled={isLoading}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.devButtonText}>Dev: participant</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.devButton, styles.devButtonHalf]}
+                style={styles.devButton}
+              />
+              <Button
+                title="Dev: organizer"
                 onPress={() => handleDevLogin(DEV_ORGANIZER_EMAIL)}
                 disabled={isLoading}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.devButtonText}>Dev: organizer</Text>
-              </TouchableOpacity>
+                style={styles.devButton}
+              />
             </View>
           )}
 
-          <Text style={styles.footer}>For attendees and event staff.</Text>
+          <Text style={[type.body, styles.footer, { marginTop: spacing.xl }]}>For attendees and event staff.</Text>
         </View>
       </SafeAreaView>
     </ImageBackground>
   );
 }
 
+// The photo is dark in both appearances, so text on it is fixed white.
 const styles = StyleSheet.create({
-  bg: { flex: 1, backgroundColor: colors.gray[900] },
-  scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(10,12,20,0.32)' },
-  // Smooth bottom-up fade (stacked bands) so the sign-in content stays legible.
+  bg: { flex: 1, backgroundColor: overlayTokens.ink },
+  scrim: { ...StyleSheet.absoluteFill, backgroundColor: withAlpha(overlayTokens.ink, 0.32) },
+  // Smooth bottom-up fade so the sign-in content stays legible.
   gradient: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
     height: '85%',
-    flexDirection: 'column',
   },
   safe: { flex: 1, justifyContent: 'space-between' },
-  top: { paddingHorizontal: 28, paddingTop: 16 },
-  content: { paddingHorizontal: 28, paddingBottom: 24 },
-  eyebrow: {
-    fontSize: 13,
-    fontWeight: '700',
-    letterSpacing: 2.5,
-    color: 'rgba(255,255,255,0.75)',
-    marginBottom: 8,
-  },
-  title: {
-    fontSize: 36,
-    fontWeight: '800',
-    color: colors.red,
-    marginBottom: 12,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: 'rgba(255,255,255,0.9)',
-    lineHeight: 23,
-    marginBottom: 28,
-  },
-  button: {
-    backgroundColor: colors.white,
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 14,
-    width: '100%',
-    alignItems: 'center',
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  buttonDisabled: { opacity: 0.7 },
-  buttonText: { fontSize: 17, fontWeight: '700', color: colors.red },
-  devRow: {
-    marginTop: 14,
-    flexDirection: 'row',
-    gap: 10,
-  },
-  devButton: {
-    paddingVertical: 13,
-    borderRadius: 14,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
-  },
-  devButtonHalf: { flex: 1 },
-  devButtonText: { color: colors.white, fontSize: 14, fontWeight: '600' },
-  footer: {
-    marginTop: 20,
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.6)',
-    textAlign: 'center',
-  },
+  top: { paddingTop: 16 },
+  eyebrow: { letterSpacing: 2.5, color: withAlpha(overlayTokens.on, 0.75), marginBottom: 8 },
+  // Display type over the photo: h1's weight at the stat size.
+  title: { ...typography.h1, fontSize: typography.stat.fontSize, lineHeight: typography.stat.lineHeight, marginBottom: 12 },
+  subtitle: { ...typography.body, fontSize: typography.h3.fontSize, lineHeight: typography.h2.lineHeight, color: withAlpha(overlayTokens.on, 0.9), marginBottom: 28 },
+  devRow: { flexDirection: 'row' },
+  devButton: { flex: 1 },
+  footer: { color: withAlpha(overlayTokens.on, 0.6), textAlign: 'center' },
 });

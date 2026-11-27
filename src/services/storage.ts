@@ -114,6 +114,20 @@ export const secureStorage = {
     }
   },
 
+  /**
+   * Deletes the stored token and user but keeps the token in memory, so a
+   * sign-out can still revoke it with the server after the device no longer
+   * holds it: killing the app from here on leaves it signed out. Follow with
+   * clear().
+   */
+  async clearPersisted(): Promise<void> {
+    if (cachedToken === undefined) {
+      await this.getToken().catch(() => null);
+    }
+    await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await SecureStore.deleteItemAsync(USER_KEY);
+  },
+
   async clear(): Promise<void> {
     try {
       await SecureStore.deleteItemAsync(TOKEN_KEY);
@@ -179,7 +193,11 @@ export const STORAGE_KEYS = {
   CHECKIN_CODES: (eventId: string) => `checkin_codes_${eventId}`,
   POWER_MODE_ENABLED: 'scanner_power_mode_enabled',
   PENDING_SCANS: 'pending_scans',
+  PARTICIPANT_CACHE_VERSION: 'participant_cache_version',
   LAST_SYNC: 'last_sync',
   EVENTS: 'cached_events',
+  // The signed-in user's tickets, tagged with their id, for the switcher
+  // and passes before (or without) a connection.
+  TICKETS: 'cached_tickets',
   CURRENT_EVENT: 'current_event',
 } as const;

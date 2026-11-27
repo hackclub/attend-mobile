@@ -123,6 +123,17 @@ export class OfflineScanQueue {
     );
   }
 
+  // Someone signed in: drops scans another person left waiting through an
+  // expired session (see sync.clear's keepQueuedScans), which only they could
+  // have sent.
+  discardOthers(userId: string): Promise<void> {
+    return this.serial(async () => {
+      const scans = await this.load();
+      const own = scans.filter(scan => scan.userId === userId);
+      if (own.length !== scans.length) await this.save(own);
+    });
+  }
+
   dismiss(clientScanId: string): Promise<void> {
     return this.serial(async () => {
       const scans = await this.load();

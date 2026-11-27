@@ -298,6 +298,15 @@ function blockToMarkup(block: Block): string {
 }
 
 export function htmlToMarkup(html: string | null | undefined): string {
+  // A body with no tags at all is plain text (sent through the API rather
+  // than the web editor). Read as HTML its line breaks would collapse into
+  // one line, so it keeps them: a "1. " line is already list markup.
+  if (html && !/<\/?[a-z][^>]*>/i.test(html)) {
+    return decodeEntities(html)
+      .replace(/\r\n?/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
   return parseHtml(html)
     .map(blockToMarkup)
     .filter(Boolean)

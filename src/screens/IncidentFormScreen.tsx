@@ -1,17 +1,16 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useApp } from '../context/AppContext';
+import { useDiscardGuard } from '../hooks/useDiscardGuard';
 import { api } from '../services/api';
 import {
   Button,
   CheckboxRow,
   DateTimeField,
-  ErrorView,
   Field,
   LevelChart,
-  LoadingView,
   MultiSelectField,
   Notice,
   Section,
@@ -19,16 +18,17 @@ import {
   SwitchRow,
   TextField,
 } from '../components/forms';
-import { useTheme, useThemedStyles, type ThemeColors } from '../theme';
+import { Button as KitButton, Container, ErrorView, LoadingView, Screen } from '../components/ui';
+import { useThemedStyles, type Theme } from '../theme';
 import type {
   IncidentFormOptions,
   IncidentInput,
   IncidentMedication,
-  RootStackParamList,
+  AppStackParamList,
 } from '../types';
 
-type Nav = NativeStackNavigationProp<RootStackParamList, 'IncidentForm'>;
-type Route = RouteProp<RootStackParamList, 'IncidentForm'>;
+type Nav = NativeStackNavigationProp<AppStackParamList, 'IncidentForm'>;
+type Route = RouteProp<AppStackParamList, 'IncidentForm'>;
 
 type MedicationRow = IncidentMedication & { key: string; _destroy?: boolean };
 
@@ -36,7 +36,6 @@ let medicationKey = 0;
 const blankMedication = (): MedicationRow => ({ key: `new-${medicationKey++}`, name: '', dose: '', notes: '' });
 
 export function IncidentFormScreen() {
-  const { colors } = useTheme();
   const styles = useThemedStyles(makeStyles);
   const navigation = useNavigation<Nav>();
   const { params } = useRoute<Route>();
@@ -108,10 +107,6 @@ export function IncidentFormScreen() {
     load();
   }, [load]);
 
-  useLayoutEffect(() => {
-    navigation.setOptions({ headerTitle: editing ? 'Edit incident' : 'New incident' });
-  }, [navigation, editing]);
-
   const medical = category === 'medical';
   const liveMedications = medications.filter(m => !m._destroy);
 
@@ -165,6 +160,7 @@ export function IncidentFormScreen() {
             );
         // Whether the HQ half went through is worth saying; a plain save isn't.
         if (!editing && escalate && result.notice) Alert.alert(result.notice);
+        allowLeave();
         navigation.replace('IncidentDetail', { incidentId: result.record.id });
       } catch (e) {
         setErrors([e instanceof Error ? e.message : 'Could not save the incident.']);
@@ -188,9 +184,25 @@ export function IncidentFormScreen() {
     }
   };
 
-  if (!event) return <ErrorView message="Pick an event on the Events tab first." />;
-  if (loadError) return <ErrorView message={loadError} onRetry={load} />;
-  if (!options) return <LoadingView />;
+  const title = editing ? 'Edit incident' : 'New incident';
+  // Leaving with edits asks first; the snapshot starts once the form loads.
+  const { allowLeave } = useDiscardGuard(
+    options ? JSON.stringify([buildInput(), escalate, reporterPhone, emergencyServices]) : null
+  );
+
+  if (!event || loadError || !options) {
+    return (
+      <Screen title={title} scroll={false} modal modalBar={{}}>
+        {!event ? (
+          <ErrorView message="Pick an event on the Overview tab first." />
+        ) : loadError ? (
+          <ErrorView message={loadError} onRetry={load} />
+        ) : (
+          <LoadingView />
+        )}
+      </Screen>
+    );
+  }
 
   const updateMedication = (key: string, patch: Partial<MedicationRow>) =>
     setMedications(rows => rows.map(r => (r.key === key ? { ...r, ...patch } : r)));
@@ -201,13 +213,17 @@ export function IncidentFormScreen() {
     });
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView
-        style={styles.container}
-        contentInsetAdjustmentBehavior="automatic"
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-      >
+    <Screen
+      title={title}
+      modal
+      keyboardAware
+      modalBar={{
+        confirm: <KitButton title={editing ? 'Save' : 'Create'} variant="primary" onPress={submit} loading={saving} />,
+      }}
+      scrollViewProps={{ keyboardShouldPersistTaps: 'handled' }}
+    >
+      {/* The form's sections carry their own inset and spacing. */}
+      <View style={styles.sections}>
         <Section title="Incident details">
           <Field label="Category">
             <SelectField title="Category" value={category} options={options.categories} onChange={setCategory} placeholder="Select category" />
@@ -224,10 +240,19 @@ export function IncidentFormScreen() {
           <Field label="Location" optional description="For example: Main Hall, Room 204">
             <TextField value={location} onChangeText={setLocation} placeholder="Location" />
           </Field>
-          <TouchableOpacity onPress={() => setShowChart(v => !v)}>
-            <Text style={styles.link}>{showChart ? 'Hide the triage chart' : 'Which level? The triage chart'}</Text>
-          </TouchableOpacity>
-          {showChart ? <LevelChart levels={options.levels} /> : null}
+          <KitButton
+            title={showChart ? 'Hide the triage chart' : 'Which level? The triage chart'}
+            variant="link"
+            icon={showChart ? 'chevron-up' : 'chevron-down'}
+            iconPosition="end"
+            onPress={() => setShowChart(v => !v)}
+            style={styles.chartToggle}
+          />
+          {showChart ? (
+            <Container>
+              <LevelChart levels={options.levels} />
+            </Container>
+          ) : null}
         </Section>
 
         <Section title="People involved">
@@ -288,7 +313,7 @@ export function IncidentFormScreen() {
                 ))
               : null}
             {medicationDispensed ? (
-              <Button title="Add another medication" icon="add" onPress={() => setMedications(rows => [...rows, blankMedication()])} />
+              <Button title="Add another medication" icon="plus" onPress={() => setMedications(rows => [...rows, blankMedication()])} />
             ) : null}
           </Section>
         ) : null}
@@ -336,35 +361,31 @@ export function IncidentFormScreen() {
         {errors.length ? (
           <Notice tone="error">
             {errors.map(message => (
-              <Text key={message} style={[styles.errorText, { color: colors.status.error }]}>{message}</Text>
+              <Text key={message} style={styles.errorText}>{message}</Text>
             ))}
           </Notice>
         ) : null}
-
-        <View style={styles.actions}>
-          <Button title="Cancel" variant="link" onPress={() => navigation.goBack()} />
-          <Button title={editing ? 'Update incident' : 'Create incident'} variant="primary" onPress={submit} loading={saving} />
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </View>
+    </Screen>
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  flex: { flex: 1 },
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { paddingBottom: 40 },
-  link: { fontSize: 14, fontWeight: '600', color: colors.text.accent },
-  hint: { fontSize: 13, color: colors.gray[600] },
-  medication: {
-    gap: 10,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.gray[200],
-  },
-  medicationHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  medicationTitle: { fontSize: 14, fontWeight: '700', color: colors.gray[800] },
-  errorText: { fontSize: 14 },
-  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, paddingHorizontal: 16, paddingTop: 18 },
-});
+const makeStyles = (theme: Theme) => {
+  const { tokens: t, type, spacing, radii } = theme;
+  return StyleSheet.create({
+    sections: { marginHorizontal: -spacing.lg, marginTop: -spacing.lg },
+    chartToggle: { alignSelf: 'flex-start', paddingHorizontal: 0 },
+    hint: { ...type.body, color: t.text2 },
+    medication: {
+      gap: spacing.md,
+      padding: spacing.md,
+      borderRadius: radii.container,
+      borderWidth: 1,
+      borderColor: t.div2,
+      backgroundColor: t.shaded,
+    },
+    medicationHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    medicationTitle: { ...type.label, color: t.textH },
+    errorText: { ...type.body, color: t.error },
+  });
+};

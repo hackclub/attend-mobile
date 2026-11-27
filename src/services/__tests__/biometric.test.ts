@@ -79,3 +79,108 @@ describe('biometricService.authenticate', () => {
     expect(LocalAuthentication.authenticateAsync).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('biometricService session locking', () => {
+  async function unlock() {
+    jest.mocked(LocalAuthentication.authenticateAsync).mockResolvedValue({ success: true });
+    await biometricService.authenticate('Authenticate to view participant details');
+    expect(biometricService.isSessionValid()).toBe(true);
+  }
+
+  it('ends the session and notifies gates when the app goes to the background', async () => {
+    await unlock();
+    const listener = jest.fn();
+    biometricService.onLock(listener);
+
+    biometricService.handleAppStateChange('background');
+
+    expect(biometricService.isSessionValid()).toBe(false);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a prompt that succeeds after sign-out cleared the session', async () => {
+    let finish!: (value: { success: boolean }) => void;
+    jest.mocked(LocalAuthentication.authenticateAsync).mockReturnValue(
+      new Promise((resolve) => { finish = resolve; }) as never
+    );
+
+    const result = biometricService.authenticate('Unlock');
+    biometricService.clearSession();
+    finish({ success: true });
+
+    expect(await result).toBe(false);
+    expect(biometricService.isSessionValid()).toBe(false);
+  });
+
+  it("lets a prompt that backgrounded the app (Android passcode) still unlock", async () => {
+    let finish!: (value: { success: boolean }) => void;
+    jest.mocked(LocalAuthentication.authenticateAsync).mockReturnValue(
+      new Promise((resolve) => { finish = resolve; }) as never
+    );
+
+    const result = biometricService.authenticate('Unlock');
+    biometricService.handleAppStateChange('background');
+    finish({ success: true });
+
+    expect(await result).toBe(true);
+    expect(biometricService.isSessionValid()).toBe(true);
+  });
+
+  it('keeps the session while merely inactive (the Face ID prompt itself)', async () => {
+    await unlock();
+    const listener = jest.fn();
+    biometricService.onLock(listener);
+
+    biometricService.handleAppStateChange('inactive');
+    biometricService.handleAppStateChange('active');
+
+    expect(biometricService.isSessionValid()).toBe(true);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('stops notifying a gate once it unsubscribes', () => {
+    const listener = jest.fn();
+    const unsubscribe = biometricService.onLock(listener);
+    unsubscribe();
+
+    biometricService.clearSession();
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('still locks every gate when one listener throws', () => {
+    const second = jest.fn();
+    biometricService.onLock(() => { throw new Error('boom'); });
+    biometricService.onLock(second);
+
+    biometricService.clearSession();
+    expect(second).toHaveBeenCalled();
+  });
+
+  it('expires after five minutes and ignores a clock that went backwards', async () => {
+    const now = jest.spyOn(Date, 'now');
+    now.mockReturnValue(1_000_000);
+    await unlock();
+
+    now.mockReturnValue(1_000_000 + 5 * 60 * 1000);
+    expect(biometricService.isSessionValid()).toBe(false);
+
+    now.mockReturnValue(1_000_000 - 1);
+    expect(biometricService.isSessionValid()).toBe(false);
+    now.mockRestore();
+  });
+});
+
+describe('biometricService.sessionRemainingMs', () => {
+  it('counts down the five-minute unlock and reads zero when locked', async () => {
+    expect(biometricService.sessionRemainingMs()).toBe(0);
+    jest.mocked(LocalAuthentication.authenticateAsync).mockResolvedValue({ success: true });
+    const before = Date.now();
+    await biometricService.authenticate();
+    const remaining = biometricService.sessionRemainingMs(before + 60_000);
+    expect(remaining).toBeGreaterThan(3 * 60_000);
+    expect(remaining).toBeLessThanOrEqual(4 * 60_000 + 1000);
+    expect(biometricService.sessionRemainingMs(before + 6 * 60_000)).toBe(0);
+    biometricService.clearSession();
+    expect(biometricService.sessionRemainingMs()).toBe(0);
+  });
+});

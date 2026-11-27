@@ -1,6 +1,9 @@
 {
-  "platforms": ["ios"],
+  "platforms": ["ios", "android"],
   "ios": {
     "modules": ["ActivityControllerModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.activitycontroller.ActivityControllerModule"]
   }
 }

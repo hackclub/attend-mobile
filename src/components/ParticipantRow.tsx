@@ -1,128 +1,130 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { useThemedStyles, type ThemeColors } from '../theme';
-import { StatusBadge } from './StatusBadge';
-import { isWithdrawn } from '../services/participantStatus';
-import { AlertBadge } from './AlertBadge';
+import { StyleSheet, Text, View } from 'react-native';
+import { useTheme } from '../theme';
+import { Avatar, Badge, PressableSurface, ROW_STATE_LAYER_ALPHA, type BadgeColor } from './ui';
+import {
+  PARTICIPANT_STATE_LABELS,
+  participantState,
+  type ParticipantState,
+} from '../services/participantStatus';
+import { checkInDetail } from '../services/participantCheckIn';
 import type { Participant } from '../types';
 
 interface ParticipantRowProps {
   participant: Participant;
-  onPress: () => void;
+  /** Called with the row's participant, so a list can pass one stable callback. */
+  onPress: (participant: Participant) => void;
   selected?: boolean;
+  /** Position in the list, so the rows draw one bordered container between them. */
+  first?: boolean;
+  last?: boolean;
 }
 
-export function ParticipantRow({ participant, onPress, selected }: ParticipantRowProps) {
-  const styles = useThemedStyles(makeStyles);
-  const hasAlerts = participant.has_anaphylaxis_risk || participant.high_support_flag;
+const STATE_BADGE_COLORS: Record<ParticipantState, BadgeColor> = {
+  here: 'green',
+  not_here: 'grey',
+  awaiting_parent: 'yellow',
+  registering: 'yellow',
+  invited: 'blue',
+  withdrawn: 'grey',
+  rejected: 'grey',
+};
+
+export function participantBadges(participant: Participant): { label: string; color: BadgeColor }[] {
+  const state = participantState(participant);
+  const badges: { label: string; color: BadgeColor }[] = [
+    { label: PARTICIPANT_STATE_LABELS[state], color: STATE_BADGE_COLORS[state] },
+  ];
+  if (participant.has_anaphylaxis_risk) badges.push({ label: 'Anaphylaxis', color: 'red' });
+  if (participant.high_support_flag) badges.push({ label: 'High support', color: 'yellow' });
+  return badges;
+}
+
+// Memoised: the People list re-renders on every keystroke and selection, and
+// only the rows whose props changed need to.
+export const ParticipantRow = React.memo(function ParticipantRow({
+  participant,
+  onPress,
+  selected = false,
+  first = false,
+  last = false,
+}: ParticipantRowProps) {
+  const { tokens, type, radii } = useTheme();
+  const name = participant.display_name || participant.full_name;
+  // Only someone who's here has a second line (when and where); everyone
+  // else's state is the badge.
+  const detail = checkInDetail(participant);
+  const badges = participantBadges(participant);
+  const state = participantState(participant);
+  const inactive = state === 'withdrawn' || state === 'rejected';
 
   return (
-    <TouchableOpacity
-      style={[styles.container, selected && styles.containerSelected]}
-      onPress={onPress}
-      activeOpacity={0.7}
+    <PressableSurface
+      onPress={() => onPress(participant)}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      accessibilityLabel={[name, participant.pronouns, detail, ...badges.map((b) => b.label)]
+        .filter(Boolean)
+        .join(', ')}
+      rippleColor={tokens.text}
+      rippleAlpha={ROW_STATE_LAYER_ALPHA}
+      pressedOpacity={null}
+      style={(pressed) => [
+        styles.shape,
+        {
+          borderColor: tokens.box,
+          backgroundColor: selected ? tokens.selected : tokens.bg,
+          borderTopColor: first ? tokens.box : tokens.div2,
+        },
+        first && { borderTopLeftRadius: radii.container, borderTopRightRadius: radii.container },
+        last && styles.last,
+        last && { borderBottomLeftRadius: radii.container, borderBottomRightRadius: radii.container },
+        pressed && !selected && { backgroundColor: tokens.shaded },
+      ]}
+      contentStyle={styles.row}
     >
-      {selected && <View style={styles.selectionBar} />}
-      <View style={styles.content}>
-        <View style={styles.nameRow}>
-          <View style={styles.mainInfo}>
-            <Text style={styles.name} numberOfLines={1}>
-              {participant.display_name}
-            </Text>
-            {participant.pronouns && (
-              <Text style={styles.pronouns} numberOfLines={1}>({participant.pronouns})</Text>
-            )}
-          </View>
-          <View style={styles.status}>
-            <StatusBadge status={isWithdrawn(participant) ? 'withdrawn' : participant.checked_in_at ? 'checkedIn' : 'pending'} />
-          </View>
-        </View>
-
-        <Text style={styles.email} numberOfLines={1}>
-          {participant.email}
-        </Text>
-
-        {hasAlerts && (
-          <View style={styles.alerts}>
-            {participant.has_anaphylaxis_risk && (
-              <AlertBadge type="anaphylaxis" label="Anaphylaxis" compact />
-            )}
-            {participant.high_support_flag && (
-              <AlertBadge type="highSupport" label="High Support" compact />
-            )}
-          </View>
-        )}
+      <View style={inactive && styles.inactive}>
+        <Avatar name={name} uri={participant.headshot_url} size={36} decorative />
       </View>
-    </TouchableOpacity>
+      <View style={styles.text}>
+        <Text style={[type.body, { color: tokens.muted }]} numberOfLines={1}>
+          <Text style={[type.label, { color: tokens.textH }]}>{name}</Text>
+          {participant.pronouns ? ` ${participant.pronouns}` : ''}
+        </Text>
+        {detail ? (
+          <Text style={[type.body, { color: tokens.text2 }]} numberOfLines={1}>
+            {detail}
+          </Text>
+        ) : null}
+      </View>
+      <View style={styles.badges}>
+        {badges.map((badge) => (
+          <Badge key={badge.label} label={badge.label} color={badge.color} style={styles.badge} />
+        ))}
+      </View>
+    </PressableSurface>
   );
-}
+});
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.glass.dark,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+const styles = StyleSheet.create({
+  shape: {
     marginHorizontal: 16,
-    marginVertical: 6,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.glass.border,
-    position: 'relative',
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderTopWidth: 1,
   },
-  containerSelected: {
-    backgroundColor: colors.red + '12',
-    borderColor: colors.red,
-  },
-  selectionBar: {
-    position: 'absolute',
-    left: 0,
-    top: 10,
-    bottom: 10,
-    width: 3,
-    backgroundColor: colors.red,
-    borderTopRightRadius: 3,
-    borderBottomRightRadius: 3,
-  },
-  content: {
-    flex: 1,
-  },
-  nameRow: {
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 2,
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    // 56 including the 1px top border.
+    minHeight: 55,
   },
-  mainInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: 8,
-  },
-  name: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text.primary,
-    flexShrink: 1,
-  },
-  pronouns: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    marginLeft: 6,
-    flexShrink: 0,
-  },
-  email: {
-    fontSize: 14,
-    color: colors.text.secondary,
-    marginBottom: 4,
-  },
-  alerts: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 4,
-  },
-  status: {
-    alignItems: 'flex-end',
-  },
+  last: { borderBottomWidth: 1 },
+  inactive: { opacity: 0.5 },
+  text: { flex: 1, minWidth: 0 },
+  badges: { alignItems: 'flex-end', gap: 4, flexShrink: 0 },
+  badge: { alignSelf: 'flex-end' },
 });

@@ -1,0 +1,27 @@
+diff --git a/node_modules/react-native-screens/ios/RNSScreen.mm b/node_modules/react-native-screens/ios/RNSScreen.mm
+index 049fd22..91a633f 100644
+--- a/node_modules/react-native-screens/ios/RNSScreen.mm
++++ b/node_modules/react-native-screens/ios/RNSScreen.mm
+@@ -7,6 +7,7 @@
+ #import "RNSScreenWindowTraits.h"
+ 
+ #import <React/RCTConversions.h>
++#import <React/RCTStatusBarAppearance.h>
+ #import <React/RCTFabricComponentsPlugins.h>
+ #import <React/RCTRootComponentView.h>
+ #import <React/RCTScrollViewComponentView.h>
+@@ -1966,6 +1967,14 @@ - (UIViewController *)childViewControllerForStatusBarStyle
+ 
+ - (UIStatusBarStyle)preferredStatusBarStyle
+ {
++  // A screen that sets no statusBarStyle leaves the status bar to React
++  // Native's StatusBar (expo-status-bar's setStatusBarStyle). Without this,
++  // UIKit asks the top screen here and gets "auto", so with
++  // UIViewControllerBasedStatusBarAppearance (required with the iOS 27 SDK)
++  // every style set from JS is ignored.
++  if (!self.screenView.hasStatusBarStyleSet) {
++    return RCTStatusBarAppearance.style;
++  }
+   return [RNSScreenWindowTraits statusBarStyleForRNSStatusBarStyle:self.screenView.statusBarStyle];
+ }
+ 

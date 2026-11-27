@@ -1,3 +1,4 @@
+import { isActiveParticipant } from './participantStatus';
 import type {
   CreateScanResponse,
   Participant,
@@ -11,9 +12,12 @@ import { decodeSignedTicket } from './signedTicket';
 
 // The saved_* outcomes are scans kept on the device to send later (see
 // services/offlineScans), split by what the device could tell about the code.
+// `cancelled` is a scan Attend recorded for a registration that was withdrawn
+// or rejected: the server takes it, but the person shouldn't be let in.
 export type ScannerOutcome =
   | 'confirming'
   | ScanOutcome
+  | 'cancelled'
   | 'not_scanned'
   | 'saved'
   | 'saved_unchecked'
@@ -119,6 +123,19 @@ export function scannableContexts(contexts: ScanContext[]): ScanContext[] {
   return bySchedule(today.length > 0 ? today : contexts);
 }
 
+/**
+ * How kiosk mode starts outside the scanner, under the scanner's rules: an
+ * event without contexts needs none, an event with exactly one uses it, and
+ * otherwise staff choose one of the contexts open now.
+ */
+export function kioskContextChoice(
+  contexts: ScanContext[]
+): { kind: 'start'; context?: ScanContext } | { kind: 'choose'; contexts: ScanContext[] } {
+  if (contexts.length === 0) return { kind: 'start' };
+  if (contexts.length === 1) return { kind: 'start', context: contexts[0] };
+  return { kind: 'choose', contexts: scannableContexts(contexts) };
+}
+
 export class SameCodeGate {
   private lastCode: string | null = null;
   private lastSeenAt = 0;
@@ -135,6 +152,15 @@ export class SameCodeGate {
     const wasAbsentLongEnough = now - this.lastSeenAt >= this.suppressionMs;
     this.lastSeenAt = now;
     return wasAbsentLongEnough;
+  }
+
+  /**
+   * Note that the last code is still in view without accepting it. Used
+   * while a request is running, so the suppression window counts from the
+   * moment that code was last seen rather than from its first frame.
+   */
+  touch(code: string, now = Date.now()): void {
+    if (code === this.lastCode) this.lastSeenAt = now;
   }
 
   reset(): void {
@@ -171,6 +197,23 @@ export function resultFromResponse(input: {
     input.cachedParticipant,
     input.response.participant
   );
+
+  // Attend records a scan of a withdrawn or rejected registration like any
+  // other. Offline the same ticket is turned away (savedResult's cancelled
+  // verdict), so online it says so too rather than showing a welcome.
+  if (participant && !isActiveParticipant(participant)) {
+    return {
+      attemptId: input.attemptId,
+      rawData: input.rawData,
+      source: input.source,
+      outcome: 'cancelled',
+      participant,
+      scanContext: input.response.scan_context ?? input.scanContext,
+      firstScannedAt: input.response.first_scanned_at,
+      message: CANCELLED_MESSAGE,
+      retryable: false,
+    };
+  }
 
   return {
     attemptId: input.attemptId,
@@ -218,9 +261,29 @@ export function failedResult(error: unknown, input: BaseResultInput): ScannerRes
   };
 }
 
+/**
+ * A scan of this person in this context that the cached roster already knows
+ * about, for the offline "already scanned" hint. Null when there is none.
+ */
+export function cachedPriorScan(
+  participant: Participant | undefined,
+  scanContextId: string | undefined
+): { firstScannedAt?: string } | null {
+  if (!participant) return null;
+  if (!scanContextId) {
+    return participant.checked_in_at ? { firstScannedAt: participant.checked_in_at } : null;
+  }
+  const entry = participant.scans_by_context?.find(
+    scan => scan.scan_context_id === scanContextId && scan.scan_count > 0
+  );
+  return entry ? { firstScannedAt: entry.first_scanned_at } : null;
+}
+
 export function createAttemptId(now = Date.now()): string {
   return `${now.toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 }
+
+const CANCELLED_MESSAGE = 'This registration was withdrawn or rejected. Check with the event team before letting them in.';
 
 const SAVED: Record<'valid' | 'cancelled' | 'unverified', { outcome: ScannerOutcome; message: string }> = {
   valid: {
@@ -233,7 +296,7 @@ const SAVED: Record<'valid' | 'cancelled' | 'unverified', { outcome: ScannerOutc
   },
   cancelled: {
     outcome: 'saved_cancelled',
-    message: 'This registration was withdrawn or rejected. Check with the event team before letting them in. Saved and will be sent automatically.',
+    message: `${CANCELLED_MESSAGE} Saved and will be sent automatically.`,
   },
 };
 

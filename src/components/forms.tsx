@@ -1,29 +1,48 @@
 import React, { ReactNode, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
-  Modal,
   Platform,
   Pressable,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
+  type StyleProp,
   type TextInputProps,
+  type ViewStyle,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
-import { SearchField, makeCardSurface } from './ui';
-import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
+// eslint-plugin-import's resolver can't follow @expo/ui's package exports; TypeScript and Metro can.
+// eslint-disable-next-line import/no-unresolved
+import DateTimePicker from '@expo/ui/community/datetime-picker';
+import {
+  ActionMenu,
+  Badge as KitBadge,
+  Button as KitButton,
+  Container,
+  Icon,
+  KeyValue as KitKeyValue,
+  StatusGlyph,
+  StatusIndicator,
+  Toggle,
+  pressedStyle,
+  PressableSurface,
+  ripple,
+  ROW_STATE_LAYER_ALPHA,
+  statusColor,
+  type BadgeColor,
+  type IconName,
+  type StatusType,
+} from './ui';
+import { CHROME_MAX_FONT_SCALE } from './ui/fontScale';
+import { hackClubColors, useTheme, useThemedStyles, type Theme } from '../theme';
 import type { IncidentLevel, SelectOption } from '../types';
+import { multiSelectSheet, optionsSheet, type MultiSelectSheetItem } from '../navigation/sheetData';
+import { useOpenSheet } from '../navigation/sheetPresenter';
+import { DateTimeDialogs } from './DateTimeDialogs';
 
-// Form and detail-page building blocks for the paper-world stack screens
-// (incidents, messages, inbox, the report form). They mirror the console's
-// containers, fields and status pills so the same record reads the same on
-// the web and on a phone.
+// Form and detail-page building blocks for the stack screens (incidents,
+// messages, inbox, the report form), drawn with the console tokens and the
+// UI kit so the same record reads the same on the web and on a phone.
 
 export function Section({
   title,
@@ -38,18 +57,15 @@ export function Section({
 }) {
   const styles = useThemedStyles(makeStyles);
   return (
-    <View style={styles.section}>
-      {title ? (
-        <View style={styles.sectionHeader}>
-          <View style={styles.flex}>
-            <Text style={styles.sectionTitle}>{title}</Text>
-            {description ? <Text style={styles.sectionDescription}>{description}</Text> : null}
-          </View>
-          {right}
-        </View>
-      ) : null}
-      <View style={styles.sectionBody}>{children}</View>
-    </View>
+    <Container
+      title={title}
+      description={description ?? undefined}
+      actions={right}
+      style={styles.section}
+      bodyStyle={styles.sectionBody}
+    >
+      {children}
+    </Container>
   );
 }
 
@@ -77,27 +93,56 @@ export function Field({
       </Text>
       {description ? <Text style={styles.fieldDescription}>{description}</Text> : null}
       {children}
-      {error ? <Text style={styles.fieldError}>{error}</Text> : null}
+      {error ? (
+        <Text style={styles.fieldError} accessibilityLiveRegion="polite">
+          {error}
+        </Text>
+      ) : null}
     </View>
   );
 }
 
-export function TextField({ multiline, style, ...props }: TextInputProps) {
-  const { colors, isDark } = useTheme();
+/** A console input: 1px `input` border, radius 8, accent border while focused. */
+export function TextField({ multiline, style, onFocus, onBlur, editable = true, ...props }: TextInputProps) {
+  const { tokens, isDark } = useTheme();
   const styles = useThemedStyles(makeStyles);
+  const [focused, setFocused] = useState(false);
   return (
     <TextInput
-      style={[styles.input, multiline && styles.inputMultiline, style]}
-      placeholderTextColor={colors.gray[400]}
+      style={[
+        styles.input,
+        multiline && styles.inputMultiline,
+        focused && styles.inputFocused,
+        !editable && styles.inputDisabled,
+        style,
+      ]}
+      placeholderTextColor={tokens.muted}
+      selectionColor={tokens.accent}
+      cursorColor={tokens.accent}
       keyboardAppearance={isDark ? 'dark' : 'light'}
       multiline={multiline}
+      editable={editable}
       textAlignVertical={multiline ? 'top' : 'center'}
+      onFocus={e => {
+        setFocused(true);
+        onFocus?.(e);
+      }}
+      onBlur={e => {
+        setFocused(false);
+        onBlur?.(e);
+      }}
       {...props}
     />
   );
 }
 
-/** A tappable field that opens a native-feeling picker sheet. */
+/** Up to this many options show as a native menu; more open a sheet. */
+const MENU_MAX_OPTIONS = 6;
+
+/**
+ * A tappable field for one choice: a native menu for a short list, the
+ * options sheet for a longer one or one with custom rows.
+ */
 export function SelectField({
   value,
   options,
@@ -117,60 +162,66 @@ export function SelectField({
   isOptionDisabled?: (option: SelectOption) => boolean;
   renderOption?: (option: SelectOption) => ReactNode;
 }) {
-  const { colors } = useTheme();
+  const { tokens, radii } = useTheme();
   const styles = useThemedStyles(makeStyles);
-  const [open, setOpen] = useState(false);
+  const openSheet = useOpenSheet();
   const selected = options.find(o => o.value === value);
+  const label = selected?.label ?? placeholder;
+  const claimSheet = optionsSheet.useOpener({
+    title,
+    options: options.map(option => ({ ...option, disabled: isOptionDisabled?.(option) ?? false })),
+    selected: value,
+    onSelect: onChange,
+    renderOption,
+  });
+
+  const face = (
+    <>
+      <Text style={[styles.selectText, !selected && styles.placeholderText]} numberOfLines={1}>
+        {label}
+      </Text>
+      <Icon name="chevron-down" size={16} color={tokens.muted} />
+    </>
+  );
+
+  if (!renderOption && !disabled && options.length <= MENU_MAX_OPTIONS) {
+    return (
+      <ActionMenu
+        accessibilityLabel={`${title}: ${label}`}
+        feedbackRadius={radii.input}
+        stretch
+        actions={options.map(option => ({
+          key: option.value,
+          title: option.label,
+          checked: option.value === value,
+          disabled: isOptionDisabled?.(option) ?? false,
+          onSelect: () => onChange(option.value),
+        }))}
+      >
+        <View style={[styles.selectShape, styles.selectButton]}>{face}</View>
+      </ActionMenu>
+    );
+  }
 
   return (
-    <>
-      <TouchableOpacity
-        style={[styles.input, styles.selectButton, disabled && styles.inputDisabled]}
-        onPress={() => setOpen(true)}
-        disabled={disabled}
-        accessibilityRole="button"
-        accessibilityLabel={`${title}: ${selected?.label ?? placeholder}`}
-      >
-        <Text style={[styles.selectText, !selected && styles.placeholderText]} numberOfLines={1}>
-          {selected?.label ?? placeholder}
-        </Text>
-        <Ionicons name="chevron-down" size={16} color={colors.gray[500]} />
-      </TouchableOpacity>
-      <PickerSheet visible={open} title={title} onClose={() => setOpen(false)}>
-        <FlatList
-          data={options}
-          keyExtractor={o => o.value}
-          renderItem={({ item }) => {
-            const optionDisabled = isOptionDisabled?.(item) ?? false;
-            return (
-              <TouchableOpacity
-                style={[styles.optionRow, optionDisabled && styles.optionDisabled]}
-                disabled={optionDisabled}
-                onPress={() => {
-                  onChange(item.value);
-                  setOpen(false);
-                }}
-                accessibilityState={{ selected: item.value === value, disabled: optionDisabled }}
-              >
-                <View style={styles.flex}>
-                  {renderOption ? renderOption(item) : <Text style={styles.optionLabel}>{item.label}</Text>}
-                </View>
-                {item.value === value ? <Ionicons name="checkmark" size={20} color={colors.text.accent} /> : null}
-              </TouchableOpacity>
-            );
-          }}
-        />
-      </PickerSheet>
-    </>
+    <PressableSurface
+      style={[styles.selectShape, disabled && styles.inputDisabled]}
+      contentStyle={styles.selectButton}
+      rippleColor={tokens.text}
+      onPress={() => {
+        claimSheet();
+        openSheet('OptionsSheet');
+      }}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}: ${label}`}
+    >
+      {face}
+    </PressableSurface>
   );
 }
 
-export interface MultiSelectItem {
-  id: string;
-  title: string;
-  subtitle?: string | null;
-  trailing?: ReactNode;
-}
+export type MultiSelectItem = MultiSelectSheetItem;
 
 /**
  * A searchable checklist in a sheet, for picking participants or staff. The
@@ -191,113 +242,51 @@ export function MultiSelectField({
   noun: [string, string];
   searchPlaceholder?: string;
 }) {
-  const { colors } = useTheme();
+  const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
+  const openSheet = useOpenSheet();
   const selectedSet = useMemo(() => new Set(selected), [selected]);
   const names = items.filter(i => selectedSet.has(i.id)).map(i => i.title);
-
-  const filtered = useMemo(() => {
-    const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-    if (!terms.length) return items;
-    return items.filter(item => {
-      const haystack = `${item.title} ${item.subtitle ?? ''}`.toLowerCase();
-      return terms.every(t => haystack.includes(t));
-    });
-  }, [items, query]);
-
-  const toggle = (id: string) => {
-    onChange(selectedSet.has(id) ? selected.filter(s => s !== id) : [...selected, id]);
-  };
+  const claimSheet = multiSelectSheet.useOpener({ title, items, selected, onChange, noun, searchPlaceholder });
 
   return (
-    <>
-      <TouchableOpacity style={[styles.input, styles.selectButton]} onPress={() => setOpen(true)} accessibilityRole="button">
-        <View style={styles.flex}>
-          <Text style={[styles.selectText, !names.length && styles.placeholderText]} numberOfLines={2}>
-            {names.length ? names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3} more` : '') : `No ${noun[1]} selected`}
-          </Text>
-        </View>
-        <Text style={styles.countText}>{selected.length}</Text>
-        <Ionicons name="chevron-forward" size={16} color={colors.gray[500]} />
-      </TouchableOpacity>
-      <PickerSheet
-        visible={open}
-        title={title}
-        onClose={() => setOpen(false)}
-        right={
-          <TouchableOpacity onPress={() => onChange([])} hitSlop={8}>
-            <Text style={styles.sheetAction}>Clear all</Text>
-          </TouchableOpacity>
-        }
-      >
-        <View style={styles.sheetSearch}>
-          <SearchField value={query} onChangeText={setQuery} placeholder={searchPlaceholder} />
-          <Text style={styles.sheetCount}>
-            {selected.length} {selected.length === 1 ? noun[0] : noun[1]} selected
-          </Text>
-        </View>
-        <FlatList
-          data={filtered}
-          keyExtractor={item => item.id}
-          keyboardShouldPersistTaps="handled"
-          renderItem={({ item }) => {
-            const checked = selectedSet.has(item.id);
-            return (
-              <TouchableOpacity
-                style={styles.optionRow}
-                onPress={() => toggle(item.id)}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked }}
-              >
-                <Ionicons
-                  name={checked ? 'checkbox' : 'square-outline'}
-                  size={22}
-                  color={checked ? colors.text.accent : colors.gray[400]}
-                />
-                <View style={styles.flex}>
-                  <Text style={styles.optionLabel} numberOfLines={1}>{item.title}</Text>
-                  {item.subtitle ? <Text style={styles.optionSubtitle} numberOfLines={1}>{item.subtitle}</Text> : null}
-                </View>
-                {item.trailing}
-              </TouchableOpacity>
-            );
-          }}
-          ListEmptyComponent={<Text style={styles.emptySheet}>No matches</Text>}
-        />
-      </PickerSheet>
-    </>
+    <PressableSurface
+      style={styles.selectShape}
+      contentStyle={styles.selectButton}
+      rippleColor={tokens.text}
+      onPress={() => {
+        claimSheet();
+        openSheet('MultiSelectSheet');
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}: ${selected.length} ${selected.length === 1 ? noun[0] : noun[1]} selected`}
+    >
+      <View style={styles.flex}>
+        <Text style={[styles.selectText, !names.length && styles.placeholderText]} numberOfLines={2}>
+          {names.length ? names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3} more` : '') : `No ${noun[1]} selected`}
+        </Text>
+      </View>
+      {selected.length ? <KitBadge label={String(selected.length)} /> : null}
+      <Icon name="chevron-right" size={16} color={tokens.muted} />
+    </PressableSurface>
   );
 }
 
-export function PickerSheet({
-  visible,
-  title,
-  onClose,
-  right,
-  children,
-}: {
-  visible: boolean;
-  title: string;
-  onClose: () => void;
-  right?: ReactNode;
-  children: ReactNode;
-}) {
+/** Console checkbox: a 16pt square, accent-filled with a tick when checked. */
+export function Checkbox({ checked, disabled }: { checked: boolean; disabled?: boolean }) {
+  const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <SafeAreaView style={styles.sheet} edges={['top', 'bottom']}>
-        <View style={styles.sheetHeader}>
-          <TouchableOpacity onPress={onClose} hitSlop={8} accessibilityRole="button">
-            <Text style={styles.sheetAction}>Done</Text>
-          </TouchableOpacity>
-          <Text style={styles.sheetTitle} numberOfLines={1}>{title}</Text>
-          <View style={styles.sheetRight}>{right}</View>
-        </View>
-        {children}
-      </SafeAreaView>
-    </Modal>
+    <View
+      style={[
+        styles.checkbox,
+        checked
+          ? { backgroundColor: disabled ? tokens.disabled : tokens.accent, borderColor: disabled ? tokens.disabled : tokens.accent }
+          : { borderColor: disabled ? tokens.disabled : tokens.input },
+      ]}
+    >
+      {checked ? <Icon name="check" size={14} strokeWidth={3} color={tokens.accentOn} /> : null}
+    </View>
   );
 }
 
@@ -314,21 +303,18 @@ export function CheckboxRow({
   onChange: (checked: boolean) => void;
   disabled?: boolean;
 }) {
-  const { colors } = useTheme();
+  const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
   return (
     <Pressable
-      style={[styles.checkRow, disabled && styles.optionDisabled]}
+      style={({ pressed }) => [styles.checkRow, disabled && styles.optionDisabled, pressedStyle(pressed)]}
+      android_ripple={ripple(tokens.text, { alpha: ROW_STATE_LAYER_ALPHA })}
       onPress={() => onChange(!checked)}
       disabled={disabled}
       accessibilityRole="checkbox"
       accessibilityState={{ checked, disabled }}
     >
-      <Ionicons
-        name={checked ? 'checkbox' : 'square-outline'}
-        size={22}
-        color={checked ? colors.text.accent : colors.gray[400]}
-      />
+      <Checkbox checked={checked} disabled={disabled} />
       <View style={styles.flex}>
         <Text style={styles.optionLabel}>{label}</Text>
         {description ? <Text style={styles.optionSubtitle}>{description}</Text> : null}
@@ -348,27 +334,30 @@ export function SwitchRow({
   value: boolean;
   onChange: (value: boolean) => void;
 }) {
-  const { colors } = useTheme();
+  const { tokens } = useTheme();
   const styles = useThemedStyles(makeStyles);
+  // The whole row flips the switch.
   return (
-    <View style={styles.checkRow}>
+    <Pressable
+      style={({ pressed }) => [styles.checkRow, pressedStyle(pressed)]}
+      android_ripple={ripple(tokens.text, { alpha: ROW_STATE_LAYER_ALPHA })}
+      onPress={() => onChange(!value)}
+      accessibilityRole="switch"
+      accessibilityLabel={[label, description].filter(Boolean).join(', ')}
+      accessibilityState={{ checked: value }}
+    >
       <View style={styles.flex}>
         <Text style={styles.optionLabel}>{label}</Text>
         {description ? <Text style={styles.optionSubtitle}>{description}</Text> : null}
       </View>
-      <Switch
-        value={value}
-        onValueChange={onChange}
-        trackColor={{ false: colors.gray[300], true: colors.blue }}
-        thumbColor={colors.white}
-      />
-    </View>
+      <Toggle value={value} onValueChange={onChange} accessibilityLabel={label} decorative />
+    </Pressable>
   );
 }
 
 /**
  * A date and time, or none. iOS shows the compact inline picker; Android
- * opens its date dialog and then its time dialog.
+ * opens Material 3's date dialog and then its time dialog.
  */
 export function DateTimeField({
   value,
@@ -383,24 +372,10 @@ export function DateTimeField({
   clearable?: boolean;
   placeholder?: string;
 }) {
-  const { colors, isDark } = useTheme();
+  const { tokens, isDark } = useTheme();
   const styles = useThemedStyles(makeStyles);
-
-  const openAndroid = () => {
-    const start = value ?? new Date();
-    DateTimePickerAndroid.open({
-      value: start,
-      mode: 'date',
-      minimumDate,
-      onValueChange: (_event, date) => {
-        DateTimePickerAndroid.open({
-          value: date,
-          mode: 'time',
-          onValueChange: (_e, time) => onChange(time),
-        });
-      },
-    });
-  };
+  // Android: where the dialogs start, while they're open.
+  const [pickingFrom, setPickingFrom] = useState<Date | null>(null);
 
   return (
     <View style={styles.dateRow}>
@@ -411,25 +386,39 @@ export function DateTimeField({
           display="compact"
           minimumDate={minimumDate}
           themeVariant={isDark ? 'dark' : 'light'}
-          accentColor={colors.text.accent}
+          accentColor={tokens.accent}
           onValueChange={(_event, date) => onChange(date)}
         />
       ) : (
-        <TouchableOpacity
-          style={[styles.input, styles.selectButton, styles.flex]}
-          onPress={() => (Platform.OS === 'ios' ? onChange(new Date()) : openAndroid())}
+        <PressableSurface
+          style={[styles.selectShape, styles.flex]}
+          contentStyle={styles.selectButton}
+          rippleColor={tokens.text}
+          onPress={() => (Platform.OS === 'ios' ? onChange(new Date()) : setPickingFrom(value ?? new Date()))}
           accessibilityRole="button"
         >
           <Text style={[styles.selectText, !value && styles.placeholderText]}>
             {value ? formatDateTime(value.toISOString()) : placeholder}
           </Text>
-          <Ionicons name="calendar-outline" size={16} color={colors.gray[500]} />
-        </TouchableOpacity>
+          <Icon name="calendar" size={16} color={tokens.muted} />
+        </PressableSurface>
       )}
       {clearable && value ? (
-        <TouchableOpacity onPress={() => onChange(null)} hitSlop={8} accessibilityLabel="Clear date">
-          <Ionicons name="close-circle" size={20} color={colors.gray[400]} />
-        </TouchableOpacity>
+        <Pressable onPress={() => onChange(null)} hitSlop={12} accessibilityRole="button" accessibilityLabel="Clear date">
+          {({ pressed }) => (
+            <View style={pressedStyle(pressed)}>
+              <Icon name="x-circle" size={20} color={tokens.muted} />
+            </View>
+          )}
+        </Pressable>
+      ) : null}
+      {pickingFrom ? (
+        <DateTimeDialogs
+          value={pickingFrom}
+          minimumDate={minimumDate}
+          onChange={onChange}
+          onClose={() => setPickingFrom(null)}
+        />
       ) : null}
     </View>
   );
@@ -437,6 +426,7 @@ export function DateTimeField({
 
 type ButtonVariant = 'primary' | 'secondary' | 'destructive' | 'link';
 
+/** The kit's pill Button, with this module's older variant names. */
 export function Button({
   title,
   onPress,
@@ -444,110 +434,106 @@ export function Button({
   disabled,
   loading,
   icon,
+  fullWidth,
+  style,
 }: {
   title: string;
   onPress: () => void;
   variant?: ButtonVariant;
   disabled?: boolean;
   loading?: boolean;
-  icon?: keyof typeof Ionicons.glyphMap;
+  icon?: IconName;
+  fullWidth?: boolean;
+  style?: StyleProp<ViewStyle>;
 }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
-  const textColor = variant === 'primary'
-    ? colors.white
-    : variant === 'destructive' || variant === 'link'
-      ? colors.text.accent
-      : colors.gray[800];
-
   return (
-    <TouchableOpacity
-      style={[
-        styles.button,
-        variant === 'primary' && styles.buttonPrimary,
-        variant === 'link' && styles.buttonLink,
-        (disabled || loading) && styles.buttonDisabled,
-      ]}
-      onPress={onPress}
-      disabled={disabled || loading}
-      accessibilityRole="button"
-      accessibilityState={{ disabled: !!(disabled || loading), busy: !!loading }}
-    >
-      {loading ? (
-        <ActivityIndicator size="small" color={textColor} />
-      ) : (
-        <>
-          {icon ? <Ionicons name={icon} size={16} color={textColor} /> : null}
-          <Text style={[styles.buttonText, { color: textColor }]}>{title}</Text>
-        </>
-      )}
-    </TouchableOpacity>
+    <KitButton
+      title={title}
+      onPress={() => onPress()}
+      variant={variant === 'primary' ? 'primary' : variant === 'link' ? 'link' : 'normal'}
+      disabled={disabled}
+      loading={loading}
+      icon={icon}
+      fullWidth={fullWidth}
+      style={style}
+    />
   );
 }
 
 export type StatusTone = 'success' | 'warning' | 'error' | 'info' | 'pending' | 'progress' | 'stopped';
 
+export function statusType(tone: StatusTone): StatusType {
+  return tone === 'progress' ? 'in-progress' : tone;
+}
+
 /** The console's status indicator: an icon and a label, never color alone. */
 export function StatusPill({ tone, label }: { tone: StatusTone; label: string }) {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
-  const { icon, color } = statusAppearance(tone, colors);
-  return (
-    <View style={styles.status}>
-      <Ionicons name={icon} size={14} color={color} />
-      <Text style={[styles.statusText, { color }]}>{label}</Text>
-    </View>
-  );
+  return <StatusIndicator type={statusType(tone)} label={label} />;
 }
 
-function statusAppearance(tone: StatusTone, colors: ThemeColors): { icon: keyof typeof Ionicons.glyphMap; color: string } {
-  switch (tone) {
-    case 'success':
-      return { icon: 'checkmark-circle', color: colors.status.success };
-    case 'warning':
-      return { icon: 'alert-circle', color: colors.status.warning };
-    case 'error':
-      return { icon: 'close-circle', color: colors.status.error };
-    case 'progress':
-      return { icon: 'sync-circle', color: colors.status.info };
-    case 'pending':
-      return { icon: 'time', color: colors.gray[500] };
-    case 'stopped':
-      return { icon: 'remove-circle', color: colors.gray[500] };
-    default:
-      return { icon: 'information-circle', color: colors.status.info };
-  }
-}
-
+/**
+ * Small console badge (12/20, radius 4). With a `color` it carries a dot in
+ * that colour on a quiet fill, so a category hue survives in both schemes
+ * without putting coloured text on a coloured background.
+ */
 export function Badge({ label, color }: { label: string; color?: string | null }) {
-  const { colors } = useTheme();
+  const { tokens, radii } = useTheme();
   const styles = useThemedStyles(makeStyles);
-  const tint = color ?? colors.gray[500];
+  if (!color) return <KitBadge label={label} />;
   return (
-    <View style={[styles.badge, { backgroundColor: `${tint}22`, borderColor: `${tint}55` }]}>
-      <Text style={[styles.badgeText, { color: color ? tint : colors.gray[700] }]}>{label}</Text>
+    <View style={[styles.badge, { backgroundColor: tokens.shaded, borderRadius: radii.badge }]}>
+      <View style={[styles.badgeDot, { backgroundColor: color }]} />
+      <Text style={[styles.badgeText, { color: tokens.text }]} numberOfLines={1} maxFontSizeMultiplier={CHROME_MAX_FONT_SCALE}>
+        {label}
+      </Text>
     </View>
   );
 }
 
 const LEVEL_COLORS: Record<string, string> = {
-  red: '#EC3750',
-  amber: '#FF8C37',
-  green: '#33D6A6',
-  blue: '#338EDA',
+  red: hackClubColors.red,
+  amber: hackClubColors.orange,
+  green: hackClubColors.green,
+  blue: hackClubColors.blue,
 };
 
 export function levelColor(level?: IncidentLevel | null): string | undefined {
   return level ? LEVEL_COLORS[level.color] : undefined;
 }
 
-/** S0–S3 badge, optionally followed by the level's name and target. */
-export function LevelBadge({ level, code, full }: { level?: IncidentLevel | null; code: string; full?: boolean }) {
+/** The kit badge colour for a level: red and amber stand out, the rest stay grey. */
+export function levelBadgeColor(level?: IncidentLevel | null): BadgeColor {
+  if (level?.color === 'red') return 'red';
+  if (level?.color === 'amber') return 'yellow';
+  return 'grey';
+}
+
+/**
+ * S0–S3 badge, optionally followed by the level's name (`name`) or its name
+ * and target (`full`).
+ */
+export function LevelBadge({
+  level,
+  code,
+  full,
+  name,
+}: {
+  level?: IncidentLevel | null;
+  code: string;
+  full?: boolean;
+  name?: boolean;
+}) {
   const styles = useThemedStyles(makeStyles);
   return (
     <View style={styles.levelRow}>
-      <Badge label={level?.code ?? code.toUpperCase()} color={levelColor(level)} />
-      {full && level ? <Text style={styles.levelText}>{level.name} · {level.target}</Text> : null}
+      <KitBadge label={level?.code ?? code.toUpperCase()} color={levelBadgeColor(level)} />
+      {full && level ? (
+        <Text style={styles.levelText}>
+          {level.name} · {level.target}
+        </Text>
+      ) : name && level ? (
+        <Text style={styles.levelText}>{level.name}</Text>
+      ) : null}
     </View>
   );
 }
@@ -559,9 +545,9 @@ export function LevelChart({ levels }: { levels: IncidentLevel[] }) {
     <View style={styles.chart}>
       {levels.map((level, i) => (
         <View key={level.value} style={[styles.chartRow, i > 0 && styles.chartDivider]}>
-          <Badge label={level.code} color={levelColor(level)} />
+          <KitBadge label={level.code} color={levelBadgeColor(level)} />
           <View style={styles.flex}>
-            <Text style={styles.optionLabel}>
+            <Text style={styles.chartTitle}>
               {level.name}
               <Text style={styles.optionSubtitle}> · {level.target}</Text>
             </Text>
@@ -573,20 +559,23 @@ export function LevelChart({ levels }: { levels: IncidentLevel[] }) {
   );
 }
 
-export function KeyValue({ label, children }: { label: string; children: ReactNode }) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.kv}>
-      <Text style={styles.kvLabel}>{label}</Text>
-      {typeof children === 'string' || typeof children === 'number' ? (
-        <Text style={styles.kvValue}>{children}</Text>
-      ) : (
-        children
-      )}
-    </View>
-  );
+/** Console key-value pair; `row` (default) puts the label in a fixed column. */
+export function KeyValue({
+  label,
+  children,
+  layout = 'row',
+}: {
+  label: string;
+  children: ReactNode;
+  layout?: 'row' | 'stacked';
+}) {
+  return <KitKeyValue label={label} value={children} layout={layout} labelWidth={120} />;
 }
 
+/**
+ * A soft inline alert: status glyph, tinted fill, body-coloured text. Takes
+ * arbitrary children, unlike the kit's solid Flashbar.
+ */
 export function Notice({
   tone = 'info',
   children,
@@ -594,47 +583,22 @@ export function Notice({
   tone?: 'info' | 'warning' | 'error' | 'success';
   children: ReactNode;
 }) {
-  const { colors } = useTheme();
+  const { tokens, radii } = useTheme();
   const styles = useThemedStyles(makeStyles);
-  const { icon, color } = statusAppearance(tone, colors);
+  const bg = {
+    info: tokens.infoBg,
+    success: tokens.successBg,
+    error: tokens.errorBg,
+    warning: tokens.shaded,
+  }[tone];
   return (
-    <View style={[styles.notice, { borderColor: `${color}66`, backgroundColor: `${color}14` }]}>
-      <Ionicons name={icon} size={18} color={color} />
+    <View style={[styles.notice, { backgroundColor: bg, borderRadius: radii.flash }]}>
+      <View style={styles.noticeIcon}>
+        <StatusGlyph type={tone} color={statusColor(tone, tokens)} />
+      </View>
       <View style={styles.flex}>
         {typeof children === 'string' ? <Text style={styles.noticeText}>{children}</Text> : children}
       </View>
-    </View>
-  );
-}
-
-export function LoadingView() {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.center}>
-      <ActivityIndicator size="large" color={colors.text.accent} />
-    </View>
-  );
-}
-
-export function ErrorView({ message, onRetry }: { message: string; onRetry?: () => void }) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.center}>
-      <Text style={styles.emptyTitle}>Couldn’t load this</Text>
-      <Text style={styles.emptyText}>{message}</Text>
-      {onRetry ? <Button title="Try again" onPress={onRetry} /> : null}
-    </View>
-  );
-}
-
-export function EmptyState({ title, message, action }: { title: string; message?: string; action?: ReactNode }) {
-  const styles = useThemedStyles(makeStyles);
-  return (
-    <View style={styles.empty}>
-      <Text style={styles.emptyTitle}>{title}</Text>
-      {message ? <Text style={styles.emptyText}>{message}</Text> : null}
-      {action}
     </View>
   );
 }
@@ -677,119 +641,88 @@ export function formatRelative(iso?: string | null, now: Date = new Date()): str
   return seconds < 0 ? `in ${label}` : `${label} ago`;
 }
 
-function makeStyles(colors: ThemeColors, theme: Theme) {
+function makeStyles(theme: Theme) {
+  const { tokens: t, type, radii, spacing, hitTarget } = theme;
   return StyleSheet.create({
     flex: { flex: 1 },
-    center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 24 },
-    section: { ...makeCardSurface(colors, theme), marginHorizontal: 16, marginTop: 14 },
-    sectionHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-      paddingHorizontal: 16,
-      paddingTop: 14,
-    },
-    sectionTitle: { fontSize: 17, fontWeight: '700', color: colors.gray[900] },
-    sectionDescription: { fontSize: 13, color: colors.gray[600], marginTop: 2 },
-    sectionBody: { padding: 16, gap: 14 },
-    field: { gap: 6 },
-    fieldLabel: { fontSize: 14, fontWeight: '600', color: colors.gray[800] },
-    fieldOptional: { fontWeight: '400', color: colors.gray[500] },
-    fieldDescription: { fontSize: 13, color: colors.gray[600] },
-    fieldError: { fontSize: 13, color: colors.status.error },
+    section: { marginHorizontal: spacing.lg, marginTop: spacing.lg },
+    sectionBody: { gap: spacing.lg },
+    field: { gap: spacing.xs + 2 },
+    fieldLabel: { ...type.label, color: t.text },
+    fieldOptional: { fontWeight: type.body.fontWeight, color: t.muted },
+    fieldDescription: { ...type.body, color: t.text2 },
+    fieldError: { ...type.body, color: t.error },
     input: {
-      minHeight: 44,
-      borderRadius: 11,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.gray[300],
-      backgroundColor: colors.background,
-      paddingHorizontal: 12,
+      ...type.body,
+      minHeight: hitTarget,
+      borderRadius: radii.input,
+      borderWidth: 1,
+      borderColor: t.input,
+      backgroundColor: t.bg,
+      paddingHorizontal: spacing.md,
       paddingVertical: 10,
-      fontSize: 16,
-      color: colors.gray[900],
+      color: t.text,
+      overflow: 'hidden',
     },
-    inputMultiline: { minHeight: 110 },
-    inputDisabled: { opacity: 0.55 },
-    selectButton: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    selectText: { flex: 1, fontSize: 16, color: colors.gray[900] },
-    placeholderText: { color: colors.gray[400] },
-    countText: { fontSize: 14, fontWeight: '700', color: colors.gray[600] },
-    optionRow: {
+    // Thicken the border without shifting the text, as the kit field does.
+    inputFocused: { borderWidth: 2, borderColor: t.accent, paddingHorizontal: spacing.md - 1, paddingVertical: 9 },
+    inputMultiline: { minHeight: 96 },
+    inputDisabled: { backgroundColor: t.inputDisabled, color: t.disabled },
+    // A pressable field: the shape clips the ripple, the content lays out inside.
+    selectShape: {
+      borderRadius: radii.input,
+      borderWidth: 1,
+      borderColor: t.input,
+      backgroundColor: t.bg,
+    },
+    selectButton: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 12,
-      paddingHorizontal: 16,
-      paddingVertical: 13,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.gray[200],
+      gap: spacing.sm,
+      // hitTarget including the 1px border.
+      minHeight: hitTarget - 2,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 10,
     },
+    selectText: { ...type.body, flex: 1, color: t.text },
+    placeholderText: { color: t.muted },
     optionDisabled: { opacity: 0.45 },
-    optionLabel: { fontSize: 16, color: colors.gray[900] },
-    optionSubtitle: { fontSize: 13, color: colors.gray[600], marginTop: 2 },
-    checkRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
-    dateRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-    sheet: { flex: 1, backgroundColor: colors.background },
-    sheetHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: 16,
-      paddingVertical: 14,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.gray[200],
-    },
-    sheetTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '700', color: colors.gray[900] },
-    sheetRight: { minWidth: 60, alignItems: 'flex-end' },
-    sheetAction: { fontSize: 16, fontWeight: '600', color: colors.text.accent, minWidth: 60 },
-    sheetSearch: { paddingTop: 12, gap: 8 },
-    sheetCount: { fontSize: 13, color: colors.gray[600], paddingHorizontal: 16, paddingBottom: 6 },
-    emptySheet: { textAlign: 'center', color: colors.gray[500], padding: 24 },
-    button: {
-      minHeight: 44,
-      paddingHorizontal: 16,
-      borderRadius: 12,
-      flexDirection: 'row',
+    optionLabel: { ...type.body, fontSize: type.h3.fontSize, lineHeight: type.h2.lineHeight, color: t.text },
+    optionSubtitle: { ...type.body, color: t.text2 },
+    checkbox: {
+      width: 20,
+      height: 20,
+      borderRadius: radii.badge,
+      borderWidth: 2,
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 6,
-      backgroundColor: colors.surface,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.gray[300],
     },
-    buttonPrimary: { backgroundColor: colors.red, borderColor: colors.red },
-    buttonLink: { backgroundColor: 'transparent', borderColor: 'transparent' },
-    buttonDisabled: { opacity: 0.5 },
-    buttonText: { fontSize: 15, fontWeight: '700' },
-    status: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-    statusText: { fontSize: 13, fontWeight: '600' },
+    checkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: hitTarget, paddingVertical: spacing.xs },
+    dateRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
     badge: {
       alignSelf: 'flex-start',
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-      borderRadius: 999,
-      borderWidth: StyleSheet.hairlineWidth,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: spacing.sm,
     },
-    badgeText: { fontSize: 12, fontWeight: '700' },
-    levelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-    levelText: { fontSize: 13, color: colors.gray[600] },
+    badgeDot: { width: 8, height: 8, borderRadius: radii.pill },
+    badgeText: { ...type.small, lineHeight: type.body.lineHeight },
+    levelRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm - 2, flexWrap: 'wrap' },
+    levelText: { ...type.body, color: t.text2 },
     chart: { gap: 0 },
-    chartRow: { flexDirection: 'row', gap: 10, paddingVertical: 8, alignItems: 'flex-start' },
-    chartDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.gray[200] },
-    kv: { gap: 3 },
-    kvLabel: { fontSize: 12, fontWeight: '600', color: colors.gray[500], textTransform: 'uppercase', letterSpacing: 0.4 },
-    kvValue: { fontSize: 15, color: colors.gray[900] },
+    chartRow: { flexDirection: 'row', gap: spacing.md, paddingVertical: spacing.sm + 2, alignItems: 'flex-start' },
+    chartDivider: { borderTopWidth: 1, borderTopColor: t.div2 },
+    chartTitle: { ...type.label, color: t.textH },
     notice: {
       flexDirection: 'row',
       gap: 10,
-      padding: 12,
-      borderRadius: 12,
-      borderWidth: StyleSheet.hairlineWidth,
-      marginHorizontal: 16,
-      marginTop: 14,
+      paddingVertical: spacing.md,
+      paddingHorizontal: 14,
+      marginHorizontal: spacing.lg,
+      marginTop: spacing.lg,
     },
-    noticeText: { fontSize: 14, color: colors.gray[800], lineHeight: 20 },
-    empty: { alignItems: 'center', gap: 8, padding: 32 },
-    emptyTitle: { fontSize: 17, fontWeight: '700', color: colors.gray[900], textAlign: 'center' },
-    emptyText: { fontSize: 14, color: colors.gray[600], textAlign: 'center' },
+    noticeIcon: { paddingTop: 2 },
+    noticeText: { ...type.body, color: t.text },
   });
 }

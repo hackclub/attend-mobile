@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
-import * as Haptics from 'expo-haptics';
+import { notify } from '../services/haptics';
 import { feedbackForOutcome, type ScanSound } from '../services/scanFeedback';
 import type { ScannerOutcome } from '../services/scannerCore';
 
@@ -44,7 +44,7 @@ export function useScanFeedback() {
     } else {
       pendingSoundRef.current = feedback.sound;
     }
-    void Haptics.notificationAsync(feedback.haptic).catch(() => {});
+    notify(feedback.haptic);
   }, [isReady, playSound]);
 
   return { play, isReady };

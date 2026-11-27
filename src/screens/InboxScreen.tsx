@@ -1,20 +1,32 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { api } from '../services/api';
-import { FilterChip, SearchField, makeCardSurface } from '../components/ui';
-import { Badge, EmptyState, ErrorView, LoadingView, formatDateTime } from '../components/forms';
-import { CHANNEL_COLORS, CHANNEL_LABELS } from '../services/statusDisplay';
-import { useTheme, useThemedStyles, type Theme, type ThemeColors } from '../theme';
-import type { InboxPage, RootStackParamList } from '../types';
+import {
+  EmptyState,
+  ErrorView,
+  FilterChip,
+  isAndroid,
+  LoadingView,
+  RefreshControl,
+  ripple,
+  ROW_STATE_LAYER_ALPHA,
+  Screen,
+  TextField,
+} from '../components/ui';
+import { formatDateTime } from '../components/forms';
+import { channelList } from '../components/messageStatus';
+import { radii, spacing, useTheme } from '../theme';
+import type { InboxPage, AppStackParamList } from '../types';
+import { useScreenInsets } from '../hooks/useScreenInsets';
 
-type Nav = NativeStackNavigationProp<RootStackParamList, 'Inbox'>;
+type Nav = NativeStackNavigationProp<AppStackParamList, 'Inbox'>;
 
 /** The participant's messages from organizers, as /dashboard/messages. */
 export function InboxScreen() {
-  const { colors } = useTheme();
-  const styles = useThemedStyles(makeStyles);
+  const insets = useScreenInsets();
+  const { tokens, type, radii } = useTheme();
   const navigation = useNavigation<Nav>();
   const [page, setPage] = useState<InboxPage | null>(null);
   // The event chips come from the unfiltered list, so they don't vanish
@@ -62,8 +74,13 @@ export function InboxScreen() {
     }, [])
   );
 
-  if (error && !page) return <ErrorView message={error} onRetry={load} />;
-  if (!page) return <LoadingView />;
+  if (!page) {
+    return (
+      <Screen title="Messages" scroll={false}>
+        {error ? <ErrorView message={error} onRetry={load} /> : <LoadingView />}
+      </Screen>
+    );
+  }
 
   const refresh = async () => {
     setRefreshing(true);
@@ -74,74 +91,112 @@ export function InboxScreen() {
   const filtered = !!eventId || !!query.trim();
 
   return (
-    <FlatList
-      style={styles.container}
-      contentInsetAdjustmentBehavior="automatic"
-      data={page.messages}
-      keyExtractor={m => m.id}
-      contentContainerStyle={styles.list}
-      keyboardDismissMode="on-drag"
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.text.accent} />}
-      ListHeaderComponent={
-        <View style={styles.header}>
-          <SearchField value={query} onChangeText={setQuery} placeholder="Search messages" />
-          {events.length > 1 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-              <FilterChip label="All events" active={!eventId} onPress={() => setEventId(null)} />
-              {events.map(e => (
-                <FilterChip key={e.id} label={e.name} active={eventId === e.id} onPress={() => setEventId(e.id)} />
-              ))}
-            </ScrollView>
-          ) : null}
-        </View>
-      }
-      renderItem={({ item }) => (
-        <TouchableOpacity
-          style={styles.card}
-          activeOpacity={0.75}
-          onPress={() => navigation.navigate('InboxMessage', { messageId: item.id })}
-        >
-          <View style={styles.row}>
-            {item.unread ? <View style={[styles.dot, { backgroundColor: colors.text.accent }]} accessibilityLabel="Unread" /> : null}
-            <Text style={[styles.subject, item.unread && styles.unread]} numberOfLines={1}>
-              {item.subject || `Message from ${item.event.name}`}
-            </Text>
-            <Text style={styles.meta}>{formatDateTime(item.delivered_at)}</Text>
+    <Screen title="Messages" scroll={false}>
+      <FlatList
+        style={{ flex: 1, backgroundColor: tokens.bg }}
+        data={page.messages}
+        keyExtractor={m => m.id}
+        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + spacing.xxl }]}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refresh}
+            tintColor={tokens.accent}
+            colors={[tokens.accent]}
+            progressBackgroundColor={tokens.bg}
+          />
+        }
+        ListHeaderComponent={
+          <View style={styles.header}>
+            <TextField
+              icon="search"
+              clearable
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search messages"
+              accessibilityLabel="Search messages"
+              returnKeyType="search"
+              autoCorrect={false}
+            />
+            {events.length > 1 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+                <FilterChip label="All events" selected={!eventId} onPress={() => setEventId(null)} />
+                {events.map(e => (
+                  <FilterChip key={e.id} label={e.name} selected={eventId === e.id} onPress={() => setEventId(e.id)} />
+                ))}
+              </ScrollView>
+            ) : null}
           </View>
-          <Text style={styles.preview} numberOfLines={2}>{item.preview_text}</Text>
-          <View style={styles.row}>
-            <Text style={[styles.meta, styles.flex]} numberOfLines={1}>
-              {item.event.name}
-              {item.sender_name ? ` · From ${item.sender_name}` : ''}
-            </Text>
-            {item.channels.map(c => (
-              <Badge key={c} label={CHANNEL_LABELS[c] ?? c} color={CHANNEL_COLORS[c]} />
-            ))}
-          </View>
-        </TouchableOpacity>
-      )}
-      ListEmptyComponent={
-        filtered ? (
-          <EmptyState title="No messages match" message="Try a different search or event." />
-        ) : (
-          <EmptyState title="No messages yet" message="Messages from your event organizers will appear here." />
-        )
-      }
-    />
+        }
+        renderItem={({ item, index }) => {
+          const first = index === 0;
+          const last = index === page.messages.length - 1;
+          const subject = item.subject || `Message from ${item.event.name}`;
+          return (
+            <View
+              style={[
+                styles.cardSlice,
+                { backgroundColor: tokens.bg, borderColor: tokens.box },
+                first && { borderTopWidth: 1, borderTopLeftRadius: radii.container, borderTopRightRadius: radii.container },
+                last && { borderBottomWidth: 1, borderBottomLeftRadius: radii.container, borderBottomRightRadius: radii.container },
+              ]}
+            >
+              <Pressable
+                onPress={() => navigation.navigate('InboxMessage', { messageId: item.id })}
+                accessibilityRole="button"
+                accessibilityLabel={item.unread ? `Unread, ${subject}` : subject}
+                android_ripple={ripple(tokens.text, { alpha: ROW_STATE_LAYER_ALPHA })}
+                style={({ pressed }) => [
+                  styles.row,
+                  !first && { borderTopWidth: 1, borderTopColor: tokens.div2 },
+                  item.unread && { backgroundColor: tokens.selected },
+                  !isAndroid && pressed && { backgroundColor: tokens.shaded },
+                ]}
+              >
+                <View style={styles.titleRow}>
+                  {item.unread ? <View style={[styles.dot, { backgroundColor: tokens.accent }]} /> : null}
+                  <Text
+                    style={[item.unread ? type.h3 : type.label, styles.subject, { color: tokens.textH }]}
+                    numberOfLines={1}
+                  >
+                    {subject}
+                  </Text>
+                  <Text style={[type.small, { color: tokens.muted }]}>{formatDateTime(item.delivered_at)}</Text>
+                </View>
+                <Text style={[type.body, { color: tokens.text2 }]} numberOfLines={2}>
+                  {item.preview_text}
+                </Text>
+                <Text style={[type.body, { color: tokens.muted }]} numberOfLines={1}>
+                  {[item.event.name, item.sender_name ? `From ${item.sender_name}` : null, channelList(item.channels)]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </Text>
+              </Pressable>
+            </View>
+          );
+        }}
+        ListEmptyComponent={
+          filtered ? (
+            <EmptyState title="No messages match" message="Try a different search or event." />
+          ) : (
+            <EmptyState title="No messages yet" message="Messages from your event organizers will appear here." />
+          )
+        }
+      />
+    </Screen>
   );
 }
 
-const makeStyles = (colors: ThemeColors, theme: Theme) => StyleSheet.create({
-  flex: { flex: 1 },
-  container: { flex: 1, backgroundColor: colors.background },
-  list: { paddingBottom: 32 },
-  header: { paddingTop: 8, gap: 10 },
-  chips: { gap: 8, paddingHorizontal: 16 },
-  card: { ...makeCardSurface(colors, theme), marginHorizontal: 16, marginTop: 10, padding: 14, gap: 6 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  subject: { flex: 1, fontSize: 16, fontWeight: '600', color: colors.gray[900] },
-  unread: { fontWeight: '800' },
-  preview: { fontSize: 14, color: colors.gray[700] },
-  meta: { fontSize: 12, color: colors.gray[600] },
+const styles = StyleSheet.create({
+  list: { paddingHorizontal: spacing.lg, width: '100%', maxWidth: 620, alignSelf: 'center' },
+  header: { gap: spacing.md, marginBottom: spacing.lg },
+  chips: { gap: spacing.sm },
+  // Rows render as slices of one bordered container, so the list stays virtualised.
+  cardSlice: { borderLeftWidth: 1, borderRightWidth: 1, overflow: 'hidden' },
+  row: { paddingVertical: 14, paddingHorizontal: spacing.xl, gap: spacing.xs },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  dot: { width: 8, height: 8, borderRadius: radii.pill },
+  subject: { flex: 1 },
 });

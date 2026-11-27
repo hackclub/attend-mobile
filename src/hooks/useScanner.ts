@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import NetInfo from '@react-native-community/netinfo';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
 import { checkinCodes } from '../services/checkinCodes';
@@ -7,6 +8,7 @@ import { offlineScans, type QueuedVerdict } from '../services/offlineScans';
 import { ParticipantIndex } from '../services/participantIndex';
 import {
   SameCodeGate,
+  cachedPriorScan,
   confirmingResult,
   createAttemptId,
   failedResult,
@@ -20,7 +22,7 @@ import {
 } from '../services/scannerCore';
 import { verifySignedTicket, type CheckinCodeMaterial } from '../services/signedTicket';
 import { syncService } from '../services/sync';
-import type { QRCodeData, ScanContext, ScanSource } from '../types';
+import type { Participant, QRCodeData, ScanContext, ScanSource } from '../types';
 
 // How stale the keys and cancelled list may get while the scanner is in use
 // online before a successful scan fetches them again.
@@ -43,6 +45,12 @@ interface ScanRequest {
   startedAt?: string;
   // What the device made of the code on its own; see services/signedTicket.
   verdict?: QueuedVerdict;
+}
+
+// The same-code gate keys NFC reads apart from camera frames, so a badge tap
+// and a QR code with the same text don't suppress each other.
+function gateKey(source: ScanSource, data: string): string {
+  return source === 'nfc' ? `nfc:${data}` : data;
 }
 
 export function useScanner(options: {
@@ -201,11 +209,15 @@ export function useScanner(options: {
 
   // When this person was last scanned at this scan point, as far as the
   // device knows: a scan still waiting to send, or one already synced down.
+  // The cached roster's own record of a scan here (or a check-in, with no
+  // scan point) covers people scanned before this device synced the scan list.
   const earlierScan = useCallback(async (
     eventId: string,
+    attemptId: string,
     identifier: string,
     registrationId: string | undefined,
-    scanContext: ScanContext | undefined
+    scanContext: ScanContext | undefined,
+    participant: Participant | undefined
   ): Promise<string | undefined> => {
     const waiting = await offlineScans.findWaiting({
       eventId,
@@ -213,12 +225,15 @@ export function useScanner(options: {
       identifier,
       registrationId,
     });
-    if (waiting) return waiting.scannedAt;
-    if (!registrationId || !scanContext) return undefined;
-    const synced = (await syncService.getCachedScans(eventId)).find(scan =>
-      scan.participant_event_id === registrationId && scan.scan_context?.id === scanContext.id
-    );
-    return synced?.scanned_at;
+    // A retry of this same attempt isn't an earlier scan.
+    if (waiting && waiting.clientScanId !== attemptId) return waiting.scannedAt;
+    if (registrationId && scanContext) {
+      const synced = (await syncService.getCachedScans(eventId)).find(scan =>
+        scan.participant_event_id === registrationId && scan.scan_context?.id === scanContext.id
+      );
+      if (synced) return synced.scanned_at;
+    }
+    return cachedPriorScan(participant, scanContext?.id)?.firstScannedAt;
   }, []);
 
   const runRequest = useCallback(async (
@@ -255,7 +270,54 @@ export function useScanner(options: {
     lastRequestRef.current = stableRequest;
     setLastScan(confirming);
 
+    const baseResult = {
+      attemptId,
+      rawData: request.rawData,
+      source: request.source,
+      participant: cachedParticipant,
+      scanContext,
+    };
+
+    // Attend can't be reached: keep the scan on the device and send it later,
+    // under the same client_scan_id and scanned_at so it can never be counted
+    // twice. The result says what the device could tell about the code; it
+    // never claims a check-in.
+    const saveOffline = async (): Promise<ScannerResult> => {
+      const verdict = request.verdict ?? 'unverified';
+      const registrationId = request.lookupId ?? cachedParticipant?.participant_event_id;
+      // The same ticket shown twice (or a copy of it) at this scan point,
+      // caught on the device rather than only once the scans sync.
+      const earlier = await earlierScan(
+        eventId, attemptId, request.identifier, registrationId, scanContext, cachedParticipant
+      );
+      await offlineScans.enqueue({
+        clientScanId: attemptId,
+        eventId,
+        kind: request.kind,
+        identifier: request.identifier,
+        registrationId,
+        scanContextId: scanContext?.id,
+        source: request.source,
+        scannedAt: startedAt,
+        verdict,
+      });
+      return savedResult(verdict, baseResult, earlier);
+    };
+
     try {
+      const netState = await NetInfo.fetch().catch(() => null);
+      if (requestController.signal.aborted || currentEventIdRef.current !== eventId) {
+        return null;
+      }
+      if (netState?.isConnected === false) {
+        const result = await saveOffline();
+        if (requestController.signal.aborted || currentEventIdRef.current !== eventId) {
+          return null;
+        }
+        setLastScan(result);
+        return result;
+      }
+
       const options = {
         scanContextId: scanContext?.id,
         clientScanId: attemptId,
@@ -290,51 +352,26 @@ export function useScanner(options: {
       if (requestController.signal.aborted || currentEventIdRef.current !== eventId) {
         return null;
       }
-      // No answer, or a server error: keep the scan on the device and send it
-      // later, under the same id so it can never be counted twice.
+      let result = failedResult(error, baseResult);
       if (retryableFailure(error)) {
         try {
-          const registrationId = request.lookupId ?? cachedParticipant?.participant_event_id;
-          // The same ticket shown twice (or a copy of it) at this scan point,
-          // caught on the device rather than only once the scans sync.
-          const earlier = await earlierScan(eventId, request.identifier, registrationId, scanContext);
-          await offlineScans.enqueue({
-            clientScanId: attemptId,
-            eventId,
-            kind: request.kind,
-            identifier: request.identifier,
-            registrationId,
-            scanContextId: scanContext?.id,
-            source: request.source,
-            scannedAt: startedAt,
-            verdict: request.verdict ?? 'unverified',
-          });
-          if (currentEventIdRef.current !== eventId) return null;
-          const saved = savedResult(request.verdict ?? 'unverified', {
-            attemptId,
-            rawData: request.rawData,
-            source: request.source,
-            participant: cachedParticipant,
-            scanContext,
-          }, earlier);
-          setLastScan(saved);
-          return saved;
-        } catch (saveError) {
-          console.error('[Scanner] Could not save the scan on this device:', saveError);
+          result = await saveOffline();
+        } catch (queueError) {
+          console.error('[Scanner] Could not save the scan on this device:', queueError);
+        }
+        if (requestController.signal.aborted || currentEventIdRef.current !== eventId) {
+          return null;
         }
       }
-      const result = failedResult(error, {
-        attemptId,
-        rawData: request.rawData,
-        source: request.source,
-        participant: cachedParticipant,
-        scanContext,
-      });
       setLastScan(result);
       return result;
     } finally {
       if (requestAbortRef.current === requestController) {
         requestAbortRef.current = null;
+        // Start the same-code window again from now: a request slower than
+        // the window would otherwise let the code still in front of the
+        // camera (or on the reader) straight back in.
+        codeGateRef.current.touch(gateKey(request.source, request.rawData));
         processingRef.current = false;
         setIsProcessing(false);
       }
@@ -386,11 +423,11 @@ export function useScanner(options: {
     data: string,
     source: ScanSource = 'qr'
   ): Promise<ScannerResult | null> => {
-    if (
-      processingRef.current ||
-      !contextsReady ||
-      !codeGateRef.current.accept(data)
-    ) return null;
+    if (processingRef.current) {
+      codeGateRef.current.touch(gateKey(source, data));
+      return null;
+    }
+    if (!contextsReady || !codeGateRef.current.accept(gateKey(source, data))) return null;
 
     const parsed = parseQRCode(data);
     if (!parsed) {
@@ -405,6 +442,38 @@ export function useScanner(options: {
 
     return runParsed(parsed, data, source, selectedContext);
   }, [contextsReady, runParsed, selectedContext]);
+
+  // The shared tail of every NFC read: a badge token goes to the badge
+  // endpoint, anything else must be an Attend QR payload.
+  const scanNfcPayload = useCallback(async (
+    payload: string,
+    isBadgeToken: boolean
+  ): Promise<ScannerResult | null> => {
+    if (!codeGateRef.current.accept(gateKey('nfc', payload))) return null;
+
+    if (isBadgeToken) {
+      return runRequest({
+        kind: 'badge',
+        identifier: payload,
+        rawData: payload,
+        source: 'nfc',
+        scanContext: selectedContext,
+      });
+    }
+
+    const parsed = parseQRCode(payload);
+    if (!parsed) {
+      const result = failedResult(new Error('Not an Attend badge.'), {
+        attemptId: createAttemptId(),
+        rawData: payload,
+        source: 'nfc',
+      });
+      setLastScan(result);
+      return result;
+    }
+
+    return runParsed(parsed, payload, 'nfc', selectedContext);
+  }, [runParsed, runRequest, selectedContext]);
 
   const handleNFCScan = useCallback(async (): Promise<ScannerResult | null> => {
     if (processingRef.current || !contextsReady) return null;
@@ -458,31 +527,27 @@ export function useScanner(options: {
       return result;
     }
 
-    if (!codeGateRef.current.accept(`nfc:${nfcResult.payload}`)) return null;
+    return scanNfcPayload(nfcResult.payload, nfcResult.type === 'external');
+  }, [contextRequiredResult, contextsReady, needsContext, scanNfcPayload]);
 
-    if (nfcResult.type === 'external') {
-      return runRequest({
-        kind: 'badge',
-        identifier: nfcResult.payload,
-        rawData: nfcResult.payload,
-        source: 'nfc',
-        scanContext: selectedContext,
-      });
+  // Android reads badges continuously (useNfcAutoRead) and hands over the
+  // token with its record type: `isBadge` only for the Attend external
+  // record. A URI/text record must be an Attend link; anything else (a
+  // business card, a transit tag) never reaches the server.
+  const handleNfcToken = useCallback(async (
+    token: string,
+    isBadge = false
+  ): Promise<ScannerResult | null> => {
+    const payload = token.trim();
+    if (!payload) return null;
+    if (processingRef.current) {
+      codeGateRef.current.touch(gateKey('nfc', payload));
+      return null;
     }
-
-    const parsed = parseQRCode(nfcResult.payload);
-    if (!parsed) {
-      const result = failedResult(new Error('Unrecognized Attend NFC data.'), {
-        attemptId: createAttemptId(),
-        rawData: nfcResult.payload,
-        source: 'nfc',
-      });
-      setLastScan(result);
-      return result;
-    }
-
-    return runParsed(parsed, nfcResult.payload, 'nfc', selectedContext);
-  }, [contextRequiredResult, contextsReady, needsContext, runParsed, runRequest, selectedContext]);
+    if (!contextsReady) return null;
+    if (needsContext) return contextRequiredResult('nfc');
+    return scanNfcPayload(payload, isBadge);
+  }, [contextRequiredResult, contextsReady, needsContext, scanNfcPayload]);
 
   const retryLastScan = useCallback((): Promise<ScannerResult | null> => {
     const request = lastRequestRef.current;
@@ -499,6 +564,14 @@ export function useScanner(options: {
     codeGateRef.current.reset();
   }, [hideLastScan]);
 
+  // After an undo: hides that scan's card only if it is still the one shown
+  // (a newer scan may have landed during the request), and leaves the
+  // same-code gate alone, so a code still in frame isn't checked straight
+  // back in. Scanning it again takes moving it out of frame first.
+  const hideScan = useCallback((attemptId: string) => {
+    setLastScan(current => (current?.attemptId === attemptId ? null : current));
+  }, []);
+
   const selectContext = useCallback((contextId: string) => {
     if (lockedContextId) return;
     setSelectedContextId(contextId);
@@ -507,11 +580,13 @@ export function useScanner(options: {
   return {
     handleScan,
     handleNFCScan,
+    handleNfcToken,
     retryLastScan,
     isProcessing,
     lastScan,
     clearLastScan,
     hideLastScan,
+    hideScan,
     hasEvent: !!state.currentEvent,
     scanContexts,
     selectedContextId,
