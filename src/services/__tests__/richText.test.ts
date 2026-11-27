@@ -48,6 +48,19 @@ describe('markup round trip', () => {
     expect(htmlToMarkup(markupToHtml(markup))).toBe(markup);
   });
 
+  it('keeps an HTML draft list a list in the editor', () => {
+    expect(htmlToMarkup('<p>Demo order:</p><ol><li>Team Kookaburra</li><li>Team Wombat</li></ol>')).toBe(
+      'Demo order:\n\n1. Team Kookaburra\n2. Team Wombat'
+    );
+  });
+
+  it("keeps a plain-text body's lines rather than joining them", () => {
+    expect(htmlToMarkup('Demo order for Sunday:\r\n\r\n1. Team Kookaburra\n2. Team Wombat\n\n\n\nQ&amp;A after')).toBe(
+      'Demo order for Sunday:\n\n1. Team Kookaburra\n2. Team Wombat\n\nQ&A after'
+    );
+    expect(markupToHtml(htmlToMarkup('Line one\nLine two'))).toBe('<p>Line one<br>Line two</p>');
+  });
+
   it('writes only tags the server keeps', () => {
     expect(markupToHtml('**Bus** at _9_\n\n- [Map](https://maps.example.com)')).toBe(
       '<p><strong>Bus</strong> at <em>9</em></p><ul><li><a href="https://maps.example.com">Map</a></li></ul>'

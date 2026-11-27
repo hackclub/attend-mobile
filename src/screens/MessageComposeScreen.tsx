@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -59,6 +59,10 @@ export function MessageComposeScreen() {
   const [body, setBody] = useState('');
   const [schedule, setSchedule] = useState(false);
   const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
+  // The draft's body as the server sent it, and as the editor shows it. While
+  // the text is left alone, saving sends the original back, so changing only
+  // the audience or the time keeps formatting the editor can't show.
+  const loadedBody = useRef<{ markup: string; html: string } | null>(null);
   const toggleSchedule = (on: boolean) => {
     setSchedule(on);
     if (on && !scheduledAt) setScheduledAt(new Date(Date.now() + 60 * 60 * 1000));
@@ -78,7 +82,9 @@ export function MessageComposeScreen() {
         setParticipantIds(message.participant_event_ids);
         setGroupIds(message.group_ids);
         setSubject(message.subject ?? '');
-        setBody(htmlToMarkup(message.body));
+        const markup = htmlToMarkup(message.body);
+        loadedBody.current = { markup, html: message.body ?? '' };
+        setBody(markup);
         setSimplified(hasUnsupportedFormatting(message.body));
         setSchedule(!!message.scheduled_at);
         setScheduledAt(message.scheduled_at ? new Date(message.scheduled_at) : null);
@@ -99,7 +105,7 @@ export function MessageComposeScreen() {
   const bodyHtml = useMemo(() => markupToHtml(body), [body]);
   // Leaving with unsaved edits asks first. Saving (Next) makes the draft
   // the new baseline, so coming back from the preview and leaving doesn't.
-  const { markClean } = useDiscardGuard(
+  const { dirty, markClean } = useDiscardGuard(
     options
       ? JSON.stringify([audience, channels, participantIds, groupIds, subject, body, schedule, scheduledAt?.getTime()])
       : null
@@ -131,9 +137,17 @@ export function MessageComposeScreen() {
       return;
     }
 
+    // Nothing changed since it was opened or last saved: the draft on the
+    // server is already this one, so the preview needs no save.
+    if (messageId && !dirty) {
+      setErrors([]);
+      navigation.navigate('MessagePreview', { messageId });
+      return;
+    }
+
     const input: MessageInput = {
       subject,
-      body: bodyHtml,
+      body: loadedBody.current && body === loadedBody.current.markup ? loadedBody.current.html : bodyHtml,
       audience,
       channels,
       participant_event_ids: audience === 'specific_participants' ? participantIds : [],
@@ -243,7 +257,7 @@ export function MessageComposeScreen() {
           {simplified ? (
             <Flashbar
               type="warning"
-              message="This message was written on the web with formatting the app can’t edit (such as underline or code blocks). Saving here keeps the text and simpler formatting."
+              message="This message was written on the web with formatting the app can’t edit (such as underline or code blocks). Editing the text here keeps the words with simpler formatting."
             />
           ) : null}
           <MarkupEditor value={body} onChangeText={setBody} placeholder="Write your message" />
