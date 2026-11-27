@@ -86,6 +86,18 @@ describe('syncService ticket cache', () => {
   });
 });
 
+describe('syncService.clear', () => {
+  it("drops the People tab's working filters on sign-out but keeps saved views", async () => {
+    await asyncStorage.set(`participant_filter_state_${EVENT_ID}`, { rules: [], quick: 'attention' });
+    await asyncStorage.set(`participant_views_${EVENT_ID}`, [{ id: 'v1', name: 'Mine' }]);
+
+    await syncService.clear();
+
+    expect(await asyncStorage.get(`participant_filter_state_${EVENT_ID}`)).toBeNull();
+    expect(await asyncStorage.get(`participant_views_${EVENT_ID}`)).toEqual([{ id: 'v1', name: 'Mine' }]);
+  });
+});
+
 describe('syncService.setCurrentEvent', () => {
   it("drops other events' scan lists and cursors, keeping the current event's and its roster", async () => {
     await syncService.clear();

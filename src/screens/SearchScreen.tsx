@@ -5,6 +5,8 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
+  type LayoutChangeEvent,
+  type ScrollViewInstance,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FlashList, type ListRenderItemInfo } from '@shopify/flash-list';
@@ -179,6 +181,33 @@ export function SearchScreen() {
   const quickCounts = useMemo(() => quickFilterCounts(narrowed), [narrowed]);
   const quickFilter = getQuickFilter(quick);
 
+  // The chip in force is kept in view. A filter restored from last time, or
+  // one past the edge of the screen, would otherwise sit scrolled out of
+  // sight, and the list would look unfiltered.
+  const chipRowRef = useRef<ScrollViewInstance>(null);
+  const chipFrames = useRef(new Map<string, { x: number; width: number }>());
+  const chipRow = useRef({ offset: 0, width: 0 });
+  const activeChip =
+    quickFilter.key !== 'all' ? `quick:${quickFilter.key}` : activeViewId ? `view:${activeViewId}` : 'quick:all';
+  const revealChip = useCallback((key: string, animated: boolean) => {
+    const frame = chipFrames.current.get(key);
+    const { offset, width } = chipRow.current;
+    if (!frame || !width) return;
+    const gutter = 16;
+    let x: number | null = null;
+    if (frame.x - gutter < offset) x = frame.x - gutter;
+    else if (frame.x + frame.width + gutter > offset + width) x = frame.x + frame.width + gutter - width;
+    if (x !== null) chipRowRef.current?.scrollTo({ x: Math.max(0, x), animated });
+  }, []);
+  useEffect(() => {
+    revealChip(activeChip, true);
+  }, [activeChip, revealChip]);
+  const chipLayout = (key: string) => (e: LayoutChangeEvent) => {
+    const { x, width } = e.nativeEvent.layout;
+    chipFrames.current.set(key, { x, width });
+    if (key === activeChip) revealChip(key, false);
+  };
+
   const listed = useMemo(
     () => applySort(narrowed.filter(quickFilter.test), sort),
     [narrowed, quickFilter, sort],
@@ -347,41 +376,52 @@ export function SearchScreen() {
       </View>
 
       <ScrollView
+        ref={chipRowRef}
         horizontal
         showsHorizontalScrollIndicator={false}
         style={styles.toolbar}
         contentContainerStyle={styles.toolbarContent}
         keyboardShouldPersistTaps="handled"
         accessibilityRole="tablist"
+        onLayout={e => {
+          chipRow.current.width = e.nativeEvent.layout.width;
+          revealChip(activeChip, false);
+        }}
+        onScroll={e => {
+          chipRow.current.offset = e.nativeEvent.contentOffset.x;
+        }}
+        scrollEventThrottle={32}
       >
         {QUICK_FILTERS.map(filter => {
           const selected = quickFilter.key === filter.key;
           const count = quickCounts[filter.key];
           return (
-            <ToolChip
-              key={filter.key}
-              label={`${filter.label} ${count}`}
-              icon={filter.key === 'attention' && count > 0 ? 'exclamation' : undefined}
-              iconColor={filter.key === 'attention' && count > 0 ? tokens.error : undefined}
-              active={selected}
-              role="tab"
-              onPress={() => setQuick(filter.key)}
-              accessibilityLabel={`${filter.label}, ${count}`}
-            />
+            <View key={filter.key} onLayout={chipLayout(`quick:${filter.key}`)}>
+              <ToolChip
+                label={`${filter.label} ${count}`}
+                icon={filter.key === 'attention' && count > 0 ? 'exclamation' : undefined}
+                iconColor={filter.key === 'attention' && count > 0 ? tokens.error : undefined}
+                active={selected}
+                role="tab"
+                onPress={() => setQuick(filter.key)}
+                accessibilityLabel={`${filter.label}, ${count}`}
+              />
+            </View>
           );
         })}
         {savedViews.map(view => {
           const selected = activeViewId === view.id;
           return (
-            <ToolChip
-              key={view.id}
-              label={view.name}
-              icon="clipboard-list"
-              active={selected}
-              // A second tap on the view in force takes it off.
-              onPress={() => (selected ? clearFilters() : applyView(view))}
-              accessibilityLabel={`Saved view: ${view.name}`}
-            />
+            <View key={view.id} onLayout={chipLayout(`view:${view.id}`)}>
+              <ToolChip
+                label={view.name}
+                icon="clipboard-list"
+                active={selected}
+                // A second tap on the view in force takes it off.
+                onPress={() => (selected ? clearFilters() : applyView(view))}
+                accessibilityLabel={`Saved view: ${view.name}`}
+              />
+            </View>
           );
         })}
       </ScrollView>

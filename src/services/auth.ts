@@ -26,7 +26,8 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 /**
  * Everything a sign-out removes from the device apart from the credentials:
  * the biometric unlock, cached rosters, scans, events and the current event,
- * queued scans (unless `keepQueuedScans`), headshots, and the Live
+ * the People tab's working filters, queued scans (unless `keepQueuedScans`),
+ * headshots, and the Live
  * Activities / Live Updates. Every sign-out path runs it via
  * authService.logout. Never throws.
  */

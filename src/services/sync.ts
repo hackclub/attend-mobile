@@ -509,6 +509,9 @@ class SyncService {
           key.startsWith('participant_sync_cursor_') ||
           key.startsWith('scan_contexts_') ||
           key.startsWith('checkin_codes_') ||
+          // The People tab's working filters: whoever signs in next starts
+          // from the full list. Saved views stay.
+          key.startsWith('participant_filter_state_') ||
           key === STORAGE_KEYS.LAST_SYNC ||
           key === STORAGE_KEYS.EVENTS ||
           key === STORAGE_KEYS.TICKETS ||
